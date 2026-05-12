@@ -412,8 +412,8 @@ const total =
     top: 0,
     width: "100%",
     padding: "18px 40px",
-    display: "grid",
-    gridTemplateColumns: "auto 1fr auto",
+    display: "flex",
+    justifyContent: "space-between",
     alignItems: "center",
     zIndex: 1000,
 
@@ -440,14 +440,16 @@ const total =
 
   {/* MENU CENTRE */}
   <div
+    className="nav-links"
     style={{
       display: "flex",
       justifyContent: "center",
       gap: "34px",
       alignItems: "center",
-      flexWrap: "wrap"
+      flexWrap: "wrap",
+      flex: 1
     }}
-  >
+  > 
     <a href="#presentation" style={{ textDecoration: "none", color: scrolled ? "#1e2b1f" : "white", fontWeight: "500", transition: "0.35s" }}>Présentation</a>
     <a href="#galerie" style={{ textDecoration: "none", color: scrolled ? "#1e2b1f" : "white", fontWeight: "500", transition: "0.35s" }}>Galerie</a>
     <a href="#avis" style={{ textDecoration: "none", color: scrolled ? "#1e2b1f" : "white", fontWeight: "500", transition: "0.35s" }}>Avis</a>    
@@ -996,9 +998,9 @@ const total =
     }}
   >
 
- {/* CALENDRIER */}
+ {/* CALENDRIER 1*/}
 
-<div>
+<div className="calendar-wrapper">
 
   <div
     style={{
@@ -1079,7 +1081,7 @@ const total =
 
   </div>
 
-  {/* CALENDRIER */}
+  {/* CALENDRIER 2*/}
 
   <div className="calendar">
 

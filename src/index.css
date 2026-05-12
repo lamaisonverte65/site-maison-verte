@@ -146,91 +146,142 @@ footer {
 }
 
 /* RESPONSIVE */
-@media (max-width: 768px) {
+
+@media (max-width: 950px) and (orientation: landscape) {
+
+  .overlay {
+    padding-top: 90px !important;
+  }
 
   .overlay h1 {
-    font-size: 3rem;
+    font-size: 3.2rem !important;
   }
 
   .overlay p {
-    font-size: 1.1rem;
+    font-size: 1rem !important;
+    max-width: 700px !important;
+  }
+
+  nav a {
+    font-size: 0.82rem !important;
+  }
+
+  .nav-links {
+    gap: 18px !important;
+  }
+
+  nav {
+    padding: 10px 18px !important;
+  }
+
+  nav img {
+    height: 48px !important;
+  }
+
+}
+
+@media (max-width: 768px) and (orientation: portrait) {
+
+  #presentation > div,
+  #activites > div,
+  #meteo > div,
+  #contact > div {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  nav {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 8px 14px !important;
+  }
+
+  .nav-links {
+    display: none !important;
+  }
+
+  nav img {
+    height: 46px !important;
+  }
+
+  nav .button {
+    padding: 10px 14px !important;
+    font-size: 0.85rem !important;
+  }
+
+  .hero {
+    min-height: 100vh;
+    background-position: center top;
+  }
+
+  .overlay {
+    justify-content: center !important;
+    padding: 95px 18px 35px !important;
+    box-sizing: border-box;
+  }
+
+  .overlay h1 {
+    font-size: 1.85rem !important;
+    line-height: 0.95 !important;
+    margin-bottom: 10px !important;
+  }
+
+  .overlay p {
+    font-size: 0.9rem !important;
+    line-height: 1.5 !important;
+    max-width: 320px !important;
+  }
+
+  .overlay button,
+  .overlay .button {
+    width: 100%;
+    max-width: 280px;
   }
 
   .section {
-    padding: 70px 20px !important;
+    padding: 55px 20px !important;
+  }
+
+  .section h2 {
+    margin-bottom: 28px !important;
   }
 
   .gallery {
     grid-template-columns: repeat(2, 1fr) !important;
   }
 
-  .calendar {
-    gap: 6px !important;
-  }
+#reservation > div {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+}
 
+.calendar-wrapper {
+  width: 100% !important;
+  max-width: 430px !important;
+  margin: 0 auto !important;
+}
+
+.calendar-wrapper .calendar {
+  width: 100% !important;
+  grid-template-columns: repeat(7, 1fr) !important;
+  gap: 6px !important;
+}
+
+}
+
+@media (max-width: 1100px) and (orientation: portrait) {
   #reservation > div {
     display: flex !important;
     flex-direction: column !important;
   }
-
+  #reservation .calendar {
+  width: fit-content !important;
+  margin: 0 auto !important;
+}
 }
 
-@media (max-width: 1100px) {
-  #reservation > div {
-    display: flex !important;
-    flex-direction: column !important;
-  }
-}
-
-@media (max-width: 520px) {
-  .overlay h1 {
-    font-size: 2.4rem !important;
-  }
-  .overlay p {
-    font-size: 1rem !important;
-  }
-  .gallery {
-    grid-template-columns: 1fr !important;
-  }
-  nav {
-    padding: 10px 16px !important;
-  }
-  nav div {
-    flex-wrap: wrap !important;
-    justify-content: center !important;
-    
-  }
-  .hero {
-  height: 100vh;
-  padding-top: 120px;
-  box-sizing: border-box;
-  background-position: center top;
-  }
-
-  .overlay {
-    justify-content: flex-start;
-    padding-top: 140px;
-  }
-
-  .overlay h1 {
-    font-size: 2.6rem !important;
-    line-height: 0.95 !important;
-    margin-bottom: 14px !important;
-  }
-
-  .overlay p {
-    font-size: 0.95rem !important;
-    line-height: 1.6 !important;
-  }
-  .section {
-  padding-top: 70px !important;
-  padding-bottom: 70px !important;
-  }
-
-  .section h2 {
-    margin-bottom: 28px !important;
-  }
-}
 
 .gallery-item:hover .gallery-caption {
   opacity: 1 !important;
