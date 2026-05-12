@@ -413,7 +413,7 @@ const total =
     width: "100%",
     padding: "18px 40px",
     display: "grid",
-    gridTemplateColumns: "1fr auto 1fr",
+    gridTemplateColumns: "auto 1fr auto",
     alignItems: "center",
     zIndex: 1000,
 
@@ -433,7 +433,7 @@ const total =
       <img
         src="/logo.png"
         alt="La Maison Verte"
-        style={{ height: "68px", objectFit: "contain" }}
+        style={{ height: scrolled ? "58px" : "64px", objectFit: "contain" }}
       />
     </a>
   </div>
