@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet";
+import { supabase } from "../supabaseClient";
 
 
 export default function MaisonVerte() {
@@ -10,7 +11,9 @@ export default function MaisonVerte() {
   const [scrolled, setScrolled] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-
+  const [guestName, setGuestName] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestPhone, setGuestPhone] = useState(""); 
   const galleryPhotos = [
 
   {
@@ -223,8 +226,99 @@ function toggleDay(day) {
   setSelectedDates([realStart, end]);
 }
 
-  const pricePerNight = 80;
-  const cleaningFee = 25;
+  const defaultPrice = 80;
+
+const pricePeriods = [
+  {
+    name: "Vacances d’été",
+    start: "2026-07-04",
+    end: "2026-08-30",
+    price: 100
+  },
+  {
+    name: "Vacances de Toussaint",
+    start: "2026-10-17",
+    end: "2026-11-01",
+    price: 80
+  },
+  {
+    name: "Vacances de Noël",
+    start: "2026-12-19",
+    end: "2027-01-03",
+    price: 110
+  },
+  {
+    name: "Vacances de février",
+    start: "2027-02-06",
+    end: "2027-03-07",
+    price: 110
+  }
+];
+
+const stayRules = [
+  {
+    name: "Vacances d’été",
+    start: "2026-07-04",
+    end: "2026-08-30",
+    minimumNights: 6,
+    allowedArrivalDays: [0, 6]
+  },
+  {
+    name: "Vacances de Toussaint",
+    start: "2026-10-17",
+    end: "2026-11-01",
+    minimumNights: 6,
+    allowedArrivalDays: [0, 6]
+  },
+  {
+    name: "Vacances de Noël",
+    start: "2026-12-19",
+    end: "2027-01-03",
+    minimumNights: 6,
+    allowedArrivalDays: [0, 6]
+  },
+  {
+    name: "Vacances de février",
+    start: "2027-02-06",
+    end: "2027-03-07",
+    minimumNights: 6,
+    allowedArrivalDays: [0, 6]
+  }
+];
+
+function getPriceForDate(key) {
+  const period = pricePeriods.find(
+    period => key >= period.start && key <= period.end
+  );
+
+  return period ? period.price : defaultPrice;
+}
+
+function getSelectedNights() {
+  if (selectedDates.length !== 2) {
+    return [];
+  }
+
+  const nights = [];
+  const startDate = new Date(selectedDates[0]);
+  const endDate = new Date(selectedDates[1]);
+
+  for (
+    let d = new Date(startDate);
+    d < endDate;
+    d.setDate(d.getDate() + 1)
+  ) {
+    nights.push(d.toISOString().split("T")[0]);
+  }
+
+  return nights;
+}
+
+function getRuleForStay(nights) {
+  return stayRules.find(rule =>
+    nights.some(night => night >= rule.start && night <= rule.end)
+  );
+}
 
 const numberOfNights =
   selectedDates.length === 2
@@ -234,10 +328,60 @@ const numberOfNights =
       )
     : 0;
 
-const total =
-  numberOfNights > 0
-    ? (numberOfNights * pricePerNight) + cleaningFee
-    : 0;
+const selectedNights = getSelectedNights();
+
+const accommodationTotal =
+  selectedNights.reduce(
+    (sum, nightKey) => sum + getPriceForDate(nightKey),
+    0
+  );
+
+const activeStayRule = getRuleForStay(selectedNights);
+
+const arrivalDay =
+  selectedDates.length >= 1
+    ? new Date(selectedDates[0]).getDay()
+    : null;
+
+const minimumNights =
+  activeStayRule ? activeStayRule.minimumNights : 2;
+
+const isArrivalDayAllowed =
+  !activeStayRule ||
+  activeStayRule.allowedArrivalDays.includes(arrivalDay);
+
+const reservationMessage =
+  selectedDates.length !== 2
+    ? "Sélectionnez vos dates d’arrivée et de départ."
+    : numberOfNights < minimumNights
+    ? `Séjour minimum : ${minimumNights} nuits sur cette période.`
+    : !isArrivalDayAllowed
+    ? "Pendant les vacances, les arrivées sont possibles le samedi ou le dimanche."
+    : activeStayRule
+    ? "Votre demande concerne une période de forte demande. Elle sera étudiée avant confirmation."
+    : "Renseignez vos coordonnées.";
+
+const canRequestBooking =
+  selectedDates.length === 2 &&
+  numberOfNights >= minimumNights &&
+  isArrivalDayAllowed;
+
+const isEmailValid =
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail);
+
+const isPhoneValid =
+  /^[0-9+\s().-]{8,}$/.test(guestPhone);
+
+const isFormValid =
+  guestName.trim() !== "" &&
+  isEmailValid &&
+  isPhoneValid;
+
+const canSubmitRequest =
+  canRequestBooking &&
+  isFormValid;
+    
+const total = accommodationTotal;
 
  
 
@@ -257,7 +401,69 @@ const total =
 
   }
 
-  return (
+  async function submitBookingRequest() {
+
+    if (!canSubmitRequest) {
+      return;
+    }
+
+    try {
+
+      const { error } = await supabase
+        .from("booking_requests")
+        .insert([
+          {
+            guest_name: guestName,
+            guest_email: guestEmail,
+            guest_phone: guestPhone,
+
+            start_date: selectedDates[0],
+            end_date: selectedDates[1],
+
+            nights: numberOfNights,
+            estimated_total: total
+          }
+        ]);
+
+      if (error) {
+          console.error(error);
+          alert("Erreur lors de l'envoi de la demande.");
+          return;
+        }
+
+        await fetch("/.netlify/functions/send-booking-request", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            guestName,
+            guestEmail,
+            guestPhone,
+            startDate: selectedDates[0],
+            endDate: selectedDates[1],
+            nights: numberOfNights,
+            total
+          })
+        });
+
+        alert("Votre demande de réservation a bien été envoyée.");
+      setGuestName("");
+      setGuestEmail("");
+      setGuestPhone("");
+
+      setSelectedDates([]);
+
+    } catch (err) {
+
+      console.error(err);
+
+      alert("Une erreur est survenue.");
+
+    }
+
+  }
+return (
 
     <>
 
@@ -836,139 +1042,116 @@ const total =
       }}
       >
 
-      <div
+      <a
+        href="https://www.booking.com/hotel/fr/la-maison-verte-arreau.fr.html#tab-reviews"
+        target="_blank"
+        rel="noopener noreferrer"
         style={{
-          background: "white",
-          padding: "32px",
-          borderRadius: "30px",
-          boxShadow:
-            "0 10px 30px rgba(0,0,0,0.08)"
+          textDecoration: "none",
+          color: "inherit"
         }}
-        >
-
-        <h3>
-          Booking.com
-        </h3>
-
+      >
         <div
           style={{
-            fontSize: "3rem",
-            fontWeight: "700",
-            color: "#1f6f3d"
+            background: "white",
+            padding: "32px",
+            borderRadius: "30px",
+            boxShadow:
+              "0 10px 30px rgba(0,0,0,0.08)",
+            transition: "0.3s",
+            cursor: "pointer"
           }}
-          >
-          9,5/10
-        </div>
-
-        <p>
-          Basé sur 42 expériences vécues
-        </p>
-
-      </div>
-
-      <div
-        style={{
-          background: "white",
-          padding: "32px",
-          borderRadius: "30px",
-          boxShadow:
-            "0 10px 30px rgba(0,0,0,0.08)"
-        }}
         >
 
-        <h3>
-          Airbnb
-        </h3>
+          <h3>
+            Booking.com
+          </h3>
 
+          <div
+            style={{
+              fontSize: "3rem",
+              fontWeight: "700",
+              color: "#1f6f3d"
+            }}
+          >
+            9,5/10
+          </div>
+
+          <p>
+            Basé sur 42 expériences vécues
+          </p>
+
+          <div
+            style={{
+              marginTop: "16px",
+              color: "#1f6f3d",
+              fontWeight: "600"
+            }}
+          >
+            Voir les avis →
+          </div>
+
+        </div>
+      </a>
+
+      <a
+        href="https://www.airbnb.fr/rooms/1085595615567954443"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          textDecoration: "none",
+          color: "inherit"
+        }}
+      >
         <div
           style={{
-            fontSize: "3rem",
-            fontWeight: "700",
-            color: "#1f6f3d"
+            background: "white",
+            padding: "32px",
+            borderRadius: "30px",
+            boxShadow:
+              "0 10px 30px rgba(0,0,0,0.08)",
+            transition: "0.3s",
+            cursor: "pointer"
           }}
+        >
+
+          <h3>
+            Airbnb
+          </h3>
+
+          <div
+            style={{
+              fontSize: "3rem",
+              fontWeight: "700",
+              color: "#1f6f3d"
+            }}
           >
-          4,89/5
+            4,89/5
+          </div>
+
+          <p>
+            Basé sur 9 évaluations voyageurs
+          </p>
+
+          <div
+            style={{
+              marginTop: "16px",
+              color: "#1f6f3d",
+              fontWeight: "600"
+            }}
+          >
+            Voir les avis →
+          </div>
+
         </div>
-
-        <p>
-          Basé sur 9 évaluations voyageurs
-        </p>
-
-      </div>
+      </a>
 
     </div>
 
   </div>
   
-  <div style={{ height: "34px" }}></div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(auto-fit,minmax(280px,1fr))",
-            gap: "24px"
-          }}
-          >
-
-          {
-            [
-              {
-                name: "Sophie",
-                text:
-                  "Maison magnifique et parfaitement située."
-              },
-
-              {
-                name: "Julien",
-                text:
-                  "Très propre et idéale pour découvrir les Pyrénées."
-              },
-
-              {
-                name: "Claire",
-                text:
-                  "Encore plus belle en vrai. Super séjour."
-              }
-
-            ].map(review => (
-
-              <div
-                key={review.name}
-                style={{
-                  background: "white",
-                  padding: "30px",
-                  borderRadius: "30px",
-                  boxShadow:
-                    "0 10px 30px rgba(0,0,0,0.08)"
-                }}
-              >
-
-                <div
-                  style={{
-                    fontSize: "1.5rem",
-                    marginBottom: "15px"
-                  }}
-                >
-                  ★★★★★
-                </div>
-
-                <p>
-                  {review.text}
-                </p>
-
-                <strong>
-                  {review.name}
-                </strong>
-
-              </div>
-
-            ))
-          }
-
-        </div>
-
-      </section>
+  
+</section>
 
 
 {/* RESERVATION */}
@@ -998,188 +1181,188 @@ const total =
     }}
   >
 
- {/* CALENDRIER 1*/}
+    {/* CALENDRIER */}
 
-<div className="calendar-wrapper">
+    <div className="calendar-wrapper">
 
-  <div
-    style={{
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: "35px"
-    }}
-  >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "35px"
+        }}
+      >
 
-    <button
-      className="button"
-      onClick={previousMonth}
-    >
-      ←
-    </button>
+        <button
+          className="button"
+          onClick={previousMonth}
+        >
+          ←
+        </button>
 
-    <h3
-      style={{
-        color: "#1f6f3d",
-        textTransform: "capitalize",
-        fontSize: "1.6rem"
-      }}
-    >
-      {
-        currentMonth.toLocaleDateString(
-          "fr-FR",
-          {
-            month: "long",
-            year: "numeric"
-          }
-        )
-      }
-    </h3>
-
-    <button
-      className="button"
-      onClick={nextMonth}
-    >
-      →
-    </button>
-
-  </div>
-
-  {/* JOURS */}
-
-  <div
-    className="calendar"
-    style={{
-      marginBottom: "12px"
-    }}
-  >
-
-    {
-      [
-        "Lun",
-        "Mar",
-        "Mer",
-        "Jeu",
-        "Ven",
-        "Sam",
-        "Dim"
-      ].map(day => (
-
-        <div
-          key={day}
+        <h3
           style={{
-            textAlign: "center",
-            fontWeight: "700",
-            color: "#1f6f3d"
+            color: "#1f6f3d",
+            textTransform: "capitalize",
+            fontSize: "1.6rem"
           }}
         >
-          {day}
-        </div>
+          {
+            currentMonth.toLocaleDateString(
+              "fr-FR",
+              {
+                month: "long",
+                year: "numeric"
+              }
+            )
+          }
+        </h3>
 
-      ))
-    }
+        <button
+          className="button"
+          onClick={nextMonth}
+        >
+          →
+        </button>
 
-  </div>
+      </div>
 
-  {/* CALENDRIER 2*/}
+      {/* JOURS */}
 
-  <div className="calendar">
+      <div
+        className="calendar"
+        style={{
+          marginBottom: "12px"
+        }}
+      >
 
-    {
-      days.map((day, index) => {
-
-        if (!day) {
-
-          return (
-            <div key={index}></div>
-          );
-
-        }
-
-        const key =
-          day.toISOString().split("T")[0];
-          const todayKey =
-          new Date().toISOString().split("T")[0];
-
-          const isPastDate =
-          key < todayKey;
-
-        return (
-
-          <div
-
-            key={key}
-
-            className={`day ${
-            isPastDate || unavailableDates.includes(key)
-            ? "unavailable"
-            : isDateSelected(key)
-            ? "selected"
-            : ""
-            }`}
-
-            onClick={() => {
-           if (isPastDate) return;
-           toggleDay(day);
-            }}
-
-            style={{
-              borderRadius: "22px",
-              minHeight: "85px",
-              fontSize: "1.1rem",
-              fontWeight: "600",
-              pointerEvents: "auto"
-            }}
-          >
+        {
+          [
+            "Lun",
+            "Mar",
+            "Mer",
+            "Jeu",
+            "Ven",
+            "Sam",
+            "Dim"
+          ].map(day => (
 
             <div
+              key={day}
               style={{
-                pointerEvents: "none"
+                textAlign: "center",
+                fontWeight: "700",
+                color: "#1f6f3d"
               }}
             >
-
-              <div>
-                {day.getDate()}
-              </div>
-
-              {
-                !unavailableDates.includes(key)
-                && (
-
-                  <div
-                    style={{
-                      marginTop: "6px",
-                      fontSize: "0.8rem",
-                      opacity: 0.7
-                    }}
-                  >
-                    80€
-                  </div>
-
-                )
-              }
-
+              {day}
             </div>
 
-          </div>
+          ))
+        }
 
-        );
+      </div>
 
-      })
-    }
+      {/* DATES */}
 
-  </div>
+      <div className="calendar">
 
-</div>
+        {
+          days.map((day, index) => {
 
-{/* CARTE RESERVATION */}
+            if (!day) {
+
+              return (
+                <div key={index}></div>
+              );
+
+            }
+
+            const key =
+              day.toISOString().split("T")[0];
+
+            const todayKey =
+              new Date().toISOString().split("T")[0];
+
+            const isPastDate =
+              key < todayKey;
+
+            return (
+
+              <div
+                key={key}
+
+                className={`day ${
+                  isPastDate || unavailableDates.includes(key)
+                    ? "unavailable"
+                    : isDateSelected(key)
+                    ? "selected"
+                    : ""
+                }`}
+
+                onClick={() => {
+                  if (isPastDate) return;
+                  toggleDay(day);
+                }}
+
+                style={{
+                  borderRadius: "22px",
+                  minHeight: "85px",
+                  fontSize: "1.1rem",
+                  fontWeight: "600",
+                  pointerEvents: "auto"
+                }}
+              >
+
+                <div
+                  style={{
+                    pointerEvents: "none"
+                  }}
+                >
+
+                  <div>
+                    {day.getDate()}
+                  </div>
+
+                  {
+                    !unavailableDates.includes(key)
+                    && (
+
+                      <div
+                        style={{
+                          marginTop: "6px",
+                          fontSize: "0.8rem",
+                          opacity: 0.7
+                        }}
+                      >
+                        {getPriceForDate(key)}€
+                      </div>
+
+                    )
+                  }
+
+                </div>
+
+              </div>
+
+            );
+
+          })
+        }
+
+      </div>
+
+    </div>
+
+    {/* CARTE RESERVATION */}
 
     <div
       style={{
         maxWidth: "520px",
         width: "100%",
         margin: "0 auto"
-        }}
+      }}
     >
 
       <div
@@ -1206,7 +1389,7 @@ const total =
               fontWeight: "700"
             }}
           >
-            80€
+            À partir de {defaultPrice}€
             <span
               style={{
                 fontSize: "1rem",
@@ -1221,12 +1404,13 @@ const total =
 
         <div
           style={{
-          display: "grid",
-          gridTemplateColumns: "1fr",
-          gap: "12px",
-          marginBottom: "18px"
-        }}
+            display: "grid",
+            gridTemplateColumns: "1fr",
+            gap: "12px",
+            marginBottom: "18px"
+          }}
         >
+
           <p
             style={{
               color: "#666",
@@ -1236,18 +1420,6 @@ const total =
           >
             Choisissez vos dates directement dans le calendrier.
           </p>
-          <input
-            type="text"
-            placeholder="Date d'arrivée à sélectionner"
-            value={selectedDates[0] || ""}
-            readOnly
-            style={{
-              padding: "16px",
-              borderRadius: "16px",
-              border:
-                "1px solid #ddd"
-            }}
-          />
 
           <input
             type="text"
@@ -1262,11 +1434,42 @@ const total =
             }}
           />
 
+          <input
+            type="text"
+            placeholder="Date d'arrivée à sélectionner"
+            value={selectedDates[0] || ""}
+            readOnly
+            style={{
+              padding: "16px",
+              borderRadius: "16px",
+              border:
+                "1px solid #ddd"
+            }}
+          />
+
+          
+
         </div>
+
+        <p
+          style={{
+            color: canRequestBooking ? "#1f6f3d" : "#9a5a2e",
+            background: canRequestBooking ? "#eef7f0" : "#fff3e8",
+            padding: "14px",
+            borderRadius: "16px",
+            fontSize: "0.95rem",
+            lineHeight: "1.5",
+            marginBottom: "18px"
+          }}
+        >
+          {reservationMessage}
+        </p>
 
         <input
           type="text"
-          placeholder="Votre nom"
+          placeholder="Votre Nom et Prénom"
+          value={guestName}
+          onChange={(e) => setGuestName(e.target.value)}
           style={{
             width: "100%",
             padding: "16px",
@@ -1277,40 +1480,98 @@ const total =
           }}
         />
 
-        <input
-          type="email"
-          placeholder="Votre email"
-          style={{
-            width: "100%",
-            padding: "16px",
-            borderRadius: "16px",
-            border:
-              "1px solid #ddd",
-            marginBottom: "22px"
-          }}
-        />
-        <input
-          type="tel"
-          placeholder="Votre téléphone"
-          style={{
-            width: "100%",
-            padding: "16px",
-            borderRadius: "16px",
-            border: "1px solid #ddd",
-            marginBottom: "22px"
-          }}
-        />
+        
+        <div>
+
+          <input
+            type="email"
+            placeholder="Votre email"
+            value={guestEmail}
+            onChange={(e) => setGuestEmail(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "16px",
+              borderRadius: "16px",
+              border:
+                isEmailValid || guestEmail === ""
+                  ? "1px solid #ddd"
+                  : "1px solid #d33",
+              marginBottom: "8px"
+            }}
+          />
+
+          {
+            guestEmail !== "" &&
+            !isEmailValid && (
+
+              <div
+                style={{
+                  color: "#d33",
+                  fontSize: "0.85rem",
+                  marginBottom: "14px"
+                }}
+              >
+                Adresse email invalide.
+              </div>
+
+            )
+          }
+
+        </div>
+
+        <div>
+
+          <input
+            type="tel"
+            placeholder="Votre téléphone"
+            value={guestPhone}
+            onChange={(e) => setGuestPhone(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "16px",
+              borderRadius: "16px",
+              border:
+                isPhoneValid || guestPhone === ""
+                  ? "1px solid #ddd"
+                  : "1px solid #d33",
+              marginBottom: "8px"
+            }}
+          />
+
+          {
+            guestPhone !== "" &&
+            !isPhoneValid && (
+
+              <div
+                style={{
+                  color: "#d33",
+                  fontSize: "0.85rem",
+                  marginBottom: "14px"
+                }}
+              >
+                Numéro de téléphone invalide.
+              </div>
+
+            )
+          }
+
+        </div>
+
 
         <button
           className="button"
+          disabled={!canSubmitRequest}
+          onClick={submitBookingRequest}
           style={{
             width: "100%",
             padding: "18px",
             fontSize: "1rem",
-            fontWeight: "700"
+            fontWeight: "700",
+            opacity: canSubmitRequest ? 1 : 0.55,
+            cursor: canSubmitRequest ? "pointer" : "not-allowed"
           }}
         >
-          Réserver maintenant
+          Faire une demande de réservation
         </button>
 
         <div
@@ -1328,23 +1589,12 @@ const total =
             }}
           >
             <span>
-              80€ x {numberOfNights} nuits
+              Séjour x {numberOfNights} nuits
             </span>
 
             <span>
-              {numberOfNights * 80}€
+              {accommodationTotal}€
             </span>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              justifyContent:
-                "space-between",
-              marginBottom: "12px"
-            }}
-          >
-            
           </div>
 
           <hr
@@ -1362,7 +1612,7 @@ const total =
               fontSize: "1.2rem"
             }}
           >
-            <span>Total</span>
+            <span>Total estimatif</span>
 
             <span>
               {total}€
