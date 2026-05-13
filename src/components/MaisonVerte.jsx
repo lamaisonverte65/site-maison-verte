@@ -120,9 +120,7 @@ export default function MaisonVerte() {
       try {
 
         const response =
-          await fetch(
-            "http://localhost:3001/api/calendar"
-          );
+          await fetch("/.netlify/functions/calendar");
 
         const data =
           await response.json();
