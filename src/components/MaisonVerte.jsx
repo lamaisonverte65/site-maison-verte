@@ -11,7 +11,8 @@ export default function MaisonVerte() {
   const [scrolled, setScrolled] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [guestName, setGuestName] = useState("");
+  const [guestFirstName, setGuestFirstName] = useState("");
+  const [guestLastName, setGuestLastName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
   const [guestPhone, setGuestPhone] = useState(""); 
   const galleryPhotos = [
@@ -371,7 +372,8 @@ const isPhoneValid =
   /^[0-9+\s().-]{8,}$/.test(guestPhone);
 
 const isFormValid =
-  guestName.trim() !== "" &&
+  guestFirstName.trim() !== "" &&
+  guestLastName.trim() !== "" &&
   isEmailValid &&
   isPhoneValid;
 
@@ -399,68 +401,83 @@ const total = accommodationTotal;
 
   }
 
-  async function submitBookingRequest() {
+async function submitBookingRequest() {
 
-    if (!canSubmitRequest) {
-      return;
-    }
+  if (!canSubmitRequest) {
+    return;
+  }
 
-    try {
+  try {
 
-      const { error } = await supabase
-        .from("booking_requests")
-        .insert([
-          {
-            guest_name: guestName,
-            guest_email: guestEmail,
-            guest_phone: guestPhone,
+    const { error } = await supabase
+      .from("booking_requests")
+      .insert([
+        {
+          guest_first_name: guestFirstName,
+          guest_last_name: guestLastName,
 
-            start_date: selectedDates[0],
-            end_date: selectedDates[1],
+          guest_email: guestEmail,
+          guest_phone: guestPhone,
 
-            nights: numberOfNights,
-            estimated_total: total
-          }
-        ]);
+          start_date: selectedDates[0],
+          end_date: selectedDates[1],
 
-      if (error) {
-          console.error(error);
-          alert("Erreur lors de l'envoi de la demande.");
-          return;
+          nights: numberOfNights,
+          estimated_total: total
         }
+      ]);
 
-        await fetch("/.netlify/functions/send-booking-request", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            guestName,
-            guestEmail,
-            guestPhone,
-            startDate: selectedDates[0],
-            endDate: selectedDates[1],
-            nights: numberOfNights,
-            total
-          })
-        });
+    if (error) {
 
-        alert("Votre demande de réservation a bien été envoyée.");
-      setGuestName("");
-      setGuestEmail("");
-      setGuestPhone("");
+      console.error(error);
 
-      setSelectedDates([]);
+      alert("Erreur lors de l'envoi de la demande.");
 
-    } catch (err) {
-
-      console.error(err);
-
-      alert("Une erreur est survenue.");
+      return;
 
     }
+
+    await fetch("/.netlify/functions/send-booking-request", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+
+        guestFirstName,
+        guestLastName,
+
+        guestEmail,
+        guestPhone,
+
+        startDate: selectedDates[0],
+        endDate: selectedDates[1],
+
+        nights: numberOfNights,
+        total
+
+      })
+    });
+
+    alert("Votre demande de réservation a bien été envoyée.");
+
+    setGuestFirstName("");
+    setGuestLastName("");
+
+    setGuestEmail("");
+    setGuestPhone("");
+
+    setSelectedDates([]);
+
+  } catch (err) {
+
+    console.error(err);
+
+    alert("Une erreur est survenue.");
 
   }
+
+}
 return (
 
     <>
@@ -810,7 +827,7 @@ return (
       >
 
       <h3>
-        Un petit cocon niché au cœur d'un village authentique
+        Un petit cocon niché au cœur d'un village traditionnel
       </h3>
 
       <p
@@ -822,7 +839,7 @@ return (
         >
         Hébergement entièrement rénové pour 4 personnes, niché dans le centre historique
         d’Arreau. Situé à la Confluence des vallées d’Aure (Saint-Lary) et du Louron (Loudenvielle), au pied de 4 stations
-        de ski et cols mythiques et de nombreuses randonnées.
+        de ski, de nombreux cols mythiques et de multiples possibilités de randonnées.
       </p>
 <br></br>
       <p
@@ -880,7 +897,7 @@ return (
         <div>🛏️ 2 chambres : 1 grand lit, 2 lits jumeaux</div>
         <div>☀️ Balcon exposé sud</div>
         <div>🚶 Commerces à pied</div>
-        <div>⛷️ Proximié Saint-Lary, Loudenvielle, stations de ski et cols mythiques</div>
+        <div>⛷️ Situation centrale stratégique </div>
 
       </div>
 
@@ -906,10 +923,11 @@ return (
       "Cafetière à filtres",
       "Bouilloire",
       "Grille-pain",
+      "Appareil à raclette",
       "Fer à repasser",
       "Lit parapluie",
       "58 m²",
-      "Balcon plein sud",
+      "Balcon avec table et chaises",
       "Linge de lit fourni",
       "Parking gratuit proche",
       "Impasse piétonne",
@@ -1465,15 +1483,32 @@ return (
 
         <input
           type="text"
-          placeholder="Votre Nom et Prénom"
-          value={guestName}
-          onChange={(e) => setGuestName(e.target.value)}
+          placeholder="Votre prénom"
+          value={guestFirstName}
+          onChange={(e) =>
+            setGuestFirstName(e.target.value)
+          }
           style={{
             width: "100%",
             padding: "16px",
             borderRadius: "16px",
-            border:
-              "1px solid #ddd",
+            border: "1px solid #ddd",
+            marginBottom: "14px"
+          }}
+        />
+
+        <input
+          type="text"
+          placeholder="Votre nom"
+          value={guestLastName}
+          onChange={(e) =>
+            setGuestLastName(e.target.value)
+          }
+          style={{
+            width: "100%",
+            padding: "16px",
+            borderRadius: "16px",
+            border: "1px solid #ddd",
             marginBottom: "14px"
           }}
         />
@@ -1648,8 +1683,7 @@ return (
       color: "#555"
     }}
   >
-    Depuis Arreau, profitez d’un séjour entre nature, montagne,
-    villages de caractère, détente et grands espaces pyrénéens.
+    Profitez de la centralité unique d'Arreau pour vous offir une multitude d'activités possibles. Au coeur d'un cadre naturel exceptionnel, organisez votre séjour sportif, culturel, récréatif ou bien-être selon vos envies.
   </p>
 
   {/* OFFRE SKI */}
@@ -2046,7 +2080,7 @@ return (
           paddingLeft: "15px"
         }}
       >
-        Situation idéale à Arreau
+        Emplacement idéal à Arreau
       </h2>
 
       <iframe
@@ -2106,8 +2140,7 @@ return (
         color: "#555"
       }}
     >
-      Une question sur votre séjour, les disponibilités ou les activités
-      autour d’Arreau ? Nous serons ravis de vous répondre.
+      Une question sur votre séjour, les disponibilités ou autre ?<br></br>Nous serons ravis de vous répondre.
     </p>
 
     {/* TELEPHONE CLIQUABLE */}

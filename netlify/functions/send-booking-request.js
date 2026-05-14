@@ -10,7 +10,7 @@ export async function handler(event) {
 
   const ownerEmailHtml = `
     <h2>Nouvelle demande de réservation</h2>
-    <p><strong>Nom :</strong> ${data.guestName}</p>
+    <p><strong>Nom :</strong> ${data.guestFirstName} ${data.guestLastName}</p>
     <p><strong>Email :</strong> ${data.guestEmail}</p>
     <p><strong>Téléphone :</strong> ${data.guestPhone}</p>
     <p><strong>Arrivée :</strong> ${data.startDate}</p>
@@ -22,7 +22,7 @@ export async function handler(event) {
   const guestEmailHtml = `
     <h2>Votre demande a bien été reçue</h2>
 
-    <p>Bonjour ${data.guestName},</p>
+    <p>Bonjour ${data.guestFirstName} ${data.guestLastName},</p>
 
     <p>
       Nous avons bien reçu votre demande de réservation
