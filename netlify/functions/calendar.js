@@ -1,93 +1,81 @@
+import ical from "node-ical";
+
 export async function handler() {
-
   try {
-
-    const airbnbUrl =
-      process.env.AIRBNB_ICAL_URL;
-
-    const bookingUrl =
-      process.env.BOOKING_ICAL_URL;
-      
-    const [airbnbRes, bookingRes] =
-      await Promise.all([
-        fetch(airbnbUrl),
-        fetch(bookingUrl)
-      ]);
-
-    const airbnbText =
-      await airbnbRes.text();
-
-    const bookingText =
-      await bookingRes.text();
-
-    const combined =
-      `${airbnbText}\n${bookingText}`;
-
     const unavailableDates = [];
+    const externalReservations = [];
 
-    const events =
-      combined.split("BEGIN:VEVENT");
+    const sources = [
+      {
+        url: process.env.AIRBNB_ICAL_URL,
+        source: "airbnb",
+        defaultName: "Client Airbnb",
+      },
+      {
+        url: process.env.BOOKING_ICAL_URL,
+        source: "booking",
+        defaultName: "Client Booking",
+      },
+    ];
 
-    events.forEach(event => {
+    for (const sourceConfig of sources) {
+      if (!sourceConfig.url) continue;
 
-      const startMatch =
-        event.match(/DTSTART.*:(\d{8})/);
+      try {
+        const events = await ical.async.fromURL(sourceConfig.url);
 
-      const endMatch =
-        event.match(/DTEND.*:(\d{8})/);
+        for (const key in events) {
+          const event = events[key];
 
-      if (!startMatch || !endMatch) {
-        return;
+          if (event.type !== "VEVENT") continue;
+
+          const start = new Date(event.start);
+          const end = new Date(event.end);
+
+          for (
+            let currentDate = new Date(start);
+            currentDate < end;
+            currentDate.setDate(currentDate.getDate() + 1)
+          ) {
+            unavailableDates.push(
+              currentDate.toISOString().split("T")[0]
+            );
+          }
+
+          externalReservations.push({
+            source: sourceConfig.source,
+            start_date: start.toISOString().split("T")[0],
+            end_date: end.toISOString().split("T")[0],
+            title: event.summary || sourceConfig.defaultName,
+            guest_name: event.summary || sourceConfig.defaultName,
+            guest_email: null,
+            guest_phone: null,
+            uid: event.uid || null,
+          });
+        }
+      } catch (error) {
+        console.error(`Erreur ${sourceConfig.source}:`, error);
       }
-
-      const start =
-        startMatch[1];
-
-      const end =
-        endMatch[1];
-
-      const startDate =
-        new Date(
-          `${start.slice(0,4)}-${start.slice(4,6)}-${start.slice(6,8)}`
-        );
-
-      const endDate =
-        new Date(
-          `${end.slice(0,4)}-${end.slice(4,6)}-${end.slice(6,8)}`
-        );
-
-      for (
-        let d = new Date(startDate);
-        d < endDate;
-        d.setDate(d.getDate() + 1)
-      ) {
-
-        unavailableDates.push(
-          d.toISOString().split("T")[0]
-        );
-
-      }
-
-    });
+    }
 
     return {
       statusCode: 200,
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
-        unavailableDates: [...new Set(unavailableDates)]
-      })
+        unavailableDates: [...new Set(unavailableDates)],
+        externalReservations,
+      }),
     };
-
   } catch (error) {
-
-    console.error(error);
+    console.error("Erreur calendrier :", error);
 
     return {
       statusCode: 500,
       body: JSON.stringify({
-        error: "Erreur calendrier"
-      })
+        error: error.message,
+      }),
     };
-
   }
-
 }

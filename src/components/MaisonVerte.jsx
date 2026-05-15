@@ -14,7 +14,8 @@ export default function MaisonVerte() {
   const [guestFirstName, setGuestFirstName] = useState("");
   const [guestLastName, setGuestLastName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
-  const [guestPhone, setGuestPhone] = useState(""); 
+  const [guestPhone, setGuestPhone] = useState("");
+  const [guestMessage, setGuestMessage] = useState(""); 
   const galleryPhotos = [
 
   {
@@ -345,8 +346,12 @@ const arrivalDay =
 const minimumNights =
   activeStayRule ? activeStayRule.minimumNights : 2;
 
+const isLongStay =
+  numberOfNights >= 6;
+
 const isArrivalDayAllowed =
   !activeStayRule ||
+  isLongStay ||
   activeStayRule.allowedArrivalDays.includes(arrivalDay);
 
 const reservationMessage =
@@ -355,7 +360,7 @@ const reservationMessage =
     : numberOfNights < minimumNights
     ? `Séjour minimum : ${minimumNights} nuits sur cette période.`
     : !isArrivalDayAllowed
-    ? "Pendant les vacances, les arrivées sont possibles le samedi ou le dimanche."
+    ? "Pendant les vacances, les arrivées sont possibles le samedi ou le dimanche pour les courts séjours. Pour 6 nuits ou plus, les arrivées sont possibles tous les jours."
     : activeStayRule
     ? "Votre demande concerne une période de forte demande. Elle sera étudiée avant confirmation."
     : "Renseignez vos coordonnées.";
@@ -423,7 +428,8 @@ async function submitBookingRequest() {
           end_date: selectedDates[1],
 
           nights: numberOfNights,
-          estimated_total: total
+          estimated_total: total,
+          message: guestMessage
         }
       ]);
 
@@ -449,6 +455,7 @@ async function submitBookingRequest() {
 
         guestEmail,
         guestPhone,
+        guestMessage,
 
         startDate: selectedDates[0],
         endDate: selectedDates[1],
@@ -1437,10 +1444,12 @@ return (
             Choisissez vos dates directement dans le calendrier.
           </p>
 
+          
+
           <input
             type="text"
             placeholder="Date de départ à sélectionner"
-            value={selectedDates[1] || ""}
+            value={selectedDates[0] || ""}
             readOnly
             style={{
               padding: "16px",
@@ -1453,7 +1462,7 @@ return (
           <input
             type="text"
             placeholder="Date d'arrivée à sélectionner"
-            value={selectedDates[0] || ""}
+            value={selectedDates[1] || ""}
             readOnly
             style={{
               padding: "16px",
@@ -1570,7 +1579,21 @@ return (
               marginBottom: "8px"
             }}
           />
-
+          <textarea
+            value={guestMessage}
+            onChange={(event) => setGuestMessage(event.target.value)}
+            placeholder="Message optionnel : arrivée tardive, question particulière, ancien client..."
+            style={{
+              width: "100%",
+              minHeight: "110px",
+              marginTop: "14px",
+              padding: "14px",
+              borderRadius: "14px",
+              border: "1px solid #d1d5db",
+              fontSize: "15px",
+              resize: "vertical"
+            }}
+          />
           {
             guestPhone !== "" &&
             !isPhoneValid && (

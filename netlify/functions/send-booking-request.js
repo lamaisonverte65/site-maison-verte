@@ -10,19 +10,56 @@ export async function handler(event) {
 
   const ownerEmailHtml = `
     <h2>Nouvelle demande de réservation</h2>
-    <p><strong>Nom :</strong> ${data.guestFirstName} ${data.guestLastName}</p>
-    <p><strong>Email :</strong> ${data.guestEmail}</p>
-    <p><strong>Téléphone :</strong> ${data.guestPhone}</p>
-    <p><strong>Arrivée :</strong> ${data.startDate}</p>
-    <p><strong>Départ :</strong> ${data.endDate}</p>
-    <p><strong>Nuits :</strong> ${data.nights}</p>
-    <p><strong>Total estimatif :</strong> ${data.total}€</p>
+
+    <p>
+      <strong>Nom :</strong>
+      ${data.guestFirstName} ${data.guestLastName}
+    </p>
+
+    <p>
+      <strong>Email :</strong>
+      ${data.guestEmail}
+    </p>
+
+    <p>
+      <strong>Téléphone :</strong>
+      ${data.guestPhone}
+    </p>
+
+    <p>
+      <strong>Message client :</strong><br />
+      ${data.guestMessage || "Aucun message"}
+    </p>
+
+    <hr />
+
+    <p>
+      <strong>Arrivée :</strong>
+      ${data.startDate}
+    </p>
+
+    <p>
+      <strong>Départ :</strong>
+      ${data.endDate}
+    </p>
+
+    <p>
+      <strong>Nuits :</strong>
+      ${data.nights}
+    </p>
+
+    <p>
+      <strong>Total estimatif :</strong>
+      ${data.total}€
+    </p>
   `;
 
   const guestEmailHtml = `
     <h2>Votre demande a bien été reçue</h2>
 
-    <p>Bonjour ${data.guestFirstName} ${data.guestLastName},</p>
+    <p>
+      Bonjour ${data.guestFirstName} ${data.guestLastName},
+    </p>
 
     <p>
       Nous avons bien reçu votre demande de réservation
@@ -34,6 +71,11 @@ export async function handler(event) {
       <strong>Départ :</strong> ${data.endDate}<br />
       <strong>Nombre de nuits :</strong> ${data.nights}<br />
       <strong>Total estimatif :</strong> ${data.total}€
+    </p>
+
+    <p>
+      <strong>Votre message :</strong><br />
+      ${data.guestMessage || "Aucun message particulier"}
     </p>
 
     <p>
