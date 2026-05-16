@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -7,584 +7,115 @@ import { supabase } from "../supabaseClient";
 export default function CalendarAdmin() {
   const [events, setEvents] = useState([]);
   const [blocks, setBlocks] = useState([]);
-  const [blockTitle, setBlockTitle] = useState("Blocage admin");
-  const [blockStart, setBlockStart] = useState("");
-  const [blockEnd, setBlockEnd] = useState("");
-  const [blockNotes, setBlockNotes] = useState("");
+  const [bookingRequests, setBookingRequests] = useState([]);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [clientForm, setClientForm] = useState(emptyClientForm());
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    loadCalendar();
-  }, []);
+  useEffect(() => { loadCalendar(); }, []);
 
   async function loadCalendar() {
     setLoading(true);
-
     const calendarResponse = await fetch("/.netlify/functions/calendar");
     const calendarData = await calendarResponse.json();
+    const { data: externalClientLinks } = await supabase.from("external_reservation_clients").select("*");
 
-    const { data: externalClientLinks } = await supabase
-      .from("external_reservation_clients")
-      .select("*");
+    const externalEvents = (calendarData.externalReservations || []).map((reservation) => {
+      const linkedClient = (externalClientLinks || []).find((item) => item.uid === reservation.uid);
+      const clientName = linkedClient ? [linkedClient.guest_first_name, linkedClient.guest_last_name].filter(Boolean).join(" ") : "";
+      const sourceLabel = reservation.source === "airbnb" ? "Airbnb" : "Booking";
+      return { id:reservation.uid, title:clientName ? `${sourceLabel} - ${clientName}` : sourceLabel, start:reservation.start_date, end:reservation.end_date, backgroundColor:reservation.source === "airbnb" ? "#ff5a5f" : "#003580", borderColor:reservation.source === "airbnb" ? "#ff5a5f" : "#003580", extendedProps:{ type:"external", source:reservation.source, uid:reservation.uid, start_date:reservation.start_date, end_date:reservation.end_date, linkedClient } };
+    });
 
-    const externalEvents = (calendarData.externalReservations || []).map(
-      (reservation) => {
-        const linkedClient = (externalClientLinks || []).find(
-          (item) => item.uid === reservation.uid
-        );
+    const { data: requests } = await supabase.from("booking_requests").select("*").order("start_date", { ascending:true });
+    setBookingRequests(requests || []);
+    const directEvents = (requests || []).filter((r) => !["refused", "expired", "cancelled"].includes(r.status)).map((reservation) => {
+      const color = reservation.status === "pending" ? "#f59e0b" : reservation.status === "confirmed" || reservation.status === "paid" ? "#15803d" : "#16a34a";
+      return { id:reservation.id, title:reservation.status === "pending" ? `Demande - ${reservation.guest_first_name || "Client"}` : `Direct - ${reservation.guest_first_name || "Client"}`, start:reservation.start_date, end:reservation.end_date, backgroundColor:color, borderColor:color, extendedProps:{ type:"booking_request", reservation } };
+    });
 
-        const clientName = linkedClient
-          ? [linkedClient.guest_first_name, linkedClient.guest_last_name]
-              .filter(Boolean)
-              .join(" ")
-          : "";
-
-        const sourceLabel =
-          reservation.source === "airbnb" ? "Airbnb" : "Booking";
-
-        return {
-          id: reservation.uid,
-          title: clientName ? `${sourceLabel} - ${clientName}` : sourceLabel,
-          start: reservation.start_date,
-          end: reservation.end_date,
-          backgroundColor:
-            reservation.source === "airbnb" ? "#ff5a5f" : "#003580",
-          borderColor:
-            reservation.source === "airbnb" ? "#ff5a5f" : "#003580",
-          extendedProps: {
-            type: "external",
-            source: reservation.source,
-            status: "externe",
-            uid: reservation.uid,
-            start_date: reservation.start_date,
-            end_date: reservation.end_date,
-            linkedClient,
-          },
-        };
-      }
-    );
-
-    const { data: bookingRequests } = await supabase
-      .from("booking_requests")
-      .select("*");
-
-    const directEvents = (bookingRequests || []).map((reservation) => ({
-      title:
-        reservation.status === "pending"
-          ? "Demande directe"
-          : reservation.guest_first_name || "Client direct",
-      start: reservation.start_date,
-      end: reservation.end_date,
-      backgroundColor:
-        reservation.status === "pending" ? "#f59e0b" : "#16a34a",
-      borderColor:
-        reservation.status === "pending" ? "#f59e0b" : "#16a34a",
-      extendedProps: {
-        type: "booking_request",
-        source: "website",
-        status: reservation.status,
-        email: reservation.guest_email,
-        phone: reservation.guest_phone,
-      },
-    }));
-
-    const { data: calendarBlocks } = await supabase
-      .from("calendar_blocks")
-      .select("*")
-      .order("start_date", { ascending: true });
-
+    const { data: calendarBlocks } = await supabase.from("calendar_blocks").select("*").order("start_date", { ascending:true });
     setBlocks(calendarBlocks || []);
-
-    const blockEvents = (calendarBlocks || []).map((block) => ({
-      id: block.id,
-      title: block.title || "Blocage admin",
-      start: block.start_date,
-      end: block.end_date,
-      backgroundColor: "#7c3aed",
-      borderColor: "#7c3aed",
-      extendedProps: {
-        type: "admin_block",
-        source: block.source,
-        status: block.status,
-        notes: block.notes,
-        blockId: block.id,
-      },
-    }));
-
+    const blockEvents = (calendarBlocks || []).map((block) => ({ id:block.id, title:block.title || "Blocage admin", start:block.start_date, end:block.end_date, backgroundColor:"#7c3aed", borderColor:"#7c3aed", extendedProps:{ type:"admin_block", block } }));
     setEvents([...externalEvents, ...directEvents, ...blockEvents]);
     setLoading(false);
   }
 
-  async function createOrUpdateCustomer({
-    firstName,
-    lastName,
-    email,
-    phone,
-    source,
-    notes,
-  }) {
-    let existingCustomer = null;
-
-    if (email) {
-      const { data } = await supabase
-        .from("customers")
-        .select("*")
-        .eq("email", email)
-        .maybeSingle();
-
-      existingCustomer = data;
+  function openEvent(info) {
+    const props = info.event.extendedProps;
+    if (props.type === "external") {
+      const existing = props.linkedClient || {};
+      setClientForm({ firstName:existing.guest_first_name || "", lastName:existing.guest_last_name || "", phone:existing.guest_phone || "", email:existing.guest_email || "", notes:existing.notes || "" });
     }
-
-    if (!existingCustomer && phone) {
-      const { data } = await supabase
-        .from("customers")
-        .select("*")
-        .eq("phone", phone)
-        .maybeSingle();
-
-      existingCustomer = data;
-    }
-
-    if (existingCustomer) {
-      const { data, error } = await supabase
-        .from("customers")
-        .update({
-          first_name: firstName || existingCustomer.first_name,
-          last_name: lastName || existingCustomer.last_name,
-          email: email || existingCustomer.email,
-          phone: phone || existingCustomer.phone,
-          source: source || existingCustomer.source,
-          notes: notes || existingCustomer.notes,
-          last_stay: new Date().toISOString().split("T")[0],
-        })
-        .eq("id", existingCustomer.id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    }
-
-    const { data, error } = await supabase
-      .from("customers")
-      .insert([
-        {
-          first_name: firstName || null,
-          last_name: lastName || null,
-          email: email || null,
-          phone: phone || null,
-          source,
-          notes: notes || null,
-          first_stay: new Date().toISOString().split("T")[0],
-          last_stay: new Date().toISOString().split("T")[0],
-        },
-      ])
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
-  }
-
-  async function editExternalReservation(props) {
-    const existing = props.linkedClient || {};
-
-    const firstName = window.prompt(
-      "Prénom du client :",
-      existing.guest_first_name || ""
-    );
-    if (firstName === null) return;
-
-    const lastName = window.prompt(
-      "Nom du client :",
-      existing.guest_last_name || ""
-    );
-    if (lastName === null) return;
-
-    const phone = window.prompt(
-      "Téléphone du client :",
-      existing.guest_phone || ""
-    );
-    if (phone === null) return;
-
-    const email = window.prompt(
-      "Email du client :",
-      existing.guest_email || ""
-    );
-    if (email === null) return;
-
-    const notes = window.prompt(
-      "Notes internes :",
-      existing.notes || props.source
-    );
-    if (notes === null) return;
-
-    try {
-      const customer = await createOrUpdateCustomer({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-        source: props.source,
-        notes: notes.trim(),
-      });
-
-      const { error } = await supabase
-        .from("external_reservation_clients")
-        .upsert(
-          {
-            uid: props.uid,
-            source: props.source,
-            start_date: props.start_date,
-            end_date: props.end_date,
-            customer_id: customer.id,
-            guest_first_name: firstName.trim() || null,
-            guest_last_name: lastName.trim() || null,
-            guest_email: email.trim() || null,
-            guest_phone: phone.trim() || null,
-            notes: notes.trim() || null,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "uid" }
-        );
-
-      if (error) throw error;
-
-      alert("Client enregistré et lié à la réservation externe.");
-      await loadCalendar();
-    } catch (error) {
-      alert("Erreur : " + error.message);
-    }
-  }
-
-  async function createBlock(event) {
-    event.preventDefault();
-    await saveBlock();
-  }
-
-  async function saveBlock() {
-    if (!blockStart || !blockEnd) {
-      alert("Choisis une date de début et une date de fin.");
-      return;
-    }
-
-    if (blockEnd <= blockStart) {
-      alert("La date de fin doit être après la date de début.");
-      return;
-    }
-
-    const { error } = await supabase.from("calendar_blocks").insert([
-      {
-        title: blockTitle || "Blocage admin",
-        start_date: blockStart,
-        end_date: blockEnd,
-        notes: blockNotes || null,
-        source: "admin",
-        status: "blocked",
-      },
-    ]);
-
-    if (error) {
-      alert("Erreur lors du blocage : " + error.message);
-      return;
-    }
-
-    setBlockTitle("Blocage admin");
-    setBlockStart("");
-    setBlockEnd("");
-    setBlockNotes("");
-
-    await loadCalendar();
+    setSelectedEvent({ title:info.event.title, start:info.event.startStr, end:info.event.endStr, ...props });
   }
 
   async function handleDateSelect(selectionInfo) {
-    const start = selectionInfo.startStr;
-    const end = selectionInfo.endStr;
-
-    setBlockStart(start);
-    setBlockEnd(end);
-
-    const reason = window.prompt(
-      `Motif du blocage :\n\nDu ${formatDate(start)} au ${formatDate(end)}`,
-      blockNotes || "Résa perso"
-    );
-
+    const reason = window.prompt(`Motif du blocage :\n\nDu ${formatDate(selectionInfo.startStr)} au ${formatDate(selectionInfo.endStr)}`, "Résa perso");
     if (reason === null) return;
-
-    const { error } = await supabase.from("calendar_blocks").insert([
-      {
-        title: reason || "Blocage admin",
-        start_date: start,
-        end_date: end,
-        notes: reason || null,
-        source: "admin",
-        status: "blocked",
-      },
-    ]);
-
-    if (error) {
-      alert("Erreur lors du blocage : " + error.message);
-      return;
-    }
-
-    setBlockTitle("Blocage admin");
-    setBlockStart("");
-    setBlockEnd("");
-    setBlockNotes("");
-
+    const { error } = await supabase.from("calendar_blocks").insert([{ title:reason || "Blocage admin", start_date:selectionInfo.startStr, end_date:selectionInfo.endStr, notes:reason || null, source:"admin", status:"blocked" }]);
+    if (error) { alert("Erreur lors du blocage : " + error.message); return; }
     await loadCalendar();
   }
 
   async function deleteBlock(blockId) {
-    const confirmDelete = window.confirm(
-      "Supprimer ce blocage admin ? Les dates redeviendront disponibles."
-    );
-
-    if (!confirmDelete) return;
-
-    const { error } = await supabase
-      .from("calendar_blocks")
-      .delete()
-      .eq("id", blockId);
-
-    if (error) {
-      alert("Erreur suppression : " + error.message);
-      return;
-    }
-
-    await loadCalendar();
+    if (!window.confirm("Supprimer ce blocage admin ?")) return;
+    const { error } = await supabase.from("calendar_blocks").delete().eq("id", blockId);
+    if (error) { alert("Erreur suppression : " + error.message); return; }
+    setSelectedEvent(null); await loadCalendar();
   }
 
-  function handleEventClick(info) {
-    const props = info.event.extendedProps;
-
-    if (props.type === "external") {
-      editExternalReservation(props);
-      return;
+  async function createOrUpdateCustomer({ firstName, lastName, email, phone, source, notes }) {
+    let existingCustomer = null;
+    if (email) { const { data } = await supabase.from("customers").select("*").eq("email", email).maybeSingle(); existingCustomer = data; }
+    if (!existingCustomer && phone) { const { data } = await supabase.from("customers").select("*").eq("phone", phone).maybeSingle(); existingCustomer = data; }
+    if (!existingCustomer && firstName && lastName) {
+      const { data } = await supabase
+        .from("customers")
+        .select("*")
+        .ilike("first_name", firstName)
+        .ilike("last_name", lastName)
+        .maybeSingle();
+      existingCustomer = data;
     }
-
-    if (props.type === "admin_block") {
-      const deleteThis = window.confirm(
-        `Blocage admin\n\n` +
-          `Titre : ${info.event.title}\n` +
-          `Statut : ${props.status}\n` +
-          `Notes : ${props.notes || "aucune"}\n\n` +
-          `Supprimer ce blocage ?`
-      );
-
-      if (deleteThis) {
-        deleteBlock(props.blockId);
-      }
-
-      return;
+    if (existingCustomer) {
+      const { data, error } = await supabase.from("customers").update({ first_name:firstName || existingCustomer.first_name, last_name:lastName || existingCustomer.last_name, email:email || existingCustomer.email, phone:phone || existingCustomer.phone, source:source || existingCustomer.source, notes:notes || existingCustomer.notes, last_stay:selectedEvent?.end_date || selectedEvent?.end || existingCustomer.last_stay }).eq("id", existingCustomer.id).select().single();
+      if (error) throw error; return data;
     }
-
-    alert(
-      `Source : ${props.source}\n\n` +
-        `Statut : ${props.status || "externe"}\n\n` +
-        `Email : ${props.email || "non disponible"}\n\n` +
-        `Téléphone : ${props.phone || "non disponible"}`
-    );
+    const { data, error } = await supabase.from("customers").insert([{ first_name:firstName || null, last_name:lastName || null, email:email || null, phone:phone || null, source, notes:notes || null, first_stay:selectedEvent?.start_date || selectedEvent?.start || null, last_stay:selectedEvent?.end_date || selectedEvent?.end || null, booking_count:1 }]).select().single();
+    if (error) throw error; return data;
   }
 
-  return (
-    <div style={styles.wrapper}>
-      <form style={styles.form} onSubmit={createBlock}>
-        <h3 style={styles.formTitle}>Bloquer des dates</h3>
+  async function saveExternalClient() {
+    if (!selectedEvent || selectedEvent.type !== "external") return;
+    try {
+      const customer = await createOrUpdateCustomer({ firstName:clientForm.firstName.trim(), lastName:clientForm.lastName.trim(), email:clientForm.email.trim(), phone:clientForm.phone.trim(), source:selectedEvent.source, notes:clientForm.notes.trim() });
+      const { error } = await supabase.from("external_reservation_clients").upsert({ uid:selectedEvent.uid, source:selectedEvent.source, start_date:selectedEvent.start_date, end_date:selectedEvent.end_date, customer_id:customer.id, guest_first_name:clientForm.firstName.trim() || null, guest_last_name:clientForm.lastName.trim() || null, guest_email:clientForm.email.trim() || null, guest_phone:clientForm.phone.trim() || null, notes:clientForm.notes.trim() || null, updated_at:new Date().toISOString() }, { onConflict:"uid" });
+      if (error) throw error;
+      alert("Client enregistré et lié à la réservation externe."); setSelectedEvent(null); await loadCalendar();
+    } catch (error) { alert("Erreur : " + error.message); }
+  }
 
-        <p style={styles.help}>
-          Astuce : tu peux sélectionner directement une période dans le calendrier.
-          Tu peux aussi cliquer sur une réservation Airbnb/Booking pour renseigner
-          le client.
-        </p>
+  const clientHistory = useMemo(() => {
+    const email = selectedEvent?.reservation?.guest_email || clientForm.email;
+    const phone = selectedEvent?.reservation?.guest_phone || clientForm.phone;
+    if (!email && !phone) return [];
+    return bookingRequests.filter((r) => (email && r.guest_email === email) || (phone && r.guest_phone === phone));
+  }, [selectedEvent, clientForm, bookingRequests]);
 
-        <div style={styles.formGrid}>
-          <input
-            style={styles.input}
-            value={blockTitle}
-            onChange={(event) => setBlockTitle(event.target.value)}
-            placeholder="Titre du blocage"
-          />
-
-          <input
-            style={styles.input}
-            type="date"
-            value={blockStart}
-            onChange={(event) => setBlockStart(event.target.value)}
-          />
-
-          <input
-            style={styles.input}
-            type="date"
-            value={blockEnd}
-            onChange={(event) => setBlockEnd(event.target.value)}
-          />
-
-          <input
-            style={styles.input}
-            value={blockNotes}
-            onChange={(event) => setBlockNotes(event.target.value)}
-            placeholder="Notes internes"
-          />
-
-          <button style={styles.button} type="submit">
-            Bloquer
-          </button>
-        </div>
-      </form>
-
-      <div style={styles.legend}>
-        <Legend color="#ff5a5f" label="Airbnb" />
-        <Legend color="#003580" label="Booking" />
-        <Legend color="#f59e0b" label="Demande en attente" />
-        <Legend color="#16a34a" label="Réservation directe" />
-        <Legend color="#7c3aed" label="Blocage admin" />
-      </div>
-
-      {loading && <p>Chargement du calendrier...</p>}
-
-      <FullCalendar
-        plugins={[dayGridPlugin, interactionPlugin]}
-        initialView="dayGridMonth"
-        locale="fr"
-        height="auto"
-        events={events}
-        selectable={true}
-        selectMirror={true}
-        select={handleDateSelect}
-        eventClick={handleEventClick}
-      />
-
-      <section style={styles.blockList}>
-        <h3>Blocages admin</h3>
-
-        {blocks.length === 0 ? (
-          <p style={styles.empty}>Aucun blocage admin enregistré.</p>
-        ) : (
-          blocks.map((block) => (
-            <div key={block.id} style={styles.blockItem}>
-              <div>
-                <strong>{block.title || "Blocage admin"}</strong>
-                <p style={styles.muted}>
-                  {formatDate(block.start_date)} → {formatDate(block.end_date)}
-                </p>
-                {block.notes && <p style={styles.muted}>{block.notes}</p>}
-              </div>
-
-              <button
-                style={styles.deleteButton}
-                onClick={() => deleteBlock(block.id)}
-              >
-                Supprimer
-              </button>
-            </div>
-          ))
-        )}
-      </section>
-    </div>
-  );
+  return <div style={styles.wrapper}><div style={styles.legend}><Legend color="#ff5a5f" label="Airbnb" /><Legend color="#003580" label="Booking" /><Legend color="#f59e0b" label="Demande en attente" /><Legend color="#16a34a" label="Acceptée" /><Legend color="#15803d" label="Confirmée/payée" /><Legend color="#7c3aed" label="Blocage admin" /></div>{loading && <p>Chargement du calendrier...</p>}<div style={styles.layout}><div style={styles.calendar}><FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" locale="fr" height="auto" events={events} selectable={true} selectMirror={true} select={handleDateSelect} eventClick={openEvent} /></div><aside style={styles.sidePanel}>{!selectedEvent ? <div><h3>Fiche réservation</h3><p style={styles.muted}>Clique sur une réservation ou un blocage pour afficher la fiche ici.</p></div> : <EventPanel event={selectedEvent} clientForm={clientForm} setClientForm={setClientForm} onSaveExternal={saveExternalClient} onDeleteBlock={deleteBlock} history={clientHistory} />}</aside></div><section style={styles.blockList}><h3>Blocages admin</h3>{blocks.length === 0 ? <p style={styles.muted}>Aucun blocage admin enregistré.</p> : blocks.map((block) => <div key={block.id} style={styles.blockItem}><div><strong>{block.title || "Blocage admin"}</strong><p style={styles.muted}>{formatDate(block.start_date)} → {formatDate(block.end_date)}</p>{block.notes && <p style={styles.muted}>{block.notes}</p>}</div><button style={styles.deleteButton} onClick={() => deleteBlock(block.id)}>Supprimer</button></div>)}</section></div>;
 }
 
-function Legend({ color, label }) {
-  return (
-    <div style={styles.legendItem}>
-      <div
-        style={{
-          width: "14px",
-          height: "14px",
-          borderRadius: "999px",
-          background: color,
-        }}
-      />
-      <span>{label}</span>
-    </div>
-  );
+function EventPanel({ event, clientForm, setClientForm, onSaveExternal, onDeleteBlock, history }) {
+  if (event.type === "external") return <div><h3>{event.source === "airbnb" ? "Réservation Airbnb" : "Réservation Booking"}</h3><p style={styles.muted}>{formatDate(event.start_date)} → {formatDate(event.end_date)}</p><div style={styles.formGrid}><input style={styles.input} placeholder="Prénom" value={clientForm.firstName} onChange={(e) => setClientForm({ ...clientForm, firstName:e.target.value })} /><input style={styles.input} placeholder="Nom" value={clientForm.lastName} onChange={(e) => setClientForm({ ...clientForm, lastName:e.target.value })} /><input style={styles.input} placeholder="Téléphone" value={clientForm.phone} onChange={(e) => setClientForm({ ...clientForm, phone:e.target.value })} /><input style={styles.input} placeholder="Email" value={clientForm.email} onChange={(e) => setClientForm({ ...clientForm, email:e.target.value })} /><textarea style={styles.textarea} placeholder="Notes internes" value={clientForm.notes} onChange={(e) => setClientForm({ ...clientForm, notes:e.target.value })} /></div><button style={styles.primaryButton} onClick={onSaveExternal}>Enregistrer la fiche client</button><History history={history} /></div>;
+  if (event.type === "booking_request") { const r = event.reservation; return <div><h3>Réservation directe</h3><p><strong>{r.guest_first_name} {r.guest_last_name}</strong></p><p style={styles.muted}>{formatDate(r.start_date)} → {formatDate(r.end_date)}</p><Info label="Email" value={r.guest_email} /><Info label="Téléphone" value={r.guest_phone} /><Info label="Statut" value={r.status} /><Info label="Prix proposé" value={r.owner_price ? `${r.owner_price} €` : "-"} /><Info label="Paiement" value={r.payment_status || "non configuré"} /><Info label="Heure d’arrivée" value={r.arrival_time || "à renseigner plus tard"} /><Info label="Créée le" value={formatDateTime(r.created_at)} />{r.message && <div style={styles.noteBox}><strong>Message client</strong><p>{r.message}</p></div>}<History history={history} /></div>; }
+  if (event.type === "admin_block") { const block = event.block; return <div><h3>Blocage admin</h3><p><strong>{block.title}</strong></p><p style={styles.muted}>{formatDate(block.start_date)} → {formatDate(block.end_date)}</p>{block.notes && <p>{block.notes}</p>}<button style={styles.deleteButton} onClick={() => onDeleteBlock(block.id)}>Débloquer / supprimer</button></div>; }
+  return null;
 }
-
-function formatDate(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleDateString("fr-FR");
-}
-
-const styles = {
-  wrapper: {
-    background: "white",
-    borderRadius: "24px",
-    padding: "20px",
-  },
-  form: {
-    background: "#f8fafc",
-    borderRadius: "20px",
-    padding: "18px",
-    marginBottom: "20px",
-  },
-  formTitle: {
-    marginTop: 0,
-    marginBottom: "8px",
-  },
-  help: {
-    marginTop: 0,
-    marginBottom: "14px",
-    color: "#64748b",
-    fontSize: "14px",
-  },
-  formGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: "12px",
-  },
-  input: {
-    padding: "12px 14px",
-    borderRadius: "14px",
-    border: "1px solid #d1d5db",
-    fontSize: "14px",
-  },
-  button: {
-    border: "none",
-    borderRadius: "14px",
-    background: "#2f4f35",
-    color: "white",
-    fontWeight: 700,
-    cursor: "pointer",
-    padding: "12px 16px",
-  },
-  legend: {
-    display: "flex",
-    gap: "18px",
-    marginBottom: "20px",
-    flexWrap: "wrap",
-  },
-  legendItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-  },
-  blockList: {
-    marginTop: "28px",
-  },
-  blockItem: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: "16px",
-    alignItems: "center",
-    border: "1px solid #e5e7eb",
-    borderRadius: "16px",
-    padding: "14px",
-    marginBottom: "10px",
-  },
-  muted: {
-    color: "#64748b",
-    margin: "4px 0",
-  },
-  empty: {
-    color: "#64748b",
-  },
-  deleteButton: {
-    border: "none",
-    borderRadius: "999px",
-    background: "#dc2626",
-    color: "white",
-    padding: "10px 14px",
-    cursor: "pointer",
-  },
-};
+function History({ history }) { if (!history || history.length === 0) return null; return <div style={styles.history}><h4>Anciennes demandes / réservations</h4>{history.map((item) => <div key={item.id} style={styles.historyItem}><strong>{formatDate(item.start_date)} → {formatDate(item.end_date)}</strong><p style={styles.muted}>{item.status} · {item.owner_price || item.estimated_total || "-"} €</p></div>)}</div>; }
+function Info({ label, value }) { return <div style={styles.infoItem}><span>{label}</span><strong>{value || "-"}</strong></div>; }
+function Legend({ color, label }) { return <div style={styles.legendItem}><div style={{ width:"14px", height:"14px", borderRadius:"999px", background:color }} /><span>{label}</span></div>; }
+function emptyClientForm() { return { firstName:"", lastName:"", phone:"", email:"", notes:"" }; }
+function formatDate(value) { if (!value) return "-"; return new Date(value).toLocaleDateString("fr-FR"); }
+function formatDateTime(value) { if (!value) return "-"; return new Date(value).toLocaleString("fr-FR"); }
+const styles = { wrapper:{background:"white",borderRadius:"24px",padding:"20px"}, legend:{display:"flex",gap:"18px",marginBottom:"20px",flexWrap:"wrap"}, legendItem:{display:"flex",alignItems:"center",gap:"8px"}, layout:{display:"grid",gridTemplateColumns:"minmax(0, 1fr) minmax(300px, 380px)",gap:"20px",alignItems:"start"}, calendar:{minWidth:0}, sidePanel:{background:"#f8fafc",borderRadius:"20px",padding:"18px",position:"sticky",top:"20px"}, muted:{color:"#64748b",margin:"4px 0"}, formGrid:{display:"grid",gap:"10px",margin:"16px 0"}, input:{padding:"12px 14px",borderRadius:"14px",border:"1px solid #d1d5db",fontSize:"14px"}, textarea:{padding:"12px 14px",borderRadius:"14px",border:"1px solid #d1d5db",fontSize:"14px",minHeight:"100px",resize:"vertical"}, primaryButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#2f4f35",color:"white",cursor:"pointer",fontWeight:700}, deleteButton:{border:"none",borderRadius:"999px",background:"#dc2626",color:"white",padding:"10px 14px",cursor:"pointer"}, blockList:{marginTop:"28px"}, blockItem:{display:"flex",justifyContent:"space-between",gap:"16px",alignItems:"center",border:"1px solid #e5e7eb",borderRadius:"16px",padding:"14px",marginBottom:"10px"}, infoItem:{background:"white",borderRadius:"14px",padding:"12px",marginBottom:"10px",display:"grid",gap:"4px"}, noteBox:{background:"white",borderRadius:"14px",padding:"12px",marginTop:"10px",lineHeight:1.5}, history:{marginTop:"18px",borderTop:"1px solid #e5e7eb",paddingTop:"12px"}, historyItem:{background:"white",borderRadius:"12px",padding:"10px",marginBottom:"8px"} };
