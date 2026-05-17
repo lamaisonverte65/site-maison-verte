@@ -64,12 +64,63 @@ export default function Admin() {
     });
   }
 
-  async function sendDecisionEmail(request, type, ownerPrice, ownerMessage) {
+  async function createCheckoutSession(request, ownerPrice) {
+    const response = await fetch("/.netlify/functions/create-checkout-session", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        bookingId: request.id,
+        guestFirstName: request.guest_first_name,
+        guestLastName: request.guest_last_name,
+        guestEmail: request.guest_email,
+        startDate: request.start_date,
+        endDate: request.end_date,
+        ownerPrice,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const data = await response.json();
+
+    if (!data.url) {
+      throw new Error("Lien de paiement Stripe manquant.");
+    }
+
+    return data.url;
+  }
+
+  async function sendDecisionEmail(
+    request,
+    type,
+    ownerPrice,
+    ownerMessage,
+    acceptanceExpiresAt = null,
+    paymentLink = null
+  ) {
     const { data: { session: currentSession } } = await supabase.auth.getSession();
     const response = await fetch("/.netlify/functions/send-booking-decision", {
       method:"POST",
       headers:{ "Content-Type":"application/json", Authorization:`Bearer ${currentSession?.access_token}` },
-      body: JSON.stringify({ type, guestEmail:request.guest_email, guestFirstName:request.guest_first_name, guestLastName:request.guest_last_name, startDate:request.start_date, endDate:request.end_date, nights:request.nights, estimatedTotal:request.estimated_total, ownerPrice, ownerMessage })
+      body: JSON.stringify({
+        type,
+        guestEmail:request.guest_email,
+        guestFirstName:request.guest_first_name,
+        guestLastName:request.guest_last_name,
+        startDate:request.start_date,
+        endDate:request.end_date,
+        nights:request.nights,
+        estimatedTotal:request.estimated_total,
+        ownerPrice,
+        ownerMessage,
+        arrivalTime:request.arrival_time,
+        acceptanceExpiresAt,
+        paymentLink,
+      })
     });
     if (!response.ok) throw new Error(await response.text());
   }
@@ -81,12 +132,23 @@ export default function Admin() {
     const ownerMessage = window.prompt("Message à envoyer au client :", "Votre demande est acceptée. La réservation sera confirmée après validation finale et paiement des arrhes.");
     if (ownerMessage === null) return;
     try {
-      await sendDecisionEmail(request, "accepted", proposedPrice, ownerMessage);
+      const acceptanceExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const paymentLink = await createCheckoutSession(request, proposedPrice);
+
+      await sendDecisionEmail(
+        request,
+        "accepted",
+        proposedPrice,
+        ownerMessage,
+        acceptanceExpiresAt,
+        paymentLink
+      );
+
       const discountAmount = Number(request.estimated_total || 0) - Number(proposedPrice || 0);
-      const { error } = await supabase.from("booking_requests").update({ status:"accepted", owner_price:Number(proposedPrice), discount_amount:discountAmount > 0 ? discountAmount : 0, discount_reason:discountAmount > 0 ? "Tarif spécial propriétaire" : null, owner_message:ownerMessage, accepted_at:new Date().toISOString(), updated_at:new Date().toISOString() }).eq("id", request.id);
+      const { error } = await supabase.from("booking_requests").update({ status:"accepted", owner_price:Number(proposedPrice), payment_link: paymentLink, payment_status: "pending", discount_amount:discountAmount > 0 ? discountAmount : 0, discount_reason:discountAmount > 0 ? "Tarif spécial propriétaire" : null, owner_message:ownerMessage, acceptance_expires_at:acceptanceExpiresAt, accepted_at:new Date().toISOString(), updated_at:new Date().toISOString() }).eq("id", request.id);
       if (error) throw error;
-      await loadAdminData(); setSelectedRequest({ ...request, status:"accepted", owner_price:Number(proposedPrice), owner_message:ownerMessage });
-      alert("Demande acceptée et email envoyé au client.");
+      await loadAdminData(); setSelectedRequest({ ...request, status:"accepted", owner_price:Number(proposedPrice), payment_link: paymentLink, payment_status: "pending", owner_message:ownerMessage, acceptance_expires_at:acceptanceExpiresAt });
+      alert("Demande acceptée, lien Stripe créé et email envoyé au client.");
     } catch (error) { alert("Erreur : " + error.message); }
   }
 
@@ -252,7 +314,8 @@ export default function Admin() {
 
 function RequestDetail({ request, onAccept, onRefuse, onConfirm, onCancel, onEmail, onPhone, onSms, onArrivalTime }) {
   const status = request.status || "pending";
-  return <div style={styles.detail}><div style={styles.detailHeader}><div><h3 style={styles.detailTitle}>{getRequestName(request)}</h3><p style={styles.muted}>{request.guest_email}</p></div><StatusBadge status={status} /></div><div style={styles.contactButtons}><button style={styles.smallButton} onClick={() => onEmail(request.guest_email)}>Email</button><button style={styles.smallButton} onClick={() => onPhone(request.guest_phone)}>Appel</button><button style={styles.smallButton} onClick={() => onSms(request.guest_phone)}>SMS</button><button style={styles.smallButton} onClick={() => onArrivalTime(request)}>Heure arrivée</button></div><div style={styles.detailGrid}><Info label="Téléphone" value={request.guest_phone} /><Info label="Arrivée" value={formatDate(request.start_date)} /><Info label="Départ" value={formatDate(request.end_date)} /><Info label="Nuits" value={request.nights} /><Info label="Prix estimatif" value={request.estimated_total ? `${request.estimated_total} €` : "-"} /><Info label="Prix proposé" value={request.owner_price ? `${request.owner_price} €` : "-"} /><Info label="Réduction" value={request.discount_amount ? `${request.discount_amount} €` : "-"} /><Info label="Source" value={request.source || "website"} /><Info label="Paiement" value={request.payment_status || "non configuré"} /><Info label="Créée le" value={formatDateTime(request.created_at)} /><Info label="Heure d’arrivée" value={request.arrival_time || "à renseigner plus tard"} /></div>{request.message && <div style={styles.noteBox}><strong>Message client</strong><p>{request.message}</p></div>}{request.owner_message && <div style={styles.noteBox}><strong>Dernier message propriétaire</strong><p>{request.owner_message}</p></div>}<div style={styles.actions}>{status === "pending" && <><button style={styles.acceptButton} onClick={() => onAccept(request)}>Accepter avec tarif/message</button><button style={styles.refuseButton} onClick={() => onRefuse(request)}>Refuser avec message</button><button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button></>}{status === "accepted" && <><button style={styles.confirmButton} onClick={() => onConfirm(request)}>Confirmer</button><button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button></>}{status === "confirmed" && <button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button>}{["refused", "expired", "cancelled"].includes(status) && <p style={styles.empty}>Aucune action disponible : dossier conservé dans l’historique.</p>}</div></div>;
+  return <div style={styles.detail}><div style={styles.detailHeader}><div><h3 style={styles.detailTitle}>{getRequestName(request)}</h3><p style={styles.muted}>{request.guest_email}</p></div><StatusBadge status={status} /></div><div style={styles.contactButtons}><button style={styles.smallButton} onClick={() => onEmail(request.guest_email)}>Email</button><button style={styles.smallButton} onClick={() => onPhone(request.guest_phone)}>Appel</button><button style={styles.smallButton} onClick={() => onSms(request.guest_phone)}>SMS</button><button style={styles.smallButton} onClick={() => onArrivalTime(request)}>Heure arrivée</button></div><div style={styles.detailGrid}><Info label="Téléphone" value={request.guest_phone} /><Info label="Arrivée" value={formatDate(request.start_date)} /><Info label="Départ" value={formatDate(request.end_date)} /><Info label="Nuits" value={request.nights} /><Info label="Prix estimatif" value={request.estimated_total ? `${request.estimated_total} €` : "-"} /><Info label="Prix proposé" value={request.owner_price ? `${request.owner_price} €` : "-"} /><Info label="Réduction" value={request.discount_amount ? `${request.discount_amount} €` : "-"} /><Info label="Source" value={request.source || "website"} /><Info label="Paiement" value={request.payment_status || "non configuré"} />
+        <Info label="Délai acceptation" value={formatDateTime(request.acceptance_expires_at)} /><Info label="Créée le" value={formatDateTime(request.created_at)} /><Info label="Heure d’arrivée" value={request.arrival_time || "à renseigner plus tard"} /></div>{request.message && <div style={styles.noteBox}><strong>Message client</strong><p>{request.message}</p></div>}{request.owner_message && <div style={styles.noteBox}><strong>Dernier message propriétaire</strong><p>{request.owner_message}</p></div>}<div style={styles.actions}>{status === "pending" && <><button style={styles.acceptButton} onClick={() => onAccept(request)}>Accepter avec tarif/message</button><button style={styles.refuseButton} onClick={() => onRefuse(request)}>Refuser avec message</button><button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button></>}{status === "accepted" && <><button style={styles.confirmButton} onClick={() => onConfirm(request)}>Confirmer</button><button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button></>}{status === "confirmed" && <button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button>}{["refused", "expired", "cancelled"].includes(status) && <p style={styles.empty}>Aucune action disponible : dossier conservé dans l’historique.</p>}</div></div>;
 }
 function StatCard({ label, value }) { return <div style={styles.statCard}><span style={styles.statLabel}>{label}</span><strong style={styles.statValue}>{value}</strong></div>; }
 function StatusBadge({ status }) { return <span style={{ ...styles.badge, backgroundColor: STATUS_COLORS[status] || "#6b7280" }}>{STATUS_LABELS[status] || status}</span>; }

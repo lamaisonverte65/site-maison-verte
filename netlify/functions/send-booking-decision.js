@@ -1,3 +1,12 @@
+function formatDateTime(value) {
+  if (!value) return null;
+
+  return new Date(value).toLocaleString("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
 export async function handler(event) {
   if (event.httpMethod !== "POST") {
     return {
@@ -21,6 +30,8 @@ export async function handler(event) {
       ownerPrice,
       ownerMessage,
       arrivalTime,
+      acceptanceExpiresAt,
+      paymentLink,
     } = data;
 
     let subject = "";
@@ -28,10 +39,10 @@ export async function handler(event) {
     let content = "";
 
     const displayedPrice = ownerPrice || estimatedTotal;
+    const acceptanceDeadline = formatDateTime(acceptanceExpiresAt);
 
     if (type === "accepted") {
       subject = "Votre demande est acceptée - La Maison Verte";
-
       title = "Votre demande est acceptée ✅";
 
       content = `
@@ -61,6 +72,45 @@ export async function handler(event) {
         }
 
         <p>
+          La réservation sera confirmée après validation finale et paiement des arrhes.
+        </p>
+
+        <p>
+          Vous disposez de <strong>24h</strong> pour procéder au paiement${
+            acceptanceDeadline
+              ? `, soit jusqu’au <strong>${acceptanceDeadline}</strong>`
+              : ""
+          }.
+        </p>
+
+        <p>
+          Passé ce délai, les dates pourront être remises à disposition.
+        </p>
+
+        ${
+          paymentLink
+            ? `
+          <p style="margin-top:30px;">
+            <a
+              href="${paymentLink}"
+              style="
+                background:#16a34a;
+                color:white;
+                padding:14px 22px;
+                border-radius:12px;
+                text-decoration:none;
+                font-weight:bold;
+                display:inline-block;
+              "
+            >
+              Payer les arrhes
+            </a>
+          </p>
+        `
+            : ""
+        }
+
+        <p>
           Merci de nous communiquer votre heure d’arrivée estimée
           afin d’organiser votre accueil dans les meilleures conditions 🙂
         </p>
@@ -69,7 +119,6 @@ export async function handler(event) {
 
     if (type === "refused") {
       subject = "Votre demande de réservation - La Maison Verte";
-
       title = "Votre demande n’a pas pu être acceptée";
 
       content = `
@@ -100,7 +149,6 @@ export async function handler(event) {
 
     if (type === "confirmed") {
       subject = "Votre réservation est confirmée - La Maison Verte";
-
       title = "Votre réservation est confirmée 🎉";
 
       content = `
@@ -174,7 +222,6 @@ export async function handler(event) {
 
     if (!response.ok) {
       const error = await response.text();
-
       console.error("Erreur Resend :", error);
 
       return {
