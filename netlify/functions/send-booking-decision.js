@@ -202,6 +202,12 @@ export async function handler(event) {
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <h2>${title}</h2>
         ${content}
+
+        <p style="margin-top:30px;font-size:13px;color:#666;">
+          Pensez à vérifier vos courriers indésirables / spams
+          si vous ne recevez pas nos prochains messages,
+          puis ajoutez contact@lamaisonverte65.fr à vos contacts.
+        </p>
       </div>
     `;
 

@@ -52,6 +52,9 @@ export async function handler(event) {
       <strong>Total estimatif :</strong>
       ${data.total}€
     </p>
+    <p style="margin-top:30px;font-size:13px;color:#666;">
+      Email automatique envoyé depuis le site La Maison Verte.
+    </p>
   `;
 
   const guestEmailHtml = `
@@ -81,6 +84,13 @@ export async function handler(event) {
     <p>
       Votre demande va être étudiée rapidement avant validation définitive.
     </p>
+
+    <p style="margin-top:30px;font-size:13px;color:#666;">
+  Un email de confirmation de votre demande de réservation vient de vous être envoyé.
+  Pensez à vérifier vos courriers indésirables / spams
+  si vous ne le recevez pas dans les prochaines minutes,
+  puis ajoutez contact@lamaisonverte65.fr à vos contacts.
+</p>
 
     <p>
       Merci et à bientôt dans les Pyrénées 🙂
