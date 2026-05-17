@@ -74,6 +74,18 @@ export default function Admin() {
     if (session) loadAdminData();
   }, [session]);
 
+  useEffect(() => {
+    function handleClickOutsideRequests(event) {
+      if (modal) return;
+      if (!event.target.closest("[data-request-zone="true"]")) {
+        setSelectedRequest(null);
+      }
+    }
+
+    document.addEventListener("click", handleClickOutsideRequests);
+    return () => document.removeEventListener("click", handleClickOutsideRequests);
+  }, [modal]);
+
   async function checkSession() {
     const { data: { session } } = await supabase.auth.getSession();
     setSession(session);
@@ -379,6 +391,7 @@ export default function Admin() {
     accepted: bookingRequests.filter((r) => r.status === "accepted").length,
     paid: bookingRequests.filter((r) => ["deposit_paid", "paid", "fully_paid", "confirmed"].includes(r.status)).length,
     confirmed: bookingRequests.filter((r) => r.status === "confirmed").length,
+    customers: customers.length,
     loyal: customers.filter((c) => Number(c.booking_count || 0) >= 2).length,
   }), [bookingRequests, customers]);
 
@@ -410,6 +423,7 @@ export default function Admin() {
         <StatCard label="Acceptées" value={stats.accepted} onClick={() => applyDashboardFilter("accepted")} />
         <StatCard label="Payées / confirmées" value={stats.paid} onClick={() => applyDashboardFilter("paid_group")} />
         <StatCard label="Confirmées" value={stats.confirmed} onClick={() => applyDashboardFilter("confirmed")} />
+        <StatCard label="Clients" value={stats.customers} onClick={() => setActiveTab("customers")} />
         <StatCard label="Clients fidèles" value={stats.loyal} onClick={() => setActiveTab("customers")} />
       </section>
 
