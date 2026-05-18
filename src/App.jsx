@@ -61,7 +61,7 @@ function PaymentSuccess() {
             color: "#334155",
           }}
         >
-          Votre acompte a bien été enregistré.
+          Votre paiement a bien été enregistré.
         </p>
 
         <p
@@ -106,11 +106,9 @@ function PaymentSuccess() {
               paddingLeft: "20px",
             }}
           >
-            <li>Votre réservation est maintenant enregistrée.</li>
-            <li>Le solde sera demandé environ 30 jours avant votre arrivée.</li>
-            <li>
-              Merci de nous communiquer votre heure d’arrivée estimée.
-            </li>
+            <li>Votre paiement a été pris en compte.</li>
+            <li>Un email de confirmation vient de vous être envoyé.</li>
+            <li>Merci de nous communiquer votre heure d’arrivée estimée si ce n’est pas déjà fait.</li>
           </ul>
         </div>
 

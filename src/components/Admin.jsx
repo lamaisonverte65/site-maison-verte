@@ -228,6 +228,28 @@ export default function Admin() {
     if (!response.ok) throw new Error(await response.text());
   }
 
+
+  async function createManualPayment(request, amount, reason, message) {
+    const response = await fetch("/.netlify/functions/create-manual-payment-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        bookingId: request.id,
+        guestEmail: request.guest_email,
+        guestFirstName: request.guest_first_name,
+        guestLastName: request.guest_last_name,
+        startDate: request.start_date,
+        endDate: request.end_date,
+        amount,
+        reason,
+        message,
+      }),
+    });
+
+    if (!response.ok) throw new Error(await response.text());
+    return await response.json();
+  }
+
   function openAcceptModal(request) {
     if (hasDateConflict(request)) {
       alert("Impossible d’accepter : une autre demande est déjà acceptée/payée/confirmée sur ces dates.");
@@ -284,6 +306,20 @@ export default function Admin() {
       helper: "Choisis le traitement remboursement à noter. Le remboursement Stripe automatique sera branché à l’étape suivante.",
       confirmText: "Je confirme l’annulation de cette réservation.",
       refund: false,
+    });
+  }
+
+
+  function openManualPaymentModal(request) {
+    setModal({
+      type: "manual_payment",
+      request,
+      title: "Envoyer un lien de paiement",
+      price: "",
+      reason: "solde",
+      message: "Merci de procéder au paiement via le lien sécurisé ci-dessous.",
+      helper: "Saisis un montant manuel, choisis le motif, puis confirme l’envoi au client.",
+      confirmText: "Je confirme la création du lien Stripe et l’envoi de l’email au client.",
     });
   }
 
@@ -381,6 +417,27 @@ export default function Admin() {
         }).eq("id", request.id);
         if (error) throw error;
         alert("Réservation annulée. Procédure remboursement notée dans la fiche.");
+      }
+
+
+      if (modal.type === "manual_payment") {
+        const amount = Number(values.price || 0);
+        if (!amount || amount <= 0) return alert("Montant invalide.");
+
+        const payment = await createManualPayment(request, amount, values.reason || "autre", values.message);
+
+        const { error } = await supabase.from("booking_requests").update({
+          manual_payment_amount: amount,
+          manual_payment_link: payment.url,
+          manual_payment_reason: values.reason || "autre",
+          manual_payment_message: values.message,
+          manual_payment_status: "à payer",
+          manual_payment_requested_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq("id", request.id);
+
+        if (error) throw error;
+        alert("Lien de paiement créé et email envoyé au client.");
       }
 
       setModal(null);
@@ -653,6 +710,7 @@ export default function Admin() {
                 onRefuse={openRefuseModal}
                 onConfirm={openConfirmModal}
                 onCancel={openCancelModal}
+                onManualPayment={openManualPaymentModal}
                 onEmail={contactEmail}
                 onPhone={contactPhone}
                 onSms={contactSms}
@@ -763,33 +821,137 @@ export default function Admin() {
   );
 }
 
-function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, onEmail, onPhone, onSms }) {
+function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, onManualPayment, onEmail, onPhone, onSms }) {
   const status = request.status || "pending";
   const amounts = getAmounts(request);
-  return <div style={styles.reservationSheet}>
-    <div style={styles.detailHeader}><div><h3 style={styles.detailTitle}>{getRequestName(request)}</h3><p style={styles.muted}>Réservation n° {shortId(request.id)} · créée le {formatDateTime(request.created_at)}</p></div><StatusBadge status={status} /></div>
-    <div style={styles.contactButtons}><button style={styles.smallButton} onClick={() => onEmail(request.guest_email)}>Email</button><button style={styles.smallButton} onClick={() => onPhone(request.guest_phone)}>Appel</button><button style={styles.smallButton} onClick={() => onSms(request.guest_phone)}>SMS</button>{request.payment_link && <a style={styles.linkButton} href={request.payment_link} target="_blank" rel="noreferrer">Lien Stripe acompte/total</a>}{request.balance_payment_link && <a style={styles.linkButton} href={request.balance_payment_link} target="_blank" rel="noreferrer">Lien solde</a>}</div>
-    <h3 style={styles.subTitle}>Client</h3>
-    <div style={styles.detailGrid}><Info label="Prénom" value={request.guest_first_name} /><Info label="Nom" value={request.guest_last_name} /><Info label="Email" value={request.guest_email} /><Info label="Téléphone" value={request.guest_phone} /></div>
-    <h3 style={styles.subTitle}>Séjour</h3>
-    <div style={styles.detailGrid}><Info label="Arrivée" value={formatDate(request.start_date)} /><Info label="Départ" value={formatDate(request.end_date)} /><Info label="Nuits" value={request.nights} /><Info label="Heure d’arrivée" value={request.arrival_time || "à renseigner"} /></div>
-    <h3 style={styles.subTitle}>Statuts & paiements</h3>
-    <div style={styles.detailGrid}><Info label="Statut demande" value={STATUS_LABELS[status] || status} /><Info label="Statut acompte" value={`${getDepositStatus(request)} — ${formatMoney(amounts.deposit)}`} /><Info label="Statut solde" value={`${getBalanceStatus(request)} — ${formatMoney(amounts.balance)}`} /><Info label="Total séjour" value={formatMoney(amounts.total)} /><Info label="Total payé" value={formatMoney(amounts.paid)} /><Info label="Expiration acompte" value={formatDateTime(request.acceptance_expires_at)} /></div>
-    <h3 style={styles.subTitle}>Contrat</h3>
-    <div style={styles.detailGrid}><Info label="Contrat accepté" value={request.contract_accepted ? `Oui — ${formatDateTime(request.contract_accepted_at)}` : "Non / non renseigné"} /><Info label="Version contrat" value={request.contract_version || "-"} />{request.contract_url && <div style={styles.infoItem}><span>Contrat</span><a href={request.contract_url} target="_blank" rel="noreferrer">Voir le PDF</a></div>}</div>
-    {request.message && <div style={styles.noteBox}><strong>Message client</strong><p>{request.message}</p></div>}
-    {request.owner_message && <div style={styles.noteBox}><strong>Dernier message propriétaire</strong><p>{request.owner_message}</p></div>}
-    <div style={styles.actions}>{status === "pending" && <><button style={styles.acceptButton} onClick={() => onAccept(request)}>Accepter</button><button style={styles.refuseButton} onClick={() => onRefuse(request)}>Refuser</button><button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button></>}{status === "accepted" && <><button style={styles.confirmButton} onClick={() => onConfirm(request)}>Confirmer manuellement</button><button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button></>}{["deposit_paid", "paid", "fully_paid", "confirmed"].includes(status) && <button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler / remboursement</button>}{["refused", "expired", "cancelled"].includes(status) && <p style={styles.empty}>Dossier conservé dans l’historique.</p>}</div>
-  </div>;
+
+  return (
+    <div style={styles.reservationSheet}>
+      <div style={styles.detailHeader}>
+        <div>
+          <h3 style={styles.detailTitle}>{getRequestName(request)}</h3>
+          <p style={styles.muted}>Réservation n° {shortId(request.id)} · créée le {formatDateTime(request.created_at)}</p>
+        </div>
+        <StatusBadge status={status} />
+      </div>
+
+      <div style={styles.contactButtons}>
+        <button style={styles.smallButton} onClick={() => onEmail(request.guest_email)}>Email</button>
+        <button style={styles.smallButton} onClick={() => onPhone(request.guest_phone)}>Appel</button>
+        <button style={styles.smallButton} onClick={() => onSms(request.guest_phone)}>SMS</button>
+        <button style={styles.confirmButton} onClick={() => onManualPayment(request)}>Envoyer un lien de paiement</button>
+        {request.payment_link && <a style={styles.linkButton} href={request.payment_link} target="_blank" rel="noreferrer">Lien Stripe acompte/total</a>}
+        {request.balance_payment_link && <a style={styles.linkButton} href={request.balance_payment_link} target="_blank" rel="noreferrer">Lien solde</a>}
+        {request.manual_payment_link && <a style={styles.linkButton} href={request.manual_payment_link} target="_blank" rel="noreferrer">Lien paiement manuel</a>}
+      </div>
+
+      <h3 style={styles.subTitle}>Client</h3>
+      <div style={styles.detailGrid}>
+        <Info label="Prénom" value={request.guest_first_name} />
+        <Info label="Nom" value={request.guest_last_name} />
+        <Info label="Email" value={request.guest_email} />
+        <Info label="Téléphone" value={request.guest_phone} />
+      </div>
+
+      <h3 style={styles.subTitle}>Séjour</h3>
+      <div style={styles.detailGrid}>
+        <Info label="Arrivée" value={formatDate(request.start_date)} />
+        <Info label="Départ" value={formatDate(request.end_date)} />
+        <Info label="Nuits" value={request.nights} />
+        <Info label="Heure d’arrivée" value={request.arrival_time || "à renseigner"} />
+      </div>
+
+      <h3 style={styles.subTitle}>Statuts & paiements</h3>
+      <div style={styles.detailGrid}>
+        <Info label="Statut demande" value={STATUS_LABELS[status] || status} />
+        <Info label="Statut acompte" value={`${getDepositStatus(request)} — ${formatMoney(amounts.deposit)}`} />
+        <Info label="Statut solde" value={`${getBalanceStatus(request)} — ${formatMoney(amounts.balance)}`} />
+        <Info label="Paiement manuel" value={request.manual_payment_status ? `${request.manual_payment_status} — ${formatMoney(request.manual_payment_amount)}` : "-"} />
+        <Info label="Total séjour" value={formatMoney(amounts.total)} />
+        <Info label="Total payé" value={formatMoney(amounts.paid)} />
+        <Info label="Expiration acompte" value={formatDateTime(request.acceptance_expires_at)} />
+      </div>
+
+      <h3 style={styles.subTitle}>Contrat</h3>
+      <div style={styles.detailGrid}>
+        <Info label="Contrat accepté" value={request.contract_accepted ? `Oui — ${formatDateTime(request.contract_accepted_at)}` : "Non / non renseigné"} />
+        <Info label="Version contrat" value={request.contract_version || "-"} />
+        {request.contract_url && <div style={styles.infoItem}><span>Contrat</span><a href={request.contract_url} target="_blank" rel="noreferrer">Voir le PDF</a></div>}
+      </div>
+
+      {request.message && <div style={styles.noteBox}><strong>Message client</strong><p>{request.message}</p></div>}
+      {request.owner_message && <div style={styles.noteBox}><strong>Dernier message propriétaire</strong><p>{request.owner_message}</p></div>}
+      {request.manual_payment_message && <div style={styles.noteBox}><strong>Dernier message paiement manuel</strong><p>{request.manual_payment_message}</p></div>}
+
+      <div style={styles.actions}>
+        {status === "pending" && (
+          <>
+            <button style={styles.acceptButton} onClick={() => onAccept(request)}>Accepter</button>
+            <button style={styles.refuseButton} onClick={() => onRefuse(request)}>Refuser</button>
+            <button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button>
+          </>
+        )}
+        {status === "accepted" && (
+          <>
+            <button style={styles.confirmButton} onClick={() => onConfirm(request)}>Confirmer manuellement</button>
+            <button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button>
+          </>
+        )}
+        {["deposit_paid", "paid", "fully_paid", "confirmed"].includes(status) && <button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler / remboursement</button>}
+        {["refused", "expired", "cancelled"].includes(status) && <p style={styles.empty}>Dossier conservé dans l’historique.</p>}
+      </div>
+    </div>
+  );
 }
 
 function ActionModal({ modal, onClose, onSubmit }) {
   const [price, setPrice] = useState(modal.price || "");
+  const [reason, setReason] = useState(modal.reason || "solde");
   const [message, setMessage] = useState(modal.message || "");
   const [refundMode, setRefundMode] = useState("none");
   const [confirmed, setConfirmed] = useState(false);
-  function submit(event) { event.preventDefault(); onSubmit({ price, message, refundMode, confirmed }); }
-  return <div style={styles.modalOverlay}><form style={styles.modal} onSubmit={submit}><div style={styles.modalHeader}><h2 style={{ margin: 0 }}>{modal.title}</h2><button type="button" style={styles.closeButton} onClick={onClose}>×</button></div><p style={styles.empty}>{modal.helper}</p>{modal.type === "accept" && <label style={styles.label}>Tarif proposé (€)<input style={styles.input} value={price} onChange={(event) => setPrice(event.target.value)} /></label>}<label style={styles.label}>Message envoyé au client / note interne<textarea style={styles.largeTextarea} value={message} onChange={(event) => setMessage(event.target.value)} /></label>{modal.type === "cancel" && <label style={styles.label}>Traitement remboursement<select style={styles.input} value={refundMode} onChange={(event) => setRefundMode(event.target.value)}><option value="none">Aucun remboursement automatique</option><option value="deposit">Acompte à rembourser</option><option value="balance">Solde à rembourser</option><option value="total">Remboursement total</option></select></label>}<label style={styles.securityBox}><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>{modal.confirmText || "Je confirme cette action."}</span></label><div style={styles.modalActions}><button type="button" style={styles.cancelButton} onClick={onClose}>Retour</button><button type="submit" style={styles.acceptButton}>Valider</button></div></form></div>;
+
+  function submit(event) {
+    event.preventDefault();
+    onSubmit({ price, reason, message, refundMode, confirmed });
+  }
+
+  return (
+    <div style={styles.modalOverlay}>
+      <form style={styles.modal} onSubmit={submit}>
+        <div style={styles.modalHeader}>
+          <h2 style={{ margin: 0 }}>{modal.title}</h2>
+          <button type="button" style={styles.closeButton} onClick={onClose}>×</button>
+        </div>
+
+        <p style={styles.empty}>{modal.helper}</p>
+
+        {modal.type === "accept" && (
+          <label style={styles.label}>Tarif proposé (€)<input style={styles.input} value={price} onChange={(event) => setPrice(event.target.value)} /></label>
+        )}
+
+        {modal.type === "manual_payment" && (
+          <>
+            <label style={styles.label}>Montant à payer (€)<input style={styles.input} value={price} onChange={(event) => setPrice(event.target.value)} placeholder="Ex : 168" /></label>
+            <label style={styles.label}>Motif du paiement<select style={styles.input} value={reason} onChange={(event) => setReason(event.target.value)}><option value="solde">Solde</option><option value="acompte">Acompte</option><option value="complement">Complément</option><option value="autre">Autre</option></select></label>
+          </>
+        )}
+
+        <label style={styles.label}>Message envoyé au client / note interne<textarea style={styles.largeTextarea} value={message} onChange={(event) => setMessage(event.target.value)} /></label>
+
+        {modal.type === "cancel" && (
+          <label style={styles.label}>Traitement remboursement<select style={styles.input} value={refundMode} onChange={(event) => setRefundMode(event.target.value)}><option value="none">Aucun remboursement automatique</option><option value="deposit">Acompte à rembourser</option><option value="balance">Solde à rembourser</option><option value="total">Remboursement total</option></select></label>
+        )}
+
+        <label style={styles.securityBox}><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>{modal.confirmText || "Je confirme cette action."}</span></label>
+
+        <div style={styles.modalActions}>
+          <button type="button" style={styles.cancelButton} onClick={onClose}>Retour</button>
+          <button type="submit" style={styles.acceptButton}>Valider</button>
+        </div>
+      </form>
+    </div>
+  );
 }
 
 function StatCard({ label, value, onClick }) { return <button style={styles.statCard} onClick={onClick}><span style={styles.statLabel}>{label}</span><strong style={styles.statValue}>{value}</strong></button>; }
