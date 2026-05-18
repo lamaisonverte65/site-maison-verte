@@ -169,7 +169,7 @@ export default function Admin() {
 
   function selectReservation(request) {
     setSelectedRequest(request);
-    setActiveTab("reservation");
+    setActiveTab("reservations");
   }
 
   function closeReservation() {
@@ -199,8 +199,7 @@ export default function Admin() {
       }),
     });
     if (!response.ok) throw new Error(await response.text());
-    const data = await response.json();
-    return data.url;
+    return await response.json();
   }
 
   async function sendDecisionEmail(request, type, ownerPrice, ownerMessage, extras = {}) {
@@ -247,8 +246,8 @@ export default function Admin() {
       title: "Accepter la demande",
       price: request.owner_price || request.estimated_total || "",
       message: paymentMode === "total"
-        ? "Votre demande est acceptée. La réservation sera confirmée après paiement du séjour."
-        : "Votre demande est acceptée. La réservation sera confirmée après paiement des arrhes.",
+        ? "Votre demande est acceptée. La réservation sera confirmée après paiement du montant total du séjour."
+        : "Votre demande est acceptée. La réservation sera confirmée après paiement de l’acompte.",
       helper,
       confirmText: "Je confirme l’acceptation et l’envoi du lien de paiement.",
     });
@@ -301,14 +300,25 @@ export default function Admin() {
         if (!proposedPrice || proposedPrice <= 0) return alert("Tarif invalide.");
 
         const acceptanceExpiresAt = addHours(24);
-        const paymentLink = await createCheckoutSession(request, proposedPrice);
-        await sendDecisionEmail(request, "accepted", proposedPrice, values.message, { paymentLink, acceptanceExpiresAt });
+        const checkoutSession = await createCheckoutSession(request, proposedPrice);
+        const paymentLink = checkoutSession.url;
+        const paymentType = checkoutSession.paymentType || (daysUntil(request.start_date) !== null && daysUntil(request.start_date) <= 30 ? "full" : "deposit");
+        const paymentAmount = checkoutSession.amount;
+        const daysBeforeArrival = daysUntil(request.start_date);
+
+        await sendDecisionEmail(request, "accepted", proposedPrice, values.message, {
+          paymentLink,
+          acceptanceExpiresAt,
+          paymentType,
+          paymentAmount,
+          daysBeforeArrival,
+        });
 
         const discountAmount = Number(request.estimated_total || 0) - proposedPrice;
         const total = Number(proposedPrice);
         const deposit = Math.round(total * 0.3);
         const balance = Math.max(total - deposit, 0);
-        const isLateBooking = daysUntil(request.start_date) !== null && daysUntil(request.start_date) <= 30;
+        const isLateBooking = paymentType === "full";
 
         const { error } = await supabase.from("booking_requests").update({
           status: "accepted",
@@ -555,7 +565,6 @@ export default function Admin() {
 
       <nav style={styles.tabs}>
         <button style={activeTab === "reservations" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("reservations")}>Réservations</button>
-        <button style={activeTab === "reservation" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("reservation")}>Fiche résa</button>
         <button style={activeTab === "calendar" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("calendar")}>Calendrier</button>
         <button style={activeTab === "customers" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("customers")}>Clients</button>
         <button style={activeTab === "payments" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("payments")}>Paiements</button>
@@ -566,7 +575,27 @@ export default function Admin() {
 
       {!loading && !error && activeTab === "reservations" && (
         <section style={styles.panel}>
-          <h2 style={styles.panelTitle}>Réservations</h2>
+          <div style={styles.panelHeader}>
+            <h2 style={styles.panelTitle}>Réservations</h2>
+            {selectedRequest && <button style={styles.smallButton} onClick={closeReservation}>Fermer la fiche</button>}
+          </div>
+
+          {selectedRequest && (
+            <div style={{ marginBottom: "24px" }}>
+              <ReservationPanel
+                request={selectedRequest}
+                onAccept={openAcceptModal}
+                onRefuse={openRefuseModal}
+                onConfirm={openConfirmModal}
+                onCancel={openCancelModal}
+                onEmail={contactEmail}
+                onPhone={contactPhone}
+                onSms={contactSms}
+              />
+            </div>
+          )}
+
+          <h3 style={{ marginTop: selectedRequest ? "22px" : 0 }}>Toutes les réservations</h3>
           {sortedReservations.length === 0 ? <p style={styles.empty}>Aucune réservation trouvée.</p> : <div style={styles.tableWrapper}>
             <table style={styles.table}>
               <thead style={styles.stickyHead}>
@@ -600,16 +629,6 @@ export default function Admin() {
               </tbody>
             </table>
           </div>}
-        </section>
-      )}
-
-      {!loading && !error && activeTab === "reservation" && (
-        <section style={styles.panel}>
-          <div style={styles.panelHeader}>
-            <h2 style={styles.panelTitle}>Fiche réservation</h2>
-            {selectedRequest && <button style={styles.smallButton} onClick={closeReservation}>Fermer la fiche</button>}
-          </div>
-          {!selectedRequest ? <p style={styles.empty}>Sélectionne une réservation depuis l’onglet Réservations ou clique sur une réservation directe dans le calendrier.</p> : <ReservationPanel request={selectedRequest} onAccept={openAcceptModal} onRefuse={openRefuseModal} onConfirm={openConfirmModal} onCancel={openCancelModal} onEmail={contactEmail} onPhone={contactPhone} onSms={contactSms} />}
         </section>
       )}
 

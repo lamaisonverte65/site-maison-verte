@@ -7,6 +7,78 @@ function formatDateTime(value) {
   });
 }
 
+function formatMoney(value) {
+  if (value === null || value === undefined || value === "") return "-";
+
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+  }).format(Number(value));
+}
+
+function getPaymentContext({ paymentType, paymentAmount, displayedPrice, daysBeforeArrival }) {
+  const total = Number(displayedPrice || 0);
+  const amount = Number(paymentAmount || 0);
+  const depositAmount = total > 0 ? Math.round(total * 0.3) : null;
+  const days = Number(daysBeforeArrival);
+
+  const isFullPayment = paymentType === "full";
+
+  if (!isFullPayment) {
+    return {
+      title: "Paiement de l’acompte",
+      buttonLabel: "Payer l’acompte",
+      amountLabel: "Acompte à payer",
+      amountToPay: amount || depositAmount || total,
+      explanation: `
+        <p>
+          La réservation sera confirmée après validation finale et paiement de l’acompte.
+        </p>
+      `,
+      cancellationNote: "",
+    };
+  }
+
+  if (!Number.isNaN(days) && days <= 7) {
+    return {
+      title: "Paiement du séjour",
+      buttonLabel: "Payer le séjour",
+      amountLabel: "Montant total à payer",
+      amountToPay: amount || total,
+      explanation: `
+        <p>
+          La date d’arrivée étant proche, le montant total du séjour est demandé pour confirmer la réservation.
+        </p>
+
+        <p>
+          Conformément aux conditions de location, pour une réservation effectuée à moins de 7 jours de l’arrivée,
+          les sommes versées ne pourront pas être remboursées en cas d’annulation par le locataire.
+        </p>
+      `,
+      cancellationNote: "",
+    };
+  }
+
+  return {
+    title: "Paiement du séjour",
+    buttonLabel: "Payer le séjour",
+    amountLabel: "Montant total à payer",
+    amountToPay: amount || total,
+    explanation: `
+      <p>
+        La date d’arrivée étant à moins de 30 jours, le montant total du séjour est demandé pour confirmer la réservation.
+      </p>
+
+      <p>
+        En cas d’annulation entre 30 jours et 7 jours avant l’arrivée,
+        l’équivalent de l’acompte reste acquis, mais le solde versé pourra être remboursé
+        selon les conditions de location.
+      </p>
+    `,
+    cancellationNote: "",
+  };
+}
+
 export async function handler(event) {
   if (event.httpMethod !== "POST") {
     return {
@@ -32,6 +104,9 @@ export async function handler(event) {
       arrivalTime,
       acceptanceExpiresAt,
       paymentLink,
+      paymentType,
+      paymentAmount,
+      daysBeforeArrival,
     } = data;
 
     let subject = "";
@@ -40,6 +115,12 @@ export async function handler(event) {
 
     const displayedPrice = ownerPrice || estimatedTotal;
     const acceptanceDeadline = formatDateTime(acceptanceExpiresAt);
+    const paymentContext = getPaymentContext({
+      paymentType,
+      paymentAmount,
+      displayedPrice,
+      daysBeforeArrival,
+    });
 
     if (type === "accepted") {
       subject = "Votre demande est acceptée - La Maison Verte";
@@ -57,7 +138,8 @@ export async function handler(event) {
           <strong>Arrivée :</strong> ${startDate}<br />
           <strong>Départ :</strong> ${endDate}<br />
           <strong>Nombre de nuits :</strong> ${nights}<br />
-          <strong>Tarif proposé :</strong> ${displayedPrice} €
+          <strong>Tarif du séjour :</strong> ${formatMoney(displayedPrice)}<br />
+          <strong>${paymentContext.amountLabel} :</strong> ${formatMoney(paymentContext.amountToPay)}
         </p>
 
         ${
@@ -71,9 +153,7 @@ export async function handler(event) {
             : ""
         }
 
-        <p>
-          La réservation sera confirmée après validation finale et paiement des arrhes.
-        </p>
+        ${paymentContext.explanation}
 
         <p>
           Vous disposez de <strong>24h</strong> pour procéder au paiement${
@@ -103,7 +183,7 @@ export async function handler(event) {
                 display:inline-block;
               "
             >
-              Payer les arrhes
+              ${paymentContext.buttonLabel}
             </a>
           </p>
         `
@@ -163,7 +243,7 @@ export async function handler(event) {
           <strong>Arrivée :</strong> ${startDate}<br />
           <strong>Départ :</strong> ${endDate}<br />
           <strong>Nombre de nuits :</strong> ${nights}<br />
-          <strong>Montant :</strong> ${displayedPrice} €
+          <strong>Montant :</strong> ${formatMoney(displayedPrice)}
         </p>
 
         ${
@@ -196,6 +276,13 @@ export async function handler(event) {
           Nous avons hâte de vous accueillir à Arreau 🌿
         </p>
       `;
+    }
+
+    if (!subject || !content) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Type de message invalide." }),
+      };
     }
 
     const html = `
