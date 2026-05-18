@@ -16,6 +16,7 @@ export default function MaisonVerte() {
   const [guestEmail, setGuestEmail] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
   const [guestMessage, setGuestMessage] = useState(""); 
+  const [contractAccepted, setContractAccepted] = useState(false);
   const galleryPhotos = [
 
   {
@@ -219,6 +220,7 @@ function toggleDay(day) {
     if (unavailableDates.includes(dKey)) {
       alert("Cette période contient une date déjà réservée.");
       setSelectedDates([]);
+    setContractAccepted(false);
       return;
     }
   }
@@ -384,7 +386,8 @@ const isFormValid =
 
 const canSubmitRequest =
   canRequestBooking &&
-  isFormValid;
+  isFormValid &&
+  contractAccepted;
     
 const total = accommodationTotal;
 
@@ -429,7 +432,11 @@ async function submitBookingRequest() {
 
           nights: numberOfNights,
           estimated_total: total,
-          message: guestMessage
+          message: guestMessage,
+          contract_accepted: contractAccepted,
+          contract_accepted_at: new Date().toISOString(),
+          contract_version: "v1",
+          contract_url: "https://lamaisonverte65.fr/documents/contrat-location.pdf"
         }
       ]);
 
@@ -475,6 +482,7 @@ async function submitBookingRequest() {
     setGuestPhone("");
 
     setSelectedDates([]);
+    setContractAccepted(false);
 
   } catch (err) {
 
@@ -1217,6 +1225,56 @@ return (
         }}
       >
 
+        <div
+          style={{
+            marginTop: "18px",
+            marginBottom: "22px",
+            padding: "16px",
+            borderRadius: "16px",
+            background: "#f8fafc",
+            border: "1px solid #e2e8f0"
+          }}
+        >
+          <label
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "12px",
+              cursor: "pointer",
+              lineHeight: "1.6",
+              color: "#334155"
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={contractAccepted}
+              onChange={(e) =>
+                setContractAccepted(e.target.checked)
+              }
+              style={{
+                marginTop: "4px",
+                transform: "scale(1.2)"
+              }}
+            />
+
+            <span>
+              J’ai lu et j’accepte le{" "}
+              <a
+                href="/documents/contrat-location.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: "#1f6f3d",
+                  fontWeight: "700"
+                }}
+              >
+                contrat de location
+              </a>{" "}
+              ainsi que les conditions de réservation.
+            </span>
+          </label>
+        </div>
+
         <button
           className="button"
           onClick={previousMonth}
@@ -1241,6 +1299,56 @@ return (
             )
           }
         </h3>
+
+        <div
+          style={{
+            marginTop: "18px",
+            marginBottom: "22px",
+            padding: "16px",
+            borderRadius: "16px",
+            background: "#f8fafc",
+            border: "1px solid #e2e8f0"
+          }}
+        >
+          <label
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "12px",
+              cursor: "pointer",
+              lineHeight: "1.6",
+              color: "#334155"
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={contractAccepted}
+              onChange={(e) =>
+                setContractAccepted(e.target.checked)
+              }
+              style={{
+                marginTop: "4px",
+                transform: "scale(1.2)"
+              }}
+            />
+
+            <span>
+              J’ai lu et j’accepte le{" "}
+              <a
+                href="/documents/contrat-location.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: "#1f6f3d",
+                  fontWeight: "700"
+                }}
+              >
+                contrat de location
+              </a>{" "}
+              ainsi que les conditions de réservation.
+            </span>
+          </label>
+        </div>
 
         <button
           className="button"
@@ -1613,6 +1721,56 @@ return (
 
         </div>
 
+
+        <div
+          style={{
+            marginTop: "18px",
+            marginBottom: "22px",
+            padding: "16px",
+            borderRadius: "16px",
+            background: "#f8fafc",
+            border: "1px solid #e2e8f0"
+          }}
+        >
+          <label
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "12px",
+              cursor: "pointer",
+              lineHeight: "1.6",
+              color: "#334155"
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={contractAccepted}
+              onChange={(e) =>
+                setContractAccepted(e.target.checked)
+              }
+              style={{
+                marginTop: "4px",
+                transform: "scale(1.2)"
+              }}
+            />
+
+            <span>
+              J’ai lu et j’accepte le{" "}
+              <a
+                href="/documents/contrat-location.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: "#1f6f3d",
+                  fontWeight: "700"
+                }}
+              >
+                contrat de location
+              </a>{" "}
+              ainsi que les conditions de réservation.
+            </span>
+          </label>
+        </div>
 
         <button
           className="button"

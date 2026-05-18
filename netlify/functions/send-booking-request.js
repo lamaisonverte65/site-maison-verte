@@ -55,6 +55,22 @@ export async function handler(event) {
     <p style="margin-top:30px;font-size:13px;color:#666;">
       Email automatique envoyé depuis le site La Maison Verte.
     </p>
+    <p style="margin-top:30px;">
+      <a
+        href="https://lamaisonverte65.fr/admin"
+        style="
+          background:#2f4f35;
+          color:white;
+          padding:14px 22px;
+          border-radius:12px;
+          text-decoration:none;
+          font-weight:bold;
+          display:inline-block;
+        "
+      >
+        Ouvrir l’administration
+      </a>
+    </p>
   `;
 
   const guestEmailHtml = `
