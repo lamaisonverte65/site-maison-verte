@@ -77,8 +77,8 @@ export default function Admin() {
   useEffect(() => {
     function handleClickOutsideRequests(event) {
       if (modal) return;
-      if (!event.target.closest("[data-request-zone="true"]")) {
-        setSelectedRequest(null);
+      if (!event.target.closest('[data-request-zone="true"]')) {
+      setSelectedRequest(null);
       }
     }
 
