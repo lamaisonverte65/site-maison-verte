@@ -324,13 +324,16 @@ export default function CalendarAdmin({ onSelectReservation }) {
               <p style={styles.muted}>Clique sur Airbnb/Booking pour renseigner les infos client.</p>
             </div>
           ) : (
-            <EventPanel
-              event={selectedExternalEvent}
-              clientForm={clientForm}
-              setClientForm={setClientForm}
-              onSaveExternal={saveExternalClient}
-              onDeleteBlock={deleteBlock}
-            />
+            <div>
+              <button style={styles.closePanelButton} onClick={() => setSelectedExternalEvent(null)}>Fermer la fiche</button>
+              <EventPanel
+                event={selectedExternalEvent}
+                clientForm={clientForm}
+                setClientForm={setClientForm}
+                onSaveExternal={saveExternalClient}
+                onDeleteBlock={deleteBlock}
+              />
+            </div>
           )}
         </aside>
       </div>
@@ -401,6 +404,7 @@ const styles = {
   layout: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(300px, 380px)", gap: "20px", alignItems: "start" },
   calendar: { minWidth: 0 },
   sidePanel: { background: "#f8fafc", borderRadius: "20px", padding: "18px", position: "sticky", top: "20px" },
+  closePanelButton: { border: "none", borderRadius: "999px", padding: "8px 12px", background: "#e2e8f0", cursor: "pointer", marginBottom: "12px" },
   muted: { color: "#64748b", margin: "4px 0" },
   formGrid: { display: "grid", gap: "10px", margin: "16px 0" },
   input: { padding: "12px 14px", borderRadius: "14px", border: "1px solid #d1d5db", fontSize: "14px" },

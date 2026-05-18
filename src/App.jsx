@@ -1,4 +1,5 @@
 import MaisonVerte from "./components/MaisonVerte";
+import { useState } from "react";
 import Admin from "./components/Admin";
 
 function PaymentSuccess() {
@@ -207,6 +208,51 @@ function PaymentCancel() {
   );
 }
 
+function ArrivalTimePage() {
+  const params = new URLSearchParams(window.location.search);
+  const bookingId = params.get("booking") || "";
+  const [arrivalTime, setArrivalTime] = useState("");
+  const [status, setStatus] = useState("");
+
+  async function submitArrivalTime(event) {
+    event.preventDefault();
+
+    if (!bookingId || !arrivalTime) {
+      setStatus("Merci de renseigner votre heure d’arrivée.");
+      return;
+    }
+
+    try {
+      const response = await fetch("/.netlify/functions/update-arrival-time", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId, arrivalTime }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setStatus("Merci, votre heure d’arrivée a bien été transmise ✅");
+    } catch (error) {
+      setStatus("Une erreur est survenue. Vous pouvez aussi nous contacter directement par téléphone ou email.");
+    }
+  }
+
+  return (
+    <main style={{ minHeight: "100vh", background: "#f3f0e8", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", fontFamily: "Inter, sans-serif" }}>
+      <form onSubmit={submitArrivalTime} style={{ background: "white", borderRadius: "28px", padding: "40px", maxWidth: "640px", width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,0.12)", textAlign: "center" }}>
+        <h1 style={{ color: "#14532d", marginTop: 0 }}>Heure d’arrivée</h1>
+        <p style={{ color: "#334155", lineHeight: 1.7 }}>Merci de nous indiquer votre heure d’arrivée estimée afin d’organiser votre accueil à La Maison Verte.</p>
+        <input type="text" value={arrivalTime} onChange={(event) => setArrivalTime(event.target.value)} placeholder="Exemple : 17h30" style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "18px" }} />
+        <button type="submit" style={{ marginTop: "22px", border: "none", background: "#2f4f35", color: "white", padding: "14px 24px", borderRadius: "999px", fontWeight: "bold", cursor: "pointer" }}>Envoyer</button>
+        {status && <p style={{ marginTop: "22px", color: status.includes("✅") ? "#166534" : "#b91c1c" }}>{status}</p>}
+        <a href="/" style={{ marginTop: "24px", display: "inline-block", color: "#2f4f35" }}>Retour au site</a>
+      </form>
+    </main>
+  );
+}
+
 export default function App() {
   const path = window.location.pathname;
 
@@ -220,6 +266,10 @@ export default function App() {
 
   if (path === "/cancel") {
     return <PaymentCancel />;
+  }
+
+  if (path === "/arrival") {
+    return <ArrivalTimePage />;
   }
 
   return <MaisonVerte />;

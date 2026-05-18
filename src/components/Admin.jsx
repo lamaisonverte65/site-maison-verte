@@ -4,7 +4,7 @@ import CalendarAdmin from "./CalendarAdmin";
 import AdminLogin from "./AdminLogin";
 
 const STATUS_LABELS = {
-  pending: "En attente",
+  pending: "À confirmer",
   accepted: "Acceptée",
   deposit_paid: "Acompte payé",
   paid: "Payée",
@@ -44,12 +44,55 @@ function formatDateTime(value) {
 }
 
 function formatMoney(value) {
-  if (value === null || value === undefined || value === "") return "-";
-  return `${Number(value).toLocaleString("fr-FR")} €`;
+  if (value === null || value === undefined || value === "" || Number.isNaN(Number(value))) return "-";
+  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(value));
 }
 
 function addHours(hours) {
   return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+}
+
+function daysUntil(dateString) {
+  if (!dateString) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(dateString);
+  target.setHours(0, 0, 0, 0);
+  return Math.ceil((target - today) / (1000 * 60 * 60 * 24));
+}
+
+function shortId(id) {
+  return id ? String(id).slice(0, 8).toUpperCase() : "-";
+}
+
+function getAmounts(request) {
+  const total = Number(request?.owner_price || request?.estimated_total || 0);
+  const deposit = Number(request?.deposit_amount || Math.round(total * 0.3) || 0);
+  const balance = Number(request?.balance_amount || Math.max(total - deposit, 0));
+  const amountPaid = Number(request?.amount_paid || request?.total_paid || 0);
+
+  let derivedPaid = amountPaid;
+  if (!derivedPaid && ["deposit_paid", "paid"].includes(request?.status)) derivedPaid = deposit;
+  if (!derivedPaid && ["fully_paid", "confirmed"].includes(request?.status)) derivedPaid = total;
+
+  return { total, deposit, balance, paid: derivedPaid };
+}
+
+function getDepositStatus(request) {
+  if (request?.deposit_status) return request.deposit_status;
+  if (["refused", "expired"].includes(request?.status)) return "annulé";
+  if (request?.status === "cancelled") return "annulé / à vérifier";
+  if (["deposit_paid", "paid", "fully_paid", "confirmed"].includes(request?.status)) return "payé";
+  if (request?.status === "accepted") return "à payer";
+  return "en attente";
+}
+
+function getBalanceStatus(request) {
+  if (request?.balance_status) return request.balance_status;
+  if (["fully_paid", "confirmed"].includes(request?.status)) return "payé";
+  if (request?.status === "cancelled") return "annulé / à vérifier";
+  if (request?.status === "deposit_paid" || request?.status === "paid") return "en attente J-30";
+  return "non demandé";
 }
 
 export default function Admin() {
@@ -58,9 +101,10 @@ export default function Admin() {
   const [bookingRequests, setBookingRequests] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
-  const [activeTab, setActiveTab] = useState("requests");
+  const [activeTab, setActiveTab] = useState("reservations");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [customerFilter, setCustomerFilter] = useState("all");
   const [customerSort, setCustomerSort] = useState({ key: "last_name", direction: "asc" });
   const [modal, setModal] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -68,14 +112,10 @@ export default function Admin() {
 
   useEffect(() => {
     checkSession();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
       setSession(currentSession);
       setAuthLoading(false);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -84,9 +124,7 @@ export default function Admin() {
   }, [session]);
 
   async function checkSession() {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    const { data: { session } } = await supabase.auth.getSession();
     setSession(session);
     setAuthLoading(false);
   }
@@ -125,18 +163,17 @@ export default function Admin() {
     const nextRequests = requestsData || [];
     setBookingRequests(nextRequests);
     setCustomers(customersData || []);
-
-    setSelectedRequest((current) => {
-      if (!current) return current;
-      return nextRequests.find((request) => request.id === current.id) || current;
-    });
-
+    setSelectedRequest((current) => current ? nextRequests.find((request) => request.id === current.id) || current : current);
     setLoading(false);
   }
 
   function selectReservation(request) {
     setSelectedRequest(request);
     setActiveTab("reservation");
+  }
+
+  function closeReservation() {
+    setSelectedRequest(null);
   }
 
   function hasDateConflict(currentRequest) {
@@ -161,17 +198,13 @@ export default function Admin() {
         ownerPrice,
       }),
     });
-
     if (!response.ok) throw new Error(await response.text());
     const data = await response.json();
     return data.url;
   }
 
   async function sendDecisionEmail(request, type, ownerPrice, ownerMessage, extras = {}) {
-    const {
-      data: { session: currentSession },
-    } = await supabase.auth.getSession();
-
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
     const response = await fetch("/.netlify/functions/send-booking-decision", {
       method: "POST",
       headers: {
@@ -193,7 +226,6 @@ export default function Admin() {
         ...extras,
       }),
     });
-
     if (!response.ok) throw new Error(await response.text());
   }
 
@@ -203,13 +235,21 @@ export default function Admin() {
       return;
     }
 
+    const untilArrival = daysUntil(request.start_date);
+    const paymentMode = untilArrival !== null && untilArrival <= 30 ? "total" : "deposit";
+    const helper = paymentMode === "total"
+      ? "La réservation est à moins de 30 jours : le lien Stripe demandera le paiement total."
+      : "Un lien Stripe d’acompte de 30% sera créé et ajouté à l’email.";
+
     setModal({
       type: "accept",
       request,
       title: "Accepter la demande",
       price: request.owner_price || request.estimated_total || "",
-      message: "Votre demande est acceptée. La réservation sera confirmée après paiement des arrhes.",
-      helper: "Un lien Stripe d’acompte de 30% sera créé et ajouté à l’email.",
+      message: paymentMode === "total"
+        ? "Votre demande est acceptée. La réservation sera confirmée après paiement du séjour."
+        : "Votre demande est acceptée. La réservation sera confirmée après paiement des arrhes.",
+      helper,
       confirmText: "Je confirme l’acceptation et l’envoi du lien de paiement.",
     });
   }
@@ -242,7 +282,7 @@ export default function Admin() {
       request,
       title: "Annuler la réservation",
       message: "La réservation est annulée.",
-      helper: "Cette action marque la réservation comme annulée. Le remboursement Stripe automatique sera ajouté plus tard.",
+      helper: "Choisis le traitement remboursement à noter. Le remboursement Stripe automatique sera branché à l’étape suivante.",
       confirmText: "Je confirme l’annulation de cette réservation.",
       refund: false,
     });
@@ -252,43 +292,39 @@ export default function Admin() {
     if (!modal) return;
     const request = modal.request;
 
-    if (!values.confirmed) {
-      alert("Coche la case de confirmation avant de valider.");
-      return;
-    }
-
-    if (!values.message?.trim()) {
-      alert("Le message est obligatoire.");
-      return;
-    }
+    if (!values.confirmed) return alert("Coche la case de confirmation avant de valider.");
+    if (!values.message?.trim()) return alert("Le message est obligatoire.");
 
     try {
       if (modal.type === "accept") {
         const proposedPrice = Number(values.price || 0);
-        if (!proposedPrice || proposedPrice <= 0) {
-          alert("Tarif invalide.");
-          return;
-        }
+        if (!proposedPrice || proposedPrice <= 0) return alert("Tarif invalide.");
 
         const acceptanceExpiresAt = addHours(24);
         const paymentLink = await createCheckoutSession(request, proposedPrice);
         await sendDecisionEmail(request, "accepted", proposedPrice, values.message, { paymentLink, acceptanceExpiresAt });
 
         const discountAmount = Number(request.estimated_total || 0) - proposedPrice;
-        const { error } = await supabase
-          .from("booking_requests")
-          .update({
-            status: "accepted",
-            owner_price: proposedPrice,
-            payment_link: paymentLink,
-            acceptance_expires_at: acceptanceExpiresAt,
-            discount_amount: discountAmount > 0 ? discountAmount : 0,
-            discount_reason: discountAmount > 0 ? "Tarif spécial propriétaire" : null,
-            owner_message: values.message,
-            accepted_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", request.id);
+        const total = Number(proposedPrice);
+        const deposit = Math.round(total * 0.3);
+        const balance = Math.max(total - deposit, 0);
+        const isLateBooking = daysUntil(request.start_date) !== null && daysUntil(request.start_date) <= 30;
+
+        const { error } = await supabase.from("booking_requests").update({
+          status: "accepted",
+          owner_price: proposedPrice,
+          payment_link: paymentLink,
+          acceptance_expires_at: acceptanceExpiresAt,
+          discount_amount: discountAmount > 0 ? discountAmount : 0,
+          discount_reason: discountAmount > 0 ? "Tarif spécial propriétaire" : null,
+          owner_message: values.message,
+          accepted_at: new Date().toISOString(),
+          deposit_amount: isLateBooking ? 0 : deposit,
+          balance_amount: isLateBooking ? total : balance,
+          deposit_status: isLateBooking ? "non applicable" : "à payer",
+          balance_status: isLateBooking ? "à payer" : "en attente",
+          updated_at: new Date().toISOString(),
+        }).eq("id", request.id);
 
         if (error) throw error;
         alert("Demande acceptée, lien Stripe créé et email envoyé.");
@@ -296,62 +332,45 @@ export default function Admin() {
 
       if (modal.type === "refuse") {
         await sendDecisionEmail(request, "refused", null, values.message);
-        const { error } = await supabase
-          .from("booking_requests")
-          .update({
-            status: "refused",
-            owner_message: values.message,
-            refused_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", request.id);
-
+        const { error } = await supabase.from("booking_requests").update({
+          status: "refused",
+          owner_message: values.message,
+          refused_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq("id", request.id);
         if (error) throw error;
         alert("Demande refusée et email envoyé.");
       }
 
       if (modal.type === "confirm") {
         await sendDecisionEmail(request, "confirmed", request.owner_price || request.estimated_total, values.message);
-        const { error } = await supabase
-          .from("booking_requests")
-          .update({
-            status: "confirmed",
-            payment_status: request.payment_status || "manual_confirmed",
-            owner_message: values.message,
-            confirmed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", request.id);
-
+        const { error } = await supabase.from("booking_requests").update({
+          status: "confirmed",
+          payment_status: request.payment_status || "manual_confirmed",
+          owner_message: values.message,
+          confirmed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq("id", request.id);
         if (error) throw error;
-
-        await supabase
-          .from("booking_requests")
-          .update({ status: "expired", updated_at: new Date().toISOString() })
+        await supabase.from("booking_requests").update({ status: "expired", updated_at: new Date().toISOString() })
           .neq("id", request.id)
           .in("status", ["pending", "accepted"])
           .lt("start_date", request.end_date)
           .gt("end_date", request.start_date);
-
         alert("Réservation confirmée.");
       }
 
       if (modal.type === "cancel") {
-        const cancellationNote = values.refund
-          ? `${values.message}\n\nRemboursement à prévoir / à vérifier.`
-          : `${values.message}\n\nAucun remboursement automatique effectué.`;
-
-        const { error } = await supabase
-          .from("booking_requests")
-          .update({
-            status: "cancelled",
-            owner_message: cancellationNote,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", request.id);
-
+        const refundNote = values.refundMode && values.refundMode !== "none" ? `\n\nRemboursement demandé : ${values.refundMode}.` : "\n\nAucun remboursement automatique effectué.";
+        const { error } = await supabase.from("booking_requests").update({
+          status: "cancelled",
+          owner_message: `${values.message}${refundNote}`,
+          deposit_status: values.refundMode === "deposit" || values.refundMode === "total" ? "à rembourser" : request.deposit_status || "annulé",
+          balance_status: values.refundMode === "balance" || values.refundMode === "total" ? "à rembourser" : request.balance_status || "annulé",
+          updated_at: new Date().toISOString(),
+        }).eq("id", request.id);
         if (error) throw error;
-        alert("Réservation annulée.");
+        alert("Réservation annulée. Procédure remboursement notée dans la fiche.");
       }
 
       setModal(null);
@@ -387,19 +406,7 @@ export default function Admin() {
     const phone = window.prompt("Téléphone :") || "";
     const email = window.prompt("Email :") || "";
     const notes = window.prompt("Notes :") || "";
-
-    const { error } = await supabase.from("customers").insert([
-      {
-        first_name: firstName || null,
-        last_name: lastName || null,
-        phone: phone || null,
-        email: email || null,
-        notes: notes || null,
-        source: "admin",
-        booking_count: 1,
-      },
-    ]);
-
+    const { error } = await supabase.from("customers").insert([{ first_name: firstName || null, last_name: lastName || null, phone: phone || null, email: email || null, notes: notes || null, source: "admin", booking_count: 1 }]);
     if (error) return alert("Erreur : " + error.message);
     await loadAdminData();
   }
@@ -412,83 +419,64 @@ export default function Admin() {
   }
 
   function handleCustomerSort(key) {
-    setCustomerSort((previous) =>
-      previous.key === key ? { key, direction: previous.direction === "asc" ? "desc" : "asc" } : { key, direction: "asc" }
-    );
+    setCustomerSort((previous) => previous.key === key ? { key, direction: previous.direction === "asc" ? "desc" : "asc" } : { key, direction: "asc" });
   }
 
-  function contactEmail(email) {
-    if (email) window.location.href = `mailto:${email}`;
-  }
-
-  function contactPhone(phone) {
-    if (phone) window.location.href = `tel:${phone}`;
-  }
-
-  function contactSms(phone) {
-    if (phone) window.location.href = `sms:${phone}`;
-  }
+  function contactEmail(email) { if (email) window.location.href = `mailto:${email}`; }
+  function contactPhone(phone) { if (phone) window.location.href = `tel:${phone}`; }
+  function contactSms(phone) { if (phone) window.location.href = `sms:${phone}`; }
 
   function bulkEmail(target) {
-    const list = target === "loyal" ? customers.filter((customer) => Number(customer.booking_count || 0) >= 2) : customers;
-    const emails = list.map((customer) => customer.email).filter(Boolean);
+    const list = target === "loyal" ? customers.filter((customer) => Number(customer.booking_count || 0) > 1) : customers;
+    const emails = [...new Set(list.map((customer) => customer.email).filter(Boolean))];
     if (emails.length === 0) return alert("Aucun email disponible.");
-    window.location.href = `mailto:?bcc=${encodeURIComponent(emails.join(","))}`;
+    const first = emails[0];
+    const rest = emails.slice(1).join(",");
+    const subject = target === "loyal" ? "La Maison Verte - message clients fidèles" : "La Maison Verte - message clients";
+    window.location.href = `mailto:${encodeURIComponent(first)}?bcc=${encodeURIComponent(rest)}&subject=${encodeURIComponent(subject)}`;
   }
 
   function applyDashboardFilter(filter) {
-    setActiveTab("requests");
+    setActiveTab("reservations");
     setStatusFilter(filter);
   }
 
-  const filteredRequests = useMemo(
-    () =>
-      bookingRequests.filter((request) => {
-        const status = request.status || "pending";
-        const matchesStatus =
-          statusFilter === "all" ||
-          status === statusFilter ||
-          (statusFilter === "paid_group" && ["deposit_paid", "paid", "fully_paid", "confirmed"].includes(status));
+  function openLoyalCustomers() {
+    setCustomerFilter("loyal");
+    setActiveTab("customers");
+  }
 
-        const text = [
-          request.guest_first_name,
-          request.guest_last_name,
-          request.guest_email,
-          request.guest_phone,
-          request.start_date,
-          request.end_date,
-          request.source,
-          request.message,
-          request.owner_message,
-          request.payment_status,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
+  const filteredRequests = useMemo(() => bookingRequests.filter((request) => {
+    const status = request.status || "pending";
+    const matchesStatus = statusFilter === "all" || status === statusFilter || (statusFilter === "paid_group" && ["deposit_paid", "paid", "fully_paid", "confirmed"].includes(status));
+    const text = [request.id, request.guest_first_name, request.guest_last_name, request.guest_email, request.guest_phone, request.start_date, request.end_date, request.message, request.owner_message, request.payment_status, request.deposit_status, request.balance_status].filter(Boolean).join(" ").toLowerCase();
+    return matchesStatus && text.includes(search.trim().toLowerCase());
+  }), [bookingRequests, search, statusFilter]);
 
-        return matchesStatus && text.includes(search.trim().toLowerCase());
-      }),
-    [bookingRequests, search, statusFilter]
-  );
+  const sortedReservations = useMemo(() => [...filteredRequests].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)), [filteredRequests]);
+
+  const customerReservations = useMemo(() => {
+    const map = new Map();
+    for (const customer of customers) {
+      const key = customer.id;
+      const reservations = bookingRequests.filter((request) => {
+        const sameEmail = customer.email && request.guest_email && customer.email.toLowerCase() === request.guest_email.toLowerCase();
+        const samePhone = customer.phone && request.guest_phone && customer.phone.replace(/\s/g, "") === request.guest_phone.replace(/\s/g, "");
+        const sameName = customer.first_name && customer.last_name && request.guest_first_name && request.guest_last_name &&
+          customer.first_name.toLowerCase() === request.guest_first_name.toLowerCase() && customer.last_name.toLowerCase() === request.guest_last_name.toLowerCase();
+        return sameEmail || samePhone || sameName;
+      }).sort((a, b) => new Date(b.start_date || 0) - new Date(a.start_date || 0));
+      map.set(key, reservations);
+    }
+    return map;
+  }, [customers, bookingRequests]);
 
   const filteredCustomers = useMemo(() => {
-    const filtered = customers.filter((customer) =>
-      [
-        customer.first_name,
-        customer.last_name,
-        customer.email,
-        customer.phone,
-        customer.source,
-        customer.notes,
-        customer.booking_count,
-        customer.created_at,
-        customer.last_stay,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(search.trim().toLowerCase())
-    );
+    const filtered = customers.filter((customer) => {
+      if (customerFilter === "loyal" && Number(customer.booking_count || 0) <= 1) return false;
+      const text = [customer.first_name, customer.last_name, customer.email, customer.phone, customer.source, customer.notes, customer.booking_count, customer.created_at, customer.last_stay].filter(Boolean).join(" ").toLowerCase();
+      return text.includes(search.trim().toLowerCase());
+    });
 
     return filtered.sort((a, b) => {
       const direction = customerSort.direction === "asc" ? 1 : -1;
@@ -497,38 +485,31 @@ export default function Admin() {
       if (customerSort.key === "booking_count") return ((Number(aValue) || 0) - (Number(bValue) || 0)) * direction;
       return String(aValue).localeCompare(String(bValue), "fr", { numeric: true, sensitivity: "base" }) * direction;
     });
-  }, [customers, search, customerSort]);
+  }, [customers, search, customerSort, customerFilter]);
 
-  const stats = useMemo(
-    () => ({
-      requests: bookingRequests.length,
-      pending: bookingRequests.filter((r) => (r.status || "pending") === "pending").length,
-      accepted: bookingRequests.filter((r) => r.status === "accepted").length,
-      paid: bookingRequests.filter((r) => ["deposit_paid", "paid", "fully_paid", "confirmed"].includes(r.status)).length,
-      confirmed: bookingRequests.filter((r) => r.status === "confirmed").length,
-      customers: customers.length,
-      loyal: customers.filter((c) => Number(c.booking_count || 0) >= 2).length,
-    }),
-    [bookingRequests, customers]
-  );
+  const stats = useMemo(() => ({
+    requests: bookingRequests.length,
+    pending: bookingRequests.filter((r) => (r.status || "pending") === "pending").length,
+    accepted: bookingRequests.filter((r) => r.status === "accepted").length,
+    paid: bookingRequests.filter((r) => ["deposit_paid", "paid", "fully_paid", "confirmed"].includes(r.status)).length,
+    confirmed: bookingRequests.filter((r) => r.status === "confirmed" || r.status === "fully_paid").length,
+    customers: customers.length,
+    loyal: customers.filter((c) => Number(c.booking_count || 0) > 1).length,
+  }), [bookingRequests, customers]);
 
-  const paymentRows = useMemo(
-    () =>
-      bookingRequests
-        .filter((r) => ["accepted", "deposit_paid", "paid", "fully_paid", "confirmed"].includes(r.status))
-        .map((r) => ({
-          id: r.id,
-          name: getRequestName(r),
-          status: r.status,
-          amount: r.owner_price || r.estimated_total,
-          paymentStatus: r.payment_status || "non configuré",
-          startDate: r.start_date,
-          endDate: r.end_date,
-          paymentLink: r.payment_link,
-          expiresAt: r.acceptance_expires_at,
-        })),
-    [bookingRequests]
-  );
+  const paymentRows = useMemo(() => bookingRequests.filter((r) => ["accepted", "deposit_paid", "paid", "fully_paid", "confirmed"].includes(r.status)).map((r) => ({
+    id: r.id,
+    name: getRequestName(r),
+    status: r.status,
+    amounts: getAmounts(r),
+    paymentStatus: r.payment_status || "non configuré",
+    depositStatus: getDepositStatus(r),
+    balanceStatus: getBalanceStatus(r),
+    startDate: r.start_date,
+    endDate: r.end_date,
+    paymentLink: r.payment_link,
+    expiresAt: r.acceptance_expires_at,
+  })), [bookingRequests]);
 
   if (authLoading) return <p style={{ padding: 30 }}>Chargement...</p>;
   if (!session) return <AdminLogin onLogin={checkSession} />;
@@ -539,7 +520,7 @@ export default function Admin() {
         <div>
           <p style={styles.kicker}>Administration</p>
           <h1 style={styles.title}>La Maison Verte — Arreau</h1>
-          <p style={styles.subtitle}>Demandes, fiche réservation unique, clients, calendrier, paiements et CRM.</p>
+          <p style={styles.subtitle}>Réservations, fiche centrale, clients, calendrier, paiements et CRM.</p>
         </div>
         <div style={styles.headerActions}>
           <button style={styles.refreshButton} onClick={loadAdminData}>Actualiser</button>
@@ -548,25 +529,20 @@ export default function Admin() {
       </section>
 
       <section style={styles.statsGrid}>
-        <StatCard label="Demandes" value={stats.requests} onClick={() => applyDashboardFilter("all")} />
-        <StatCard label="En attente" value={stats.pending} onClick={() => applyDashboardFilter("pending")} />
+        <StatCard label="Réservations" value={stats.requests} onClick={() => applyDashboardFilter("all")} />
+        <StatCard label="À confirmer" value={stats.pending} onClick={() => applyDashboardFilter("pending")} />
         <StatCard label="Acceptées" value={stats.accepted} onClick={() => applyDashboardFilter("accepted")} />
         <StatCard label="Payées / confirmées" value={stats.paid} onClick={() => applyDashboardFilter("paid_group")} />
         <StatCard label="Confirmées" value={stats.confirmed} onClick={() => applyDashboardFilter("confirmed")} />
-        <StatCard label="Clients" value={stats.customers} onClick={() => setActiveTab("customers")} />
-        <StatCard label="Clients fidèles" value={stats.loyal} onClick={() => setActiveTab("customers")} />
+        <StatCard label="Clients" value={stats.customers} onClick={() => { setCustomerFilter("all"); setActiveTab("customers"); }} />
+        <StatCard label="Clients fidèles" value={stats.loyal} onClick={openLoyalCustomers} />
       </section>
 
       <section style={styles.toolbar}>
-        <input
-          style={styles.searchInput}
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Rechercher nom, email, téléphone, dates, notes..."
-        />
+        <input style={styles.searchInput} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rechercher nom, email, téléphone, dates, notes..." />
         <select style={styles.select} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
           <option value="all">Tous les statuts</option>
-          <option value="pending">En attente</option>
+          <option value="pending">À confirmer</option>
           <option value="accepted">Acceptée</option>
           <option value="deposit_paid">Acompte payé</option>
           <option value="paid_group">Payées / confirmées</option>
@@ -578,7 +554,7 @@ export default function Admin() {
       </section>
 
       <nav style={styles.tabs}>
-        <button style={activeTab === "requests" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("requests")}>Demandes</button>
+        <button style={activeTab === "reservations" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("reservations")}>Réservations</button>
         <button style={activeTab === "reservation" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("reservation")}>Fiche résa</button>
         <button style={activeTab === "calendar" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("calendar")}>Calendrier</button>
         <button style={activeTab === "customers" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("customers")}>Clients</button>
@@ -588,108 +564,101 @@ export default function Admin() {
       {loading && <p style={styles.info}>Chargement des données...</p>}
       {error && <p style={styles.error}>Erreur Supabase : {error}</p>}
 
-      {!loading && !error && activeTab === "requests" && (
+      {!loading && !error && activeTab === "reservations" && (
         <section style={styles.panel}>
-          <h2 style={styles.panelTitle}>Demandes de réservation</h2>
-          {filteredRequests.length === 0 ? (
-            <p style={styles.empty}>Aucune demande trouvée.</p>
-          ) : (
-            <div style={styles.list}>
-              {filteredRequests.map((request) => (
-                <button key={request.id} style={selectedRequest?.id === request.id ? styles.selectedListItem : styles.listItem} onClick={() => selectReservation(request)}>
-                  <div style={styles.listItemTop}>
-                    <strong>{getRequestName(request)}</strong>
-                    <StatusBadge status={request.status || "pending"} />
-                  </div>
-                  <div style={styles.muted}>{formatDate(request.start_date)} → {formatDate(request.end_date)}</div>
-                  <div style={styles.muted}>{request.guest_email || "Email non renseigné"}</div>
-                  <div style={styles.price}>{request.owner_price ? `${request.owner_price} € proposés` : request.estimated_total ? `${request.estimated_total} € estimés` : "Prix à confirmer"}</div>
-                </button>
-              ))}
-            </div>
-          )}
+          <h2 style={styles.panelTitle}>Réservations</h2>
+          {sortedReservations.length === 0 ? <p style={styles.empty}>Aucune réservation trouvée.</p> : <div style={styles.tableWrapper}>
+            <table style={styles.table}>
+              <thead style={styles.stickyHead}>
+                <tr>
+                  <th style={styles.th}>N° résa</th>
+                  <th style={styles.th}>Client</th>
+                  <th style={styles.th}>Date demande</th>
+                  <th style={styles.th}>Début séjour</th>
+                  <th style={styles.th}>Fin séjour</th>
+                  <th style={styles.th}>Statut</th>
+                  <th style={styles.th}>Acompte</th>
+                  <th style={styles.th}>Solde</th>
+                  <th style={styles.th}>Total payé</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedReservations.map((request) => {
+                  const amounts = getAmounts(request);
+                  return <tr key={request.id} onClick={() => selectReservation(request)} style={selectedRequest?.id === request.id ? styles.selectedRow : styles.clickableRow}>
+                    <td style={styles.td}>{shortId(request.id)}</td>
+                    <td style={styles.td}>{getRequestName(request)}</td>
+                    <td style={styles.td}>{formatDateTime(request.created_at)}</td>
+                    <td style={styles.td}>{formatDate(request.start_date)}</td>
+                    <td style={styles.td}>{formatDate(request.end_date)}</td>
+                    <td style={styles.td}><StatusBadge status={request.status || "pending"} /></td>
+                    <td style={styles.td}>{getDepositStatus(request)}<br /><span style={styles.muted}>{formatMoney(amounts.deposit)}</span></td>
+                    <td style={styles.td}>{getBalanceStatus(request)}<br /><span style={styles.muted}>{formatMoney(amounts.balance)}</span></td>
+                    <td style={styles.td}>{formatMoney(amounts.paid)}</td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>}
         </section>
       )}
 
       {!loading && !error && activeTab === "reservation" && (
         <section style={styles.panel}>
-          <h2 style={styles.panelTitle}>Fiche réservation</h2>
-          {!selectedRequest ? (
-            <p style={styles.empty}>Sélectionne une demande depuis l’onglet Demandes ou clique sur une réservation directe dans le calendrier.</p>
-          ) : (
-            <ReservationPanel
-              request={selectedRequest}
-              onAccept={openAcceptModal}
-              onRefuse={openRefuseModal}
-              onConfirm={openConfirmModal}
-              onCancel={openCancelModal}
-              onEmail={contactEmail}
-              onPhone={contactPhone}
-              onSms={contactSms}
-            />
-          )}
+          <div style={styles.panelHeader}>
+            <h2 style={styles.panelTitle}>Fiche réservation</h2>
+            {selectedRequest && <button style={styles.smallButton} onClick={closeReservation}>Fermer la fiche</button>}
+          </div>
+          {!selectedRequest ? <p style={styles.empty}>Sélectionne une réservation depuis l’onglet Réservations ou clique sur une réservation directe dans le calendrier.</p> : <ReservationPanel request={selectedRequest} onAccept={openAcceptModal} onRefuse={openRefuseModal} onConfirm={openConfirmModal} onCancel={openCancelModal} onEmail={contactEmail} onPhone={contactPhone} onSms={contactSms} />}
         </section>
       )}
 
-      {!loading && !error && activeTab === "calendar" && (
-        <section style={styles.panel}>
-          <h2 style={styles.panelTitle}>Calendrier central</h2>
-          <CalendarAdmin onSelectReservation={selectReservation} />
-        </section>
-      )}
+      {!loading && !error && activeTab === "calendar" && <section style={styles.panel}><h2 style={styles.panelTitle}>Calendrier central</h2><CalendarAdmin onSelectReservation={selectReservation} /></section>}
 
       {!loading && !error && activeTab === "customers" && (
         <section style={styles.panel}>
           <div style={styles.panelHeader}>
-            <h2 style={styles.panelTitle}>Clients</h2>
+            <h2 style={styles.panelTitle}>Clients {customerFilter === "loyal" ? "fidèles" : ""}</h2>
             <div style={styles.headerActions}>
+              {customerFilter === "loyal" && <button style={styles.smallButton} onClick={() => setCustomerFilter("all")}>Voir tous les clients</button>}
               <button style={styles.addButton} onClick={() => bulkEmail("all")}>Email tous les clients</button>
               <button style={styles.addButton} onClick={() => bulkEmail("loyal")}>Email clients fidèles</button>
               <button style={styles.addButton} onClick={addCustomer}>Ajouter client</button>
             </div>
           </div>
-          {filteredCustomers.length === 0 ? (
-            <p style={styles.empty}>Aucun client trouvé.</p>
-          ) : (
-            <div style={styles.tableWrapper}>
-              <table style={styles.table}>
-                <thead style={styles.stickyHead}>
-                  <tr>
-                    <SortableTh label="Nom" sortKey="last_name" sort={customerSort} onSort={handleCustomerSort} />
-                    <SortableTh label="Prénom" sortKey="first_name" sort={customerSort} onSort={handleCustomerSort} />
-                    <SortableTh label="Téléphone" sortKey="phone" sort={customerSort} onSort={handleCustomerSort} />
-                    <SortableTh label="Email" sortKey="email" sort={customerSort} onSort={handleCustomerSort} />
-                    <SortableTh label="Source" sortKey="source" sort={customerSort} onSort={handleCustomerSort} />
-                    <SortableTh label="Réservations" sortKey="booking_count" sort={customerSort} onSort={handleCustomerSort} />
-                    <th style={styles.th}>Notes</th>
-                    <th style={styles.th}>Contact</th>
-                    <th style={styles.th}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredCustomers.map((customer) => (
-                    <tr key={customer.id}>
-                      <EditableTd value={customer.last_name} onClick={() => updateCustomerField(customer.id, "last_name", customer.last_name)} />
-                      <EditableTd value={customer.first_name} onClick={() => updateCustomerField(customer.id, "first_name", customer.first_name)} />
-                      <EditableTd value={customer.phone} onClick={() => updateCustomerField(customer.id, "phone", customer.phone)} />
-                      <EditableTd value={customer.email} onClick={() => updateCustomerField(customer.id, "email", customer.email)} />
-                      <EditableTd value={customer.source} onClick={() => updateCustomerField(customer.id, "source", customer.source)} />
-                      <EditableTd value={customer.booking_count ?? 0} onClick={() => updateCustomerBookingCount(customer.id, customer.booking_count)} />
-                      <EditableTd value={customer.notes} onClick={() => updateCustomerField(customer.id, "notes", customer.notes)} />
-                      <td style={styles.td}>
-                        <div style={styles.contactButtons}>
-                          <button style={styles.smallButton} onClick={() => contactEmail(customer.email)}>Email</button>
-                          <button style={styles.smallButton} onClick={() => contactPhone(customer.phone)}>Appel</button>
-                          <button style={styles.smallButton} onClick={() => contactSms(customer.phone)}>SMS</button>
-                        </div>
-                      </td>
-                      <td style={styles.td}><button style={styles.deleteButton} onClick={() => deleteCustomer(customer)}>Supprimer</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {filteredCustomers.length === 0 ? <p style={styles.empty}>Aucun client trouvé.</p> : <div style={styles.tableWrapper}>
+            <table style={styles.table}>
+              <thead style={styles.stickyHead}>
+                <tr>
+                  <SortableTh label="Nom" sortKey="last_name" sort={customerSort} onSort={handleCustomerSort} />
+                  <SortableTh label="Prénom" sortKey="first_name" sort={customerSort} onSort={handleCustomerSort} />
+                  <SortableTh label="Téléphone" sortKey="phone" sort={customerSort} onSort={handleCustomerSort} />
+                  <SortableTh label="Email" sortKey="email" sort={customerSort} onSort={handleCustomerSort} />
+                  <SortableTh label="Réservations" sortKey="booking_count" sort={customerSort} onSort={handleCustomerSort} />
+                  <th style={styles.th}>Historique réservations</th>
+                  <th style={styles.th}>Notes</th>
+                  <th style={styles.th}>Contact</th>
+                  <th style={styles.th}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredCustomers.map((customer) => {
+                  const history = customerReservations.get(customer.id) || [];
+                  return <tr key={customer.id}>
+                    <EditableTd value={customer.last_name} onClick={() => updateCustomerField(customer.id, "last_name", customer.last_name)} />
+                    <EditableTd value={customer.first_name} onClick={() => updateCustomerField(customer.id, "first_name", customer.first_name)} />
+                    <EditableTd value={customer.phone} onClick={() => updateCustomerField(customer.id, "phone", customer.phone)} />
+                    <EditableTd value={customer.email} onClick={() => updateCustomerField(customer.id, "email", customer.email)} />
+                    <EditableTd value={customer.booking_count ?? history.length ?? 0} onClick={() => updateCustomerBookingCount(customer.id, customer.booking_count)} />
+                    <td style={styles.td}><div style={styles.chipList}>{history.length === 0 ? "-" : history.map((reservation) => <button key={reservation.id} style={styles.historyChip} onClick={() => selectReservation(reservation)}>{formatDate(reservation.start_date)} → {formatDate(reservation.end_date)}</button>)}</div></td>
+                    <EditableTd value={customer.notes ? String(customer.notes).slice(0, 80) : ""} onClick={() => updateCustomerField(customer.id, "notes", customer.notes)} />
+                    <td style={styles.td}><div style={styles.contactButtons}><button style={styles.smallButton} onClick={() => contactEmail(customer.email)}>Email</button><button style={styles.smallButton} onClick={() => contactPhone(customer.phone)}>Appel</button><button style={styles.smallButton} onClick={() => contactSms(customer.phone)}>SMS</button></div></td>
+                    <td style={styles.td}><button style={styles.deleteButton} onClick={() => deleteCustomer(customer)}>Supprimer</button></td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>}
         </section>
       )}
 
@@ -698,30 +667,8 @@ export default function Admin() {
           <h2 style={styles.panelTitle}>Paiements</h2>
           <div style={styles.tableWrapper}>
             <table style={styles.table}>
-              <thead style={styles.stickyHead}>
-                <tr>
-                  <th style={styles.th}>Client</th>
-                  <th style={styles.th}>Dates</th>
-                  <th style={styles.th}>Statut réservation</th>
-                  <th style={styles.th}>Statut paiement</th>
-                  <th style={styles.th}>Montant</th>
-                  <th style={styles.th}>Expiration paiement</th>
-                  <th style={styles.th}>Lien</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paymentRows.map((row) => (
-                  <tr key={row.id}>
-                    <td style={styles.td}>{row.name}</td>
-                    <td style={styles.td}>{formatDate(row.startDate)} → {formatDate(row.endDate)}</td>
-                    <td style={styles.td}><StatusBadge status={row.status} /></td>
-                    <td style={styles.td}>{row.paymentStatus}</td>
-                    <td style={styles.td}>{formatMoney(row.amount)}</td>
-                    <td style={styles.td}>{formatDateTime(row.expiresAt)}</td>
-                    <td style={styles.td}>{row.paymentLink ? <a href={row.paymentLink} target="_blank" rel="noreferrer">Stripe</a> : "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
+              <thead style={styles.stickyHead}><tr><th style={styles.th}>Client</th><th style={styles.th}>Dates</th><th style={styles.th}>Statut réservation</th><th style={styles.th}>Acompte</th><th style={styles.th}>Solde</th><th style={styles.th}>Total payé</th><th style={styles.th}>Expiration acompte</th><th style={styles.th}>Lien</th></tr></thead>
+              <tbody>{paymentRows.map((row) => <tr key={row.id}><td style={styles.td}>{row.name}</td><td style={styles.td}>{formatDate(row.startDate)} → {formatDate(row.endDate)}</td><td style={styles.td}><StatusBadge status={row.status} /></td><td style={styles.td}>{row.depositStatus}<br />{formatMoney(row.amounts.deposit)}</td><td style={styles.td}>{row.balanceStatus}<br />{formatMoney(row.amounts.balance)}</td><td style={styles.td}>{formatMoney(row.amounts.paid)}</td><td style={styles.td}>{formatDateTime(row.expiresAt)}</td><td style={styles.td}>{row.paymentLink ? <a href={row.paymentLink} target="_blank" rel="noreferrer">Stripe</a> : "-"}</td></tr>)}</tbody>
             </table>
           </div>
         </section>
@@ -734,207 +681,39 @@ export default function Admin() {
 
 function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, onEmail, onPhone, onSms }) {
   const status = request.status || "pending";
-  const total = request.owner_price || request.estimated_total || 0;
-  const deposit = total ? Math.round(Number(total) * 0.3) : null;
-  const balance = total && deposit !== null ? Number(total) - deposit : null;
-
-  return (
-    <div style={styles.reservationSheet}>
-      <div style={styles.detailHeader}>
-        <div>
-          <h3 style={styles.detailTitle}>{getRequestName(request)}</h3>
-          <p style={styles.muted}>{formatDate(request.start_date)} → {formatDate(request.end_date)}</p>
-        </div>
-        <StatusBadge status={status} />
-      </div>
-
-      <div style={styles.contactButtons}>
-        <button style={styles.smallButton} onClick={() => onEmail(request.guest_email)}>Email</button>
-        <button style={styles.smallButton} onClick={() => onPhone(request.guest_phone)}>Appel</button>
-        <button style={styles.smallButton} onClick={() => onSms(request.guest_phone)}>SMS</button>
-        {request.payment_link && <a style={styles.linkButton} href={request.payment_link} target="_blank" rel="noreferrer">Lien Stripe</a>}
-      </div>
-
-      <div style={styles.detailGrid}>
-        <Info label="Prénom" value={request.guest_first_name} />
-        <Info label="Nom" value={request.guest_last_name} />
-        <Info label="Email" value={request.guest_email} />
-        <Info label="Téléphone" value={request.guest_phone} />
-        <Info label="Arrivée" value={formatDate(request.start_date)} />
-        <Info label="Départ" value={formatDate(request.end_date)} />
-        <Info label="Nuits" value={request.nights} />
-        <Info label="Prix estimatif" value={formatMoney(request.estimated_total)} />
-        <Info label="Prix proposé" value={formatMoney(request.owner_price)} />
-        <Info label="Acompte 30%" value={formatMoney(deposit)} />
-        <Info label="Solde estimé" value={formatMoney(balance)} />
-        <Info label="Statut paiement" value={request.payment_status || "non configuré"} />
-        <Info label="Expiration acompte" value={formatDateTime(request.acceptance_expires_at)} />
-        <Info label="Heure d’arrivée" value={request.arrival_time || "à renseigner"} />
-        <Info label="Contrat accepté" value={request.contract_accepted ? `Oui — ${formatDateTime(request.contract_accepted_at)}` : "Non / non renseigné"} />
-        <Info label="Version contrat" value={request.contract_version || "-"} />
-        <Info label="Créée le" value={formatDateTime(request.created_at)} />
-      </div>
-
-      {request.message && <div style={styles.noteBox}><strong>Message client</strong><p>{request.message}</p></div>}
-      {request.owner_message && <div style={styles.noteBox}><strong>Dernier message propriétaire</strong><p>{request.owner_message}</p></div>}
-      {request.contract_url && <p><a href={request.contract_url} target="_blank" rel="noreferrer">Voir le contrat accepté</a></p>}
-
-      <div style={styles.actions}>
-        {status === "pending" && (
-          <>
-            <button style={styles.acceptButton} onClick={() => onAccept(request)}>Accepter</button>
-            <button style={styles.refuseButton} onClick={() => onRefuse(request)}>Refuser</button>
-            <button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button>
-          </>
-        )}
-
-        {status === "accepted" && (
-          <>
-            <button style={styles.confirmButton} onClick={() => onConfirm(request)}>Confirmer manuellement</button>
-            <button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button>
-          </>
-        )}
-
-        {["deposit_paid", "paid", "fully_paid", "confirmed"].includes(status) && (
-          <button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button>
-        )}
-
-        {["refused", "expired", "cancelled"].includes(status) && (
-          <p style={styles.empty}>Aucune action disponible : dossier conservé dans l’historique.</p>
-        )}
-      </div>
-    </div>
-  );
+  const amounts = getAmounts(request);
+  return <div style={styles.reservationSheet}>
+    <div style={styles.detailHeader}><div><h3 style={styles.detailTitle}>{getRequestName(request)}</h3><p style={styles.muted}>Réservation n° {shortId(request.id)} · créée le {formatDateTime(request.created_at)}</p></div><StatusBadge status={status} /></div>
+    <div style={styles.contactButtons}><button style={styles.smallButton} onClick={() => onEmail(request.guest_email)}>Email</button><button style={styles.smallButton} onClick={() => onPhone(request.guest_phone)}>Appel</button><button style={styles.smallButton} onClick={() => onSms(request.guest_phone)}>SMS</button>{request.payment_link && <a style={styles.linkButton} href={request.payment_link} target="_blank" rel="noreferrer">Lien Stripe acompte/total</a>}{request.balance_payment_link && <a style={styles.linkButton} href={request.balance_payment_link} target="_blank" rel="noreferrer">Lien solde</a>}</div>
+    <h3 style={styles.subTitle}>Client</h3>
+    <div style={styles.detailGrid}><Info label="Prénom" value={request.guest_first_name} /><Info label="Nom" value={request.guest_last_name} /><Info label="Email" value={request.guest_email} /><Info label="Téléphone" value={request.guest_phone} /></div>
+    <h3 style={styles.subTitle}>Séjour</h3>
+    <div style={styles.detailGrid}><Info label="Arrivée" value={formatDate(request.start_date)} /><Info label="Départ" value={formatDate(request.end_date)} /><Info label="Nuits" value={request.nights} /><Info label="Heure d’arrivée" value={request.arrival_time || "à renseigner"} /></div>
+    <h3 style={styles.subTitle}>Statuts & paiements</h3>
+    <div style={styles.detailGrid}><Info label="Statut demande" value={STATUS_LABELS[status] || status} /><Info label="Statut acompte" value={`${getDepositStatus(request)} — ${formatMoney(amounts.deposit)}`} /><Info label="Statut solde" value={`${getBalanceStatus(request)} — ${formatMoney(amounts.balance)}`} /><Info label="Total séjour" value={formatMoney(amounts.total)} /><Info label="Total payé" value={formatMoney(amounts.paid)} /><Info label="Expiration acompte" value={formatDateTime(request.acceptance_expires_at)} /></div>
+    <h3 style={styles.subTitle}>Contrat</h3>
+    <div style={styles.detailGrid}><Info label="Contrat accepté" value={request.contract_accepted ? `Oui — ${formatDateTime(request.contract_accepted_at)}` : "Non / non renseigné"} /><Info label="Version contrat" value={request.contract_version || "-"} />{request.contract_url && <div style={styles.infoItem}><span>Contrat</span><a href={request.contract_url} target="_blank" rel="noreferrer">Voir le PDF</a></div>}</div>
+    {request.message && <div style={styles.noteBox}><strong>Message client</strong><p>{request.message}</p></div>}
+    {request.owner_message && <div style={styles.noteBox}><strong>Dernier message propriétaire</strong><p>{request.owner_message}</p></div>}
+    <div style={styles.actions}>{status === "pending" && <><button style={styles.acceptButton} onClick={() => onAccept(request)}>Accepter</button><button style={styles.refuseButton} onClick={() => onRefuse(request)}>Refuser</button><button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button></>}{status === "accepted" && <><button style={styles.confirmButton} onClick={() => onConfirm(request)}>Confirmer manuellement</button><button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button></>}{["deposit_paid", "paid", "fully_paid", "confirmed"].includes(status) && <button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler / remboursement</button>}{["refused", "expired", "cancelled"].includes(status) && <p style={styles.empty}>Dossier conservé dans l’historique.</p>}</div>
+  </div>;
 }
 
 function ActionModal({ modal, onClose, onSubmit }) {
   const [price, setPrice] = useState(modal.price || "");
   const [message, setMessage] = useState(modal.message || "");
-  const [refund, setRefund] = useState(false);
+  const [refundMode, setRefundMode] = useState("none");
   const [confirmed, setConfirmed] = useState(false);
-
-  function submit(event) {
-    event.preventDefault();
-    onSubmit({ price, message, refund, confirmed });
-  }
-
-  return (
-    <div style={styles.modalOverlay}>
-      <form style={styles.modal} onSubmit={submit}>
-        <div style={styles.modalHeader}>
-          <h2 style={{ margin: 0 }}>{modal.title}</h2>
-          <button type="button" style={styles.closeButton} onClick={onClose}>×</button>
-        </div>
-        <p style={styles.empty}>{modal.helper}</p>
-
-        {modal.type === "accept" && (
-          <label style={styles.label}>Tarif proposé (€)<input style={styles.input} value={price} onChange={(event) => setPrice(event.target.value)} /></label>
-        )}
-
-        <label style={styles.label}>Message envoyé au client / note interne<textarea style={styles.largeTextarea} value={message} onChange={(event) => setMessage(event.target.value)} /></label>
-
-        {modal.type === "cancel" && (
-          <label style={styles.checkboxLine}><input type="checkbox" checked={refund} onChange={(event) => setRefund(event.target.checked)} />Noter qu’un remboursement doit être étudié/effectué</label>
-        )}
-
-        <label style={styles.securityBox}>
-          <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-          <span>{modal.confirmText || "Je confirme cette action."}</span>
-        </label>
-
-        <div style={styles.modalActions}>
-          <button type="button" style={styles.cancelButton} onClick={onClose}>Retour</button>
-          <button type="submit" style={styles.acceptButton}>Valider</button>
-        </div>
-      </form>
-    </div>
-  );
+  function submit(event) { event.preventDefault(); onSubmit({ price, message, refundMode, confirmed }); }
+  return <div style={styles.modalOverlay}><form style={styles.modal} onSubmit={submit}><div style={styles.modalHeader}><h2 style={{ margin: 0 }}>{modal.title}</h2><button type="button" style={styles.closeButton} onClick={onClose}>×</button></div><p style={styles.empty}>{modal.helper}</p>{modal.type === "accept" && <label style={styles.label}>Tarif proposé (€)<input style={styles.input} value={price} onChange={(event) => setPrice(event.target.value)} /></label>}<label style={styles.label}>Message envoyé au client / note interne<textarea style={styles.largeTextarea} value={message} onChange={(event) => setMessage(event.target.value)} /></label>{modal.type === "cancel" && <label style={styles.label}>Traitement remboursement<select style={styles.input} value={refundMode} onChange={(event) => setRefundMode(event.target.value)}><option value="none">Aucun remboursement automatique</option><option value="deposit">Acompte à rembourser</option><option value="balance">Solde à rembourser</option><option value="total">Remboursement total</option></select></label>}<label style={styles.securityBox}><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>{modal.confirmText || "Je confirme cette action."}</span></label><div style={styles.modalActions}><button type="button" style={styles.cancelButton} onClick={onClose}>Retour</button><button type="submit" style={styles.acceptButton}>Valider</button></div></form></div>;
 }
 
-function StatCard({ label, value, onClick }) {
-  return <button style={styles.statCard} onClick={onClick}><span style={styles.statLabel}>{label}</span><strong style={styles.statValue}>{value}</strong></button>;
-}
-
-function StatusBadge({ status }) {
-  return <span style={{ ...styles.badge, backgroundColor: STATUS_COLORS[status] || "#6b7280" }}>{STATUS_LABELS[status] || status}</span>;
-}
-
-function Info({ label, value }) {
-  return <div style={styles.infoItem}><span>{label}</span><strong>{value || "-"}</strong></div>;
-}
-
-function SortableTh({ label, sortKey, sort, onSort }) {
-  const active = sort.key === sortKey;
-  const arrow = active ? (sort.direction === "asc" ? " ↑" : " ↓") : "";
-  return <th style={styles.th}><button style={styles.thButton} onClick={() => onSort(sortKey)}>{label}{arrow}</button></th>;
-}
-
-function EditableTd({ value, onClick }) {
-  return <td style={styles.td} onClick={onClick} title="Cliquer pour modifier">{value || "-"}</td>;
-}
+function StatCard({ label, value, onClick }) { return <button style={styles.statCard} onClick={onClick}><span style={styles.statLabel}>{label}</span><strong style={styles.statValue}>{value}</strong></button>; }
+function StatusBadge({ status }) { return <span style={{ ...styles.badge, backgroundColor: STATUS_COLORS[status] || "#6b7280" }}>{STATUS_LABELS[status] || status}</span>; }
+function Info({ label, value }) { return <div style={styles.infoItem}><span>{label}</span><strong>{value || "-"}</strong></div>; }
+function SortableTh({ label, sortKey, sort, onSort }) { const active = sort.key === sortKey; const arrow = active ? (sort.direction === "asc" ? " ↑" : " ↓") : ""; return <th style={styles.th}><button style={styles.thButton} onClick={() => onSort(sortKey)}>{label}{arrow}</button></th>; }
+function EditableTd({ value, onClick }) { return <td style={styles.td} onClick={onClick} title="Cliquer pour modifier">{value || "-"}</td>; }
 
 const styles = {
-  page: { minHeight: "100vh", padding: "32px", background: "#f3f0e8", color: "#1f2933", fontFamily: "Inter, system-ui, sans-serif" },
-  header: { display: "flex", justifyContent: "space-between", gap: "24px", alignItems: "center", marginBottom: "28px", flexWrap: "wrap" },
-  headerActions: { display: "flex", gap: "10px", flexWrap: "wrap" },
-  kicker: { margin: 0, color: "#4f6f52", textTransform: "uppercase", letterSpacing: "0.12em", fontSize: "12px", fontWeight: 700 },
-  title: { margin: "6px 0", fontSize: "clamp(28px, 4vw, 44px)" },
-  subtitle: { margin: 0, color: "#64748b" },
-  refreshButton: { border: "none", borderRadius: "999px", padding: "12px 18px", background: "#2f4f35", color: "white", fontWeight: 700, cursor: "pointer" },
-  logoutButton: { border: "none", borderRadius: "999px", padding: "12px 18px", background: "#dc2626", color: "white", fontWeight: 700, cursor: "pointer" },
-  statsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "16px", marginBottom: "22px" },
-  statCard: { textAlign: "left", border: "none", background: "white", borderRadius: "22px", padding: "20px", boxShadow: "0 12px 30px rgba(0,0,0,0.08)", cursor: "pointer" },
-  statLabel: { color: "#64748b", fontSize: "14px" },
-  statValue: { display: "block", fontSize: "30px", marginTop: "8px" },
-  toolbar: { display: "flex", gap: "12px", marginBottom: "18px", flexWrap: "wrap" },
-  searchInput: { flex: "1 1 280px", padding: "14px 16px", borderRadius: "16px", border: "1px solid #d6d3c8", fontSize: "15px" },
-  select: { padding: "14px 16px", borderRadius: "16px", border: "1px solid #d6d3c8", background: "white" },
-  tabs: { display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "20px" },
-  tab: { border: "1px solid #d6d3c8", background: "white", borderRadius: "999px", padding: "10px 16px", cursor: "pointer" },
-  activeTab: { border: "1px solid #2f4f35", background: "#2f4f35", color: "white", borderRadius: "999px", padding: "10px 16px", cursor: "pointer" },
-  panel: { background: "white", borderRadius: "28px", padding: "22px", boxShadow: "0 12px 30px rgba(0,0,0,0.08)" },
-  panelHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" },
-  panelTitle: { marginTop: 0, marginBottom: "18px" },
-  list: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px" },
-  listItem: { textAlign: "left", border: "1px solid #e5e7eb", background: "#fff", borderRadius: "18px", padding: "16px", cursor: "pointer" },
-  selectedListItem: { textAlign: "left", border: "2px solid #2f4f35", background: "#f6fbf6", borderRadius: "18px", padding: "16px", cursor: "pointer" },
-  listItemTop: { display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", marginBottom: "8px" },
-  badge: { color: "white", borderRadius: "999px", padding: "5px 10px", fontSize: "12px", fontWeight: 700, whiteSpace: "nowrap" },
-  muted: { color: "#64748b", fontSize: "14px", margin: "4px 0" },
-  price: { marginTop: "8px", fontWeight: 800 },
-  reservationSheet: { display: "grid", gap: "18px" },
-  detailHeader: { display: "flex", justifyContent: "space-between", gap: "16px", flexWrap: "wrap" },
-  detailTitle: { margin: 0, fontSize: "26px" },
-  detailGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" },
-  infoItem: { background: "#f8fafc", borderRadius: "16px", padding: "14px", display: "grid", gap: "5px" },
-  noteBox: { background: "#f8fafc", borderRadius: "16px", padding: "16px", lineHeight: 1.5 },
-  actions: { display: "flex", gap: "10px", flexWrap: "wrap", paddingTop: "8px" },
-  acceptButton: { border: "none", borderRadius: "999px", padding: "10px 14px", background: "#16a34a", color: "white", cursor: "pointer" },
-  refuseButton: { border: "none", borderRadius: "999px", padding: "10px 14px", background: "#dc2626", color: "white", cursor: "pointer" },
-  confirmButton: { border: "none", borderRadius: "999px", padding: "10px 14px", background: "#15803d", color: "white", cursor: "pointer" },
-  cancelButton: { border: "none", borderRadius: "999px", padding: "10px 14px", background: "#6b7280", color: "white", cursor: "pointer" },
-  addButton: { border: "none", borderRadius: "999px", padding: "10px 14px", background: "#2f4f35", color: "white", cursor: "pointer" },
-  smallButton: { border: "none", borderRadius: "999px", padding: "7px 10px", background: "#e2e8f0", cursor: "pointer", whiteSpace: "nowrap" },
-  linkButton: { borderRadius: "999px", padding: "7px 10px", background: "#dbeafe", color: "#1d4ed8", textDecoration: "none", whiteSpace: "nowrap" },
-  contactButtons: { display: "flex", gap: "8px", flexWrap: "wrap" },
-  tableWrapper: { overflowX: "auto", maxHeight: "70vh", border: "1px solid #e5e7eb", borderRadius: "18px" },
-  table: { minWidth: "1200px", width: "100%", borderCollapse: "collapse", fontSize: "14px" },
-  stickyHead: { position: "sticky", top: 0, background: "white", zIndex: 2 },
-  th: { textAlign: "left", padding: "12px", borderBottom: "1px solid #e5e7eb", whiteSpace: "nowrap", background: "white" },
-  thButton: { border: "none", background: "transparent", fontWeight: 800, cursor: "pointer", padding: 0 },
-  td: { padding: "12px", borderBottom: "1px solid #e5e7eb", cursor: "pointer", verticalAlign: "top" },
-  deleteButton: { border: "none", borderRadius: "999px", background: "#dc2626", color: "white", padding: "8px 12px", cursor: "pointer" },
-  empty: { color: "#64748b", lineHeight: 1.6 },
-  info: { background: "white", padding: "20px", borderRadius: "18px" },
-  error: { background: "#fee2e2", color: "#991b1b", padding: "20px", borderRadius: "18px" },
-  modalOverlay: { position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: "20px" },
-  modal: { background: "white", width: "100%", maxWidth: "760px", borderRadius: "28px", padding: "24px", boxShadow: "0 20px 60px rgba(0,0,0,0.25)", maxHeight: "90vh", overflowY: "auto" },
-  modalHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", marginBottom: "12px" },
-  closeButton: { border: "none", background: "#e5e7eb", borderRadius: "999px", width: "36px", height: "36px", cursor: "pointer", fontSize: "22px" },
-  label: { display: "grid", gap: "8px", fontWeight: 700, marginTop: "16px" },
-  input: { padding: "12px 14px", borderRadius: "14px", border: "1px solid #d1d5db", fontSize: "15px" },
-  largeTextarea: { minHeight: "220px", padding: "14px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "15px", resize: "vertical", lineHeight: 1.5 },
-  checkboxLine: { display: "flex", gap: "10px", alignItems: "center", marginTop: "16px" },
-  securityBox: { display: "flex", gap: "10px", alignItems: "flex-start", marginTop: "18px", padding: "14px", borderRadius: "16px", background: "#fff7ed", border: "1px solid #fed7aa", lineHeight: 1.5 },
-  modalActions: { display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px", flexWrap: "wrap" },
+  page:{minHeight:"100vh",padding:"32px",background:"#f3f0e8",color:"#1f2933",fontFamily:"Inter, system-ui, sans-serif"},header:{display:"flex",justifyContent:"space-between",gap:"24px",alignItems:"center",marginBottom:"28px",flexWrap:"wrap"},headerActions:{display:"flex",gap:"10px",flexWrap:"wrap"},kicker:{margin:0,color:"#4f6f52",textTransform:"uppercase",letterSpacing:"0.12em",fontSize:"12px",fontWeight:700},title:{margin:"6px 0",fontSize:"clamp(28px, 4vw, 44px)"},subtitle:{margin:0,color:"#64748b"},refreshButton:{border:"none",borderRadius:"999px",padding:"12px 18px",background:"#2f4f35",color:"white",fontWeight:700,cursor:"pointer"},logoutButton:{border:"none",borderRadius:"999px",padding:"12px 18px",background:"#dc2626",color:"white",fontWeight:700,cursor:"pointer"},statsGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))",gap:"16px",marginBottom:"22px"},statCard:{textAlign:"left",border:"none",background:"white",borderRadius:"22px",padding:"20px",boxShadow:"0 12px 30px rgba(0,0,0,0.08)",cursor:"pointer"},statLabel:{color:"#64748b",fontSize:"14px"},statValue:{display:"block",fontSize:"30px",marginTop:"8px"},toolbar:{display:"flex",gap:"12px",marginBottom:"18px",flexWrap:"wrap"},searchInput:{flex:"1 1 280px",padding:"14px 16px",borderRadius:"16px",border:"1px solid #d6d3c8",fontSize:"15px"},select:{padding:"14px 16px",borderRadius:"16px",border:"1px solid #d6d3c8",background:"white"},tabs:{display:"flex",gap:"10px",flexWrap:"wrap",marginBottom:"20px"},tab:{border:"1px solid #d6d3c8",background:"white",borderRadius:"999px",padding:"10px 16px",cursor:"pointer"},activeTab:{border:"1px solid #2f4f35",background:"#2f4f35",color:"white",borderRadius:"999px",padding:"10px 16px",cursor:"pointer"},panel:{background:"white",borderRadius:"28px",padding:"22px",boxShadow:"0 12px 30px rgba(0,0,0,0.08)"},panelHeader:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:"12px",flexWrap:"wrap"},panelTitle:{marginTop:0,marginBottom:"18px"},badge:{color:"white",borderRadius:"999px",padding:"5px 10px",fontSize:"12px",fontWeight:700,whiteSpace:"nowrap"},muted:{color:"#64748b",fontSize:"14px",margin:"4px 0"},tableWrapper:{overflowX:"auto",maxHeight:"70vh",border:"1px solid #e5e7eb",borderRadius:"18px"},table:{minWidth:"1200px",width:"100%",borderCollapse:"collapse",fontSize:"14px"},stickyHead:{position:"sticky",top:0,background:"white",zIndex:2},th:{textAlign:"left",padding:"12px",borderBottom:"1px solid #e5e7eb",whiteSpace:"nowrap",background:"white"},thButton:{border:"none",background:"transparent",fontWeight:800,cursor:"pointer",padding:0},td:{padding:"12px",borderBottom:"1px solid #e5e7eb",cursor:"pointer",verticalAlign:"top"},clickableRow:{cursor:"pointer"},selectedRow:{cursor:"pointer",background:"#f0fdf4"},reservationSheet:{display:"grid",gap:"18px"},detailHeader:{display:"flex",justifyContent:"space-between",gap:"16px",flexWrap:"wrap"},detailTitle:{margin:0,fontSize:"26px"},subTitle:{margin:"6px 0 0",color:"#2f4f35"},detailGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))",gap:"12px"},infoItem:{background:"#f8fafc",borderRadius:"16px",padding:"14px",display:"grid",gap:"5px"},noteBox:{background:"#f8fafc",borderRadius:"16px",padding:"16px",lineHeight:1.5},actions:{display:"flex",gap:"10px",flexWrap:"wrap",paddingTop:"8px"},acceptButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#16a34a",color:"white",cursor:"pointer"},refuseButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#dc2626",color:"white",cursor:"pointer"},confirmButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#15803d",color:"white",cursor:"pointer"},cancelButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#6b7280",color:"white",cursor:"pointer"},addButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#2f4f35",color:"white",cursor:"pointer"},smallButton:{border:"none",borderRadius:"999px",padding:"7px 10px",background:"#e2e8f0",cursor:"pointer",whiteSpace:"nowrap"},linkButton:{borderRadius:"999px",padding:"7px 10px",background:"#dbeafe",color:"#1d4ed8",textDecoration:"none",whiteSpace:"nowrap"},contactButtons:{display:"flex",gap:"8px",flexWrap:"wrap"},chipList:{display:"flex",gap:"6px",flexWrap:"wrap"},historyChip:{border:"none",borderRadius:"999px",padding:"6px 9px",background:"#eef2ff",color:"#3730a3",cursor:"pointer"},deleteButton:{border:"none",borderRadius:"999px",background:"#dc2626",color:"white",padding:"8px 12px",cursor:"pointer"},empty:{color:"#64748b",lineHeight:1.6},info:{background:"white",padding:"20px",borderRadius:"18px"},error:{background:"#fee2e2",color:"#991b1b",padding:"20px",borderRadius:"18px"},modalOverlay:{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50,padding:"20px"},modal:{background:"white",width:"100%",maxWidth:"760px",borderRadius:"28px",padding:"24px",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",maxHeight:"90vh",overflowY:"auto"},modalHeader:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"16px",marginBottom:"12px"},closeButton:{border:"none",background:"#e5e7eb",borderRadius:"999px",width:"36px",height:"36px",cursor:"pointer",fontSize:"22px"},label:{display:"grid",gap:"8px",fontWeight:700,marginTop:"16px"},input:{padding:"12px 14px",borderRadius:"14px",border:"1px solid #d1d5db",fontSize:"15px"},largeTextarea:{minHeight:"220px",padding:"14px",borderRadius:"16px",border:"1px solid #d1d5db",fontSize:"15px",resize:"vertical",lineHeight:1.5},securityBox:{display:"flex",gap:"10px",alignItems:"flex-start",marginTop:"18px",padding:"14px",borderRadius:"16px",background:"#fff7ed",border:"1px solid #fed7aa",lineHeight:1.5},modalActions:{display:"flex",justifyContent:"flex-end",gap:"10px",marginTop:"20px",flexWrap:"wrap"}
 };
