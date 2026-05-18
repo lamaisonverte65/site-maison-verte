@@ -473,13 +473,14 @@ async function submitBookingRequest() {
       })
     });
 
-    alert("Votre demande de réservation a bien été envoyée.");
+    alert("Votre demande de réservation a bien été envoyée. Un email de confirmation vient de vous être adressé. Pensez à vérifier vos courriers indésirables / spams si vous ne le recevez pas rapidement.");
 
     setGuestFirstName("");
     setGuestLastName("");
 
     setGuestEmail("");
     setGuestPhone("");
+    setGuestMessage("");
 
     setSelectedDates([]);
     setContractAccepted(false);
@@ -1225,56 +1226,6 @@ return (
         }}
       >
 
-        <div
-          style={{
-            marginTop: "18px",
-            marginBottom: "22px",
-            padding: "16px",
-            borderRadius: "16px",
-            background: "#f8fafc",
-            border: "1px solid #e2e8f0"
-          }}
-        >
-          <label
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: "12px",
-              cursor: "pointer",
-              lineHeight: "1.6",
-              color: "#334155"
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={contractAccepted}
-              onChange={(e) =>
-                setContractAccepted(e.target.checked)
-              }
-              style={{
-                marginTop: "4px",
-                transform: "scale(1.2)"
-              }}
-            />
-
-            <span>
-              J’ai lu et j’accepte le{" "}
-              <a
-                href="/documents/contrat-location.pdf"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  color: "#1f6f3d",
-                  fontWeight: "700"
-                }}
-              >
-                contrat de location
-              </a>{" "}
-              ainsi que les conditions de réservation.
-            </span>
-          </label>
-        </div>
-
         <button
           className="button"
           onClick={previousMonth}
@@ -1299,56 +1250,6 @@ return (
             )
           }
         </h3>
-
-        <div
-          style={{
-            marginTop: "18px",
-            marginBottom: "22px",
-            padding: "16px",
-            borderRadius: "16px",
-            background: "#f8fafc",
-            border: "1px solid #e2e8f0"
-          }}
-        >
-          <label
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: "12px",
-              cursor: "pointer",
-              lineHeight: "1.6",
-              color: "#334155"
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={contractAccepted}
-              onChange={(e) =>
-                setContractAccepted(e.target.checked)
-              }
-              style={{
-                marginTop: "4px",
-                transform: "scale(1.2)"
-              }}
-            />
-
-            <span>
-              J’ai lu et j’accepte le{" "}
-              <a
-                href="/documents/contrat-location.pdf"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  color: "#1f6f3d",
-                  fontWeight: "700"
-                }}
-              >
-                contrat de location
-              </a>{" "}
-              ainsi que les conditions de réservation.
-            </span>
-          </label>
-        </div>
 
         <button
           className="button"
@@ -1556,7 +1457,7 @@ return (
 
           <input
             type="text"
-            placeholder="Date de départ à sélectionner"
+            placeholder="Date d’arrivée sélectionnée"
             value={selectedDates[0] || ""}
             readOnly
             style={{
@@ -1569,7 +1470,7 @@ return (
 
           <input
             type="text"
-            placeholder="Date d'arrivée à sélectionner"
+            placeholder="Date de départ sélectionnée"
             value={selectedDates[1] || ""}
             readOnly
             style={{
