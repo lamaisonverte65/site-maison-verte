@@ -101,7 +101,7 @@ export default function Admin() {
   const [bookingRequests, setBookingRequests] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
-  const [activeTab, setActiveTab] = useState("reservations");
+  const [activeTab, setActiveTab] = useState("requests");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [customerFilter, setCustomerFilter] = useState("all");
@@ -447,8 +447,8 @@ export default function Admin() {
   }
 
   function applyDashboardFilter(filter) {
-    setActiveTab("reservations");
     setStatusFilter(filter);
+    setActiveTab(filter === "pending" ? "requests" : "reservations");
   }
 
   function openLoyalCustomers() {
@@ -464,6 +464,26 @@ export default function Admin() {
   }), [bookingRequests, search, statusFilter]);
 
   const sortedReservations = useMemo(() => [...filteredRequests].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)), [filteredRequests]);
+
+  const pendingRequests = useMemo(
+    () => bookingRequests
+      .filter((request) => (request.status || "pending") === "pending")
+      .filter((request) => {
+        const text = [
+          request.id,
+          request.guest_first_name,
+          request.guest_last_name,
+          request.guest_email,
+          request.guest_phone,
+          request.start_date,
+          request.end_date,
+          request.message,
+        ].filter(Boolean).join(" ").toLowerCase();
+        return text.includes(search.trim().toLowerCase());
+      })
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)),
+    [bookingRequests, search]
+  );
 
   const customerReservations = useMemo(() => {
     const map = new Map();
@@ -530,7 +550,7 @@ export default function Admin() {
         <div>
           <p style={styles.kicker}>Administration</p>
           <h1 style={styles.title}>La Maison Verte — Arreau</h1>
-          <p style={styles.subtitle}>Réservations, fiche centrale, clients, calendrier, paiements et CRM.</p>
+          <p style={styles.subtitle}>Demandes en cours, réservations, clients, calendrier, paiements et CRM.</p>
         </div>
         <div style={styles.headerActions}>
           <button style={styles.refreshButton} onClick={loadAdminData}>Actualiser</button>
@@ -539,8 +559,8 @@ export default function Admin() {
       </section>
 
       <section style={styles.statsGrid}>
+        <StatCard label="Demandes" value={stats.pending} onClick={() => applyDashboardFilter("pending")} />
         <StatCard label="Réservations" value={stats.requests} onClick={() => applyDashboardFilter("all")} />
-        <StatCard label="À confirmer" value={stats.pending} onClick={() => applyDashboardFilter("pending")} />
         <StatCard label="Acceptées" value={stats.accepted} onClick={() => applyDashboardFilter("accepted")} />
         <StatCard label="Payées / confirmées" value={stats.paid} onClick={() => applyDashboardFilter("paid_group")} />
         <StatCard label="Confirmées" value={stats.confirmed} onClick={() => applyDashboardFilter("confirmed")} />
@@ -564,6 +584,7 @@ export default function Admin() {
       </section>
 
       <nav style={styles.tabs}>
+        <button style={activeTab === "requests" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("requests")}>Demandes</button>
         <button style={activeTab === "reservations" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("reservations")}>Réservations</button>
         <button style={activeTab === "calendar" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("calendar")}>Calendrier</button>
         <button style={activeTab === "customers" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("customers")}>Clients</button>
@@ -573,10 +594,54 @@ export default function Admin() {
       {loading && <p style={styles.info}>Chargement des données...</p>}
       {error && <p style={styles.error}>Erreur Supabase : {error}</p>}
 
+      {!loading && !error && activeTab === "requests" && (
+        <section style={styles.panel}>
+          <div style={styles.panelHeader}>
+            <h2 style={styles.panelTitle}>Demandes en cours</h2>
+            <button style={styles.smallButton} onClick={() => setActiveTab("reservations")}>Voir toutes les réservations</button>
+          </div>
+
+          {pendingRequests.length === 0 ? (
+            <p style={styles.empty}>Aucune demande en attente.</p>
+          ) : (
+            <div style={styles.tableWrapper}>
+              <table style={styles.table}>
+                <thead style={styles.stickyHead}>
+                  <tr>
+                    <th style={styles.th}>N° demande</th>
+                    <th style={styles.th}>Client</th>
+                    <th style={styles.th}>Date demande</th>
+                    <th style={styles.th}>Début séjour</th>
+                    <th style={styles.th}>Fin séjour</th>
+                    <th style={styles.th}>Nuits</th>
+                    <th style={styles.th}>Total estimatif</th>
+                    <th style={styles.th}>Contact</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingRequests.map((request) => (
+                    <tr key={request.id} onClick={() => selectReservation(request)} style={selectedRequest?.id === request.id ? styles.selectedRow : styles.clickableRow}>
+                      <td style={styles.td}>{shortId(request.id)}</td>
+                      <td style={styles.td}>{getRequestName(request)}</td>
+                      <td style={styles.td}>{formatDateTime(request.created_at)}</td>
+                      <td style={styles.td}>{formatDate(request.start_date)}</td>
+                      <td style={styles.td}>{formatDate(request.end_date)}</td>
+                      <td style={styles.td}>{request.nights || "-"}</td>
+                      <td style={styles.td}>{formatMoney(request.estimated_total)}</td>
+                      <td style={styles.td}>{request.guest_email || request.guest_phone || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
       {!loading && !error && activeTab === "reservations" && (
         <section style={styles.panel}>
           <div style={styles.panelHeader}>
-            <h2 style={styles.panelTitle}>Réservations</h2>
+            <h2 style={styles.panelTitle}>Toutes les réservations</h2>
             {selectedRequest && <button style={styles.smallButton} onClick={closeReservation}>Fermer la fiche</button>}
           </div>
 
