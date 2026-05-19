@@ -18,6 +18,7 @@ function getReasonLabel(reason) {
     acompte: "Acompte",
     solde: "Solde",
     complement: "Complément",
+    total: "Paiement total",
     autre: "Paiement",
   };
   return labels[reason] || "Paiement";
