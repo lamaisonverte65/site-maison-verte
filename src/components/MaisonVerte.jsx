@@ -99,7 +99,21 @@ export default function MaisonVerte() {
     caption: "Vue du calvaire d'Arreau de nuit"
   }
 
-];
+ ];
+
+function formatLocalDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseLocalDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  const [year, month, day] = String(value).split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
 
   useEffect(() => {
 
@@ -190,7 +204,7 @@ function isDateSelected(key) {
 function toggleDay(day) {
   if (!day) return;
 
-  const key = day.toISOString().split("T")[0];
+  const key = formatLocalDate(day);
 
   if (unavailableDates.includes(key)) {
     return;
@@ -207,15 +221,15 @@ function toggleDay(day) {
   const realStart = key < start ? key : start;
 
   // Empêche de sélectionner une période qui traverse une date réservée
-  const startDate = new Date(realStart);
-  const endDate = new Date(end);
+  const startDate = parseLocalDate(realStart);
+  const endDate = parseLocalDate(end);
 
   for (
     let d = new Date(startDate);
     d <= endDate;
     d.setDate(d.getDate() + 1)
   ) {
-    const dKey = d.toISOString().split("T")[0];
+    const dKey = formatLocalDate(d);
 
     if (unavailableDates.includes(dKey)) {
       alert("Cette période contient une date déjà réservée.");
@@ -302,15 +316,15 @@ function getSelectedNights() {
   }
 
   const nights = [];
-  const startDate = new Date(selectedDates[0]);
-  const endDate = new Date(selectedDates[1]);
+  const startDate = parseLocalDate(selectedDates[0]);
+  const endDate = parseLocalDate(selectedDates[1]);
 
   for (
     let d = new Date(startDate);
     d < endDate;
     d.setDate(d.getDate() + 1)
   ) {
-    nights.push(d.toISOString().split("T")[0]);
+    nights.push(formatLocalDate(d));
   }
 
   return nights;
@@ -325,7 +339,7 @@ function getRuleForStay(nights) {
 const numberOfNights =
   selectedDates.length === 2
     ? Math.round(
-        (new Date(selectedDates[1]) - new Date(selectedDates[0]))
+        (parseLocalDate(selectedDates[1]) - parseLocalDate(selectedDates[0]))
         / (1000 * 60 * 60 * 24)
       )
     : 0;
@@ -342,7 +356,7 @@ const activeStayRule = getRuleForStay(selectedNights);
 
 const arrivalDay =
   selectedDates.length >= 1
-    ? new Date(selectedDates[0]).getDay()
+    ? parseLocalDate(selectedDates[0]).getDay()
     : null;
 
 const minimumNights =
@@ -1312,10 +1326,10 @@ return (
             }
 
             const key =
-              day.toISOString().split("T")[0];
+              formatLocalDate(day);
 
             const todayKey =
-              new Date().toISOString().split("T")[0];
+              formatLocalDate(new Date());
 
             const isPastDate =
               key < todayKey;

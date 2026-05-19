@@ -3,17 +3,44 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
-  process.env.VITE_SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY
 );
 
-function toDateString(date) {
-  return new Date(date).toISOString().split("T")[0];
+const BLOCKING_BOOKING_STATUSES = [
+  "accepted",
+  "deposit_paid",
+  "paid",
+  "fully_paid",
+  "confirmed",
+];
+
+function toDateString(value) {
+  if (!value) return null;
+
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return value.slice(0, 10);
+  }
+
+  const date = new Date(value);
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function parseLocalDate(value) {
+  const key = toDateString(value);
+  const [year, month, day] = key.split("-").map(Number);
+
+  return new Date(year, month - 1, day);
 }
 
 function getDatesBetween(startDate, endDate) {
   const dates = [];
-  const current = new Date(startDate);
-  const end = new Date(endDate);
+  const current = parseLocalDate(startDate);
+  const end = parseLocalDate(endDate);
 
   while (current < end) {
     dates.push(toDateString(current));
@@ -72,10 +99,14 @@ export async function handler() {
       }
     }
 
-    const { data: bookingRequests } = await supabase
+    const { data: bookingRequests, error: bookingRequestsError } = await supabase
       .from("booking_requests")
-      .select("*")
-      .in("status", ["accepted", "paid", "confirmed"]);
+      .select("id,start_date,end_date,status")
+      .in("status", BLOCKING_BOOKING_STATUSES);
+
+    if (bookingRequestsError) {
+      console.error("Erreur booking_requests calendrier :", bookingRequestsError);
+    }
 
     for (const booking of bookingRequests || []) {
       unavailableDates.push(
@@ -83,9 +114,13 @@ export async function handler() {
       );
     }
 
-    const { data: calendarBlocks } = await supabase
+    const { data: calendarBlocks, error: calendarBlocksError } = await supabase
       .from("calendar_blocks")
-      .select("*");
+      .select("id,start_date,end_date,status");
+
+    if (calendarBlocksError) {
+      console.error("Erreur calendar_blocks calendrier :", calendarBlocksError);
+    }
 
     for (const block of calendarBlocks || []) {
       unavailableDates.push(
@@ -97,9 +132,10 @@ export async function handler() {
       statusCode: 200,
       headers: {
         "Content-Type": "application/json",
+        "Cache-Control": "no-store, max-age=0",
       },
       body: JSON.stringify({
-        unavailableDates: [...new Set(unavailableDates)],
+        unavailableDates: [...new Set(unavailableDates)].sort(),
         externalReservations,
       }),
     };
