@@ -100,6 +100,9 @@ export default function Admin() {
   const [authLoading, setAuthLoading] = useState(true);
   const [bookingRequests, setBookingRequests] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [bookingEvents, setBookingEvents] = useState([]);
+  const [emailLogs, setEmailLogs] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [activeTab, setActiveTab] = useState("requests");
   const [search, setSearch] = useState("");
@@ -160,9 +163,27 @@ export default function Admin() {
       return;
     }
 
+    const { data: paymentsData } = await supabase
+      .from("payments")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    const { data: eventsData } = await supabase
+      .from("booking_events")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    const { data: emailLogsData } = await supabase
+      .from("email_logs")
+      .select("*")
+      .order("created_at", { ascending: false });
+
     const nextRequests = requestsData || [];
     setBookingRequests(nextRequests);
     setCustomers(customersData || []);
+    setPayments(paymentsData || []);
+    setBookingEvents(eventsData || []);
+    setEmailLogs(emailLogsData || []);
     setSelectedRequest((current) => current ? nextRequests.find((request) => request.id === current.id) || current : current);
     setLoading(false);
   }
@@ -174,6 +195,18 @@ export default function Admin() {
 
   function closeReservation() {
     setSelectedRequest(null);
+  }
+
+  async function logBookingEvent(bookingId, eventType, label, message, metadata = {}) {
+    if (!bookingId) return;
+    const { error } = await supabase.from("booking_events").insert([{
+      booking_request_id: bookingId,
+      event_type: eventType,
+      label,
+      message,
+      metadata,
+    }]);
+    if (error) console.error("Erreur historique action :", error.message);
   }
 
   function hasDateConflict(currentRequest) {
@@ -211,6 +244,7 @@ export default function Admin() {
         ...(currentSession?.access_token ? { Authorization: `Bearer ${currentSession.access_token}` } : {}),
       },
       body: JSON.stringify({
+        bookingId: request.id,
         type,
         guestEmail: request.guest_email,
         guestFirstName: request.guest_first_name,
@@ -373,6 +407,7 @@ export default function Admin() {
         }).eq("id", request.id);
 
         if (error) throw error;
+        await logBookingEvent(request.id, "booking_accepted", "Demande acceptée", `Lien de paiement envoyé. Tarif proposé : ${proposedPrice} €`, { price: proposedPrice, paymentLink, paymentType });
         alert("Demande acceptée, lien Stripe créé et email envoyé.");
       }
 
@@ -385,6 +420,7 @@ export default function Admin() {
           updated_at: new Date().toISOString(),
         }).eq("id", request.id);
         if (error) throw error;
+        await logBookingEvent(request.id, "booking_refused", "Demande refusée", values.message, {});
         alert("Demande refusée et email envoyé.");
       }
 
@@ -403,6 +439,7 @@ export default function Admin() {
           .in("status", ["pending", "accepted"])
           .lt("start_date", request.end_date)
           .gt("end_date", request.start_date);
+        await logBookingEvent(request.id, "booking_confirmed_manual", "Réservation confirmée manuellement", values.message, {});
         alert("Réservation confirmée.");
       }
 
@@ -416,6 +453,7 @@ export default function Admin() {
           updated_at: new Date().toISOString(),
         }).eq("id", request.id);
         if (error) throw error;
+        await logBookingEvent(request.id, "booking_cancelled", "Réservation annulée", `${values.message}${refundNote}`, { refundMode: values.refundMode || "none" });
         alert("Réservation annulée. Procédure remboursement notée dans la fiche.");
       }
 
@@ -437,6 +475,7 @@ export default function Admin() {
         }).eq("id", request.id);
 
         if (error) throw error;
+        await logBookingEvent(request.id, "manual_payment_requested", "Lien de paiement manuel envoyé", `${values.reason || "autre"} · ${amount} €`, { amount, reason: values.reason || "autre", url: payment.url });
         alert("Lien de paiement créé et email envoyé au client.");
       }
 
@@ -598,6 +637,10 @@ export default function Admin() {
     expiresAt: r.acceptance_expires_at,
   })), [bookingRequests]);
 
+  const selectedPayments = useMemo(() => selectedRequest ? payments.filter((payment) => payment.booking_request_id === selectedRequest.id) : [], [payments, selectedRequest]);
+  const selectedEvents = useMemo(() => selectedRequest ? bookingEvents.filter((item) => item.booking_request_id === selectedRequest.id) : [], [bookingEvents, selectedRequest]);
+  const selectedEmailLogs = useMemo(() => selectedRequest ? emailLogs.filter((item) => item.booking_request_id === selectedRequest.id) : [], [emailLogs, selectedRequest]);
+
   if (authLoading) return <p style={{ padding: 30 }}>Chargement...</p>;
   if (!session) return <AdminLogin onLogin={checkSession} />;
 
@@ -714,6 +757,9 @@ export default function Admin() {
                 onEmail={contactEmail}
                 onPhone={contactPhone}
                 onSms={contactSms}
+                payments={selectedPayments}
+                events={selectedEvents}
+                emailLogs={selectedEmailLogs}
               />
             </div>
           )}
@@ -821,7 +867,7 @@ export default function Admin() {
   );
 }
 
-function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, onManualPayment, onEmail, onPhone, onSms }) {
+function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, onManualPayment, onEmail, onPhone, onSms, payments = [], events = [], emailLogs = [] }) {
   const status = request.status || "pending";
   const amounts = getAmounts(request);
 
@@ -883,6 +929,29 @@ function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, on
       {request.owner_message && <div style={styles.noteBox}><strong>Dernier message propriétaire</strong><p>{request.owner_message}</p></div>}
       {request.manual_payment_message && <div style={styles.noteBox}><strong>Dernier message paiement manuel</strong><p>{request.manual_payment_message}</p></div>}
 
+      <HistorySection title="Historique paiements" empty="Aucun paiement historisé." items={payments} renderItem={(payment) => (
+        <div>
+          <strong>{formatDateTime(payment.paid_at || payment.created_at)} · {formatMoney(payment.amount)}</strong>
+          <p style={styles.muted}>{payment.payment_type || "paiement"} · {payment.status || "-"}{payment.refunded_amount ? ` · remboursé : ${formatMoney(payment.refunded_amount)}` : ""}</p>
+          {payment.stripe_payment_intent_id && <p style={styles.muted}>PaymentIntent : {payment.stripe_payment_intent_id}</p>}
+        </div>
+      )} />
+
+      <HistorySection title="Historique actions" empty="Aucune action historisée." items={events} renderItem={(item) => (
+        <div>
+          <strong>{formatDateTime(item.created_at)} · {item.event_type}</strong>
+          <p style={styles.muted}>{item.label || item.message || "-"}</p>
+        </div>
+      )} />
+
+      <HistorySection title="Emails envoyés" empty="Aucun email historisé." items={emailLogs} renderItem={(email) => (
+        <div>
+          <strong>{formatDateTime(email.sent_at || email.created_at)} · {email.email_type}</strong>
+          <p style={styles.muted}>{email.subject || "Sans objet"} · {email.to_email || "-"} · {email.status || "-"}</p>
+          {email.error_message && <p style={styles.muted}>Erreur : {email.error_message}</p>}
+        </div>
+      )} />
+
       <div style={styles.actions}>
         {status === "pending" && (
           <>
@@ -900,6 +969,25 @@ function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, on
         {["deposit_paid", "paid", "fully_paid", "confirmed"].includes(status) && <button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler / remboursement</button>}
         {["refused", "expired", "cancelled"].includes(status) && <p style={styles.empty}>Dossier conservé dans l’historique.</p>}
       </div>
+    </div>
+  );
+}
+
+function HistorySection({ title, empty, items, renderItem }) {
+  return (
+    <div style={styles.historyBox}>
+      <h3 style={styles.subTitle}>{title}</h3>
+      {!items || items.length === 0 ? (
+        <p style={styles.empty}>{empty}</p>
+      ) : (
+        <div style={styles.historyList}>
+          {items.map((item) => (
+            <div key={item.id} style={styles.historyItem}>
+              {renderItem(item)}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -961,5 +1049,5 @@ function SortableTh({ label, sortKey, sort, onSort }) { const active = sort.key 
 function EditableTd({ value, onClick }) { return <td style={styles.td} onClick={onClick} title="Cliquer pour modifier">{value || "-"}</td>; }
 
 const styles = {
-  page:{minHeight:"100vh",padding:"32px",background:"#f3f0e8",color:"#1f2933",fontFamily:"Inter, system-ui, sans-serif"},header:{display:"flex",justifyContent:"space-between",gap:"24px",alignItems:"center",marginBottom:"28px",flexWrap:"wrap"},headerActions:{display:"flex",gap:"10px",flexWrap:"wrap"},kicker:{margin:0,color:"#4f6f52",textTransform:"uppercase",letterSpacing:"0.12em",fontSize:"12px",fontWeight:700},title:{margin:"6px 0",fontSize:"clamp(28px, 4vw, 44px)"},subtitle:{margin:0,color:"#64748b"},refreshButton:{border:"none",borderRadius:"999px",padding:"12px 18px",background:"#2f4f35",color:"white",fontWeight:700,cursor:"pointer"},logoutButton:{border:"none",borderRadius:"999px",padding:"12px 18px",background:"#dc2626",color:"white",fontWeight:700,cursor:"pointer"},statsGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))",gap:"16px",marginBottom:"22px"},statCard:{textAlign:"left",border:"none",background:"white",borderRadius:"22px",padding:"20px",boxShadow:"0 12px 30px rgba(0,0,0,0.08)",cursor:"pointer"},statLabel:{color:"#64748b",fontSize:"14px"},statValue:{display:"block",fontSize:"30px",marginTop:"8px"},toolbar:{display:"flex",gap:"12px",marginBottom:"18px",flexWrap:"wrap"},searchInput:{flex:"1 1 280px",padding:"14px 16px",borderRadius:"16px",border:"1px solid #d6d3c8",fontSize:"15px"},select:{padding:"14px 16px",borderRadius:"16px",border:"1px solid #d6d3c8",background:"white"},tabs:{display:"flex",gap:"10px",flexWrap:"wrap",marginBottom:"20px"},tab:{border:"1px solid #d6d3c8",background:"white",borderRadius:"999px",padding:"10px 16px",cursor:"pointer"},activeTab:{border:"1px solid #2f4f35",background:"#2f4f35",color:"white",borderRadius:"999px",padding:"10px 16px",cursor:"pointer"},panel:{background:"white",borderRadius:"28px",padding:"22px",boxShadow:"0 12px 30px rgba(0,0,0,0.08)"},panelHeader:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:"12px",flexWrap:"wrap"},panelTitle:{marginTop:0,marginBottom:"18px"},badge:{color:"white",borderRadius:"999px",padding:"5px 10px",fontSize:"12px",fontWeight:700,whiteSpace:"nowrap"},muted:{color:"#64748b",fontSize:"14px",margin:"4px 0"},tableWrapper:{overflowX:"auto",maxHeight:"70vh",border:"1px solid #e5e7eb",borderRadius:"18px"},table:{minWidth:"1200px",width:"100%",borderCollapse:"collapse",fontSize:"14px"},stickyHead:{position:"sticky",top:0,background:"white",zIndex:2},th:{textAlign:"left",padding:"12px",borderBottom:"1px solid #e5e7eb",whiteSpace:"nowrap",background:"white"},thButton:{border:"none",background:"transparent",fontWeight:800,cursor:"pointer",padding:0},td:{padding:"12px",borderBottom:"1px solid #e5e7eb",cursor:"pointer",verticalAlign:"top"},clickableRow:{cursor:"pointer"},selectedRow:{cursor:"pointer",background:"#f0fdf4"},reservationSheet:{display:"grid",gap:"18px"},detailHeader:{display:"flex",justifyContent:"space-between",gap:"16px",flexWrap:"wrap"},detailTitle:{margin:0,fontSize:"26px"},subTitle:{margin:"6px 0 0",color:"#2f4f35"},detailGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))",gap:"12px"},infoItem:{background:"#f8fafc",borderRadius:"16px",padding:"14px",display:"grid",gap:"5px"},noteBox:{background:"#f8fafc",borderRadius:"16px",padding:"16px",lineHeight:1.5},actions:{display:"flex",gap:"10px",flexWrap:"wrap",paddingTop:"8px"},acceptButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#16a34a",color:"white",cursor:"pointer"},refuseButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#dc2626",color:"white",cursor:"pointer"},confirmButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#15803d",color:"white",cursor:"pointer"},cancelButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#6b7280",color:"white",cursor:"pointer"},addButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#2f4f35",color:"white",cursor:"pointer"},smallButton:{border:"none",borderRadius:"999px",padding:"7px 10px",background:"#e2e8f0",cursor:"pointer",whiteSpace:"nowrap"},linkButton:{borderRadius:"999px",padding:"7px 10px",background:"#dbeafe",color:"#1d4ed8",textDecoration:"none",whiteSpace:"nowrap"},contactButtons:{display:"flex",gap:"8px",flexWrap:"wrap"},chipList:{display:"flex",gap:"6px",flexWrap:"wrap"},historyChip:{border:"none",borderRadius:"999px",padding:"6px 9px",background:"#eef2ff",color:"#3730a3",cursor:"pointer"},deleteButton:{border:"none",borderRadius:"999px",background:"#dc2626",color:"white",padding:"8px 12px",cursor:"pointer"},empty:{color:"#64748b",lineHeight:1.6},info:{background:"white",padding:"20px",borderRadius:"18px"},error:{background:"#fee2e2",color:"#991b1b",padding:"20px",borderRadius:"18px"},modalOverlay:{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50,padding:"20px"},modal:{background:"white",width:"100%",maxWidth:"760px",borderRadius:"28px",padding:"24px",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",maxHeight:"90vh",overflowY:"auto"},modalHeader:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"16px",marginBottom:"12px"},closeButton:{border:"none",background:"#e5e7eb",borderRadius:"999px",width:"36px",height:"36px",cursor:"pointer",fontSize:"22px"},label:{display:"grid",gap:"8px",fontWeight:700,marginTop:"16px"},input:{padding:"12px 14px",borderRadius:"14px",border:"1px solid #d1d5db",fontSize:"15px"},largeTextarea:{minHeight:"220px",padding:"14px",borderRadius:"16px",border:"1px solid #d1d5db",fontSize:"15px",resize:"vertical",lineHeight:1.5},securityBox:{display:"flex",gap:"10px",alignItems:"flex-start",marginTop:"18px",padding:"14px",borderRadius:"16px",background:"#fff7ed",border:"1px solid #fed7aa",lineHeight:1.5},modalActions:{display:"flex",justifyContent:"flex-end",gap:"10px",marginTop:"20px",flexWrap:"wrap"}
+  page:{minHeight:"100vh",padding:"32px",background:"#f3f0e8",color:"#1f2933",fontFamily:"Inter, system-ui, sans-serif"},header:{display:"flex",justifyContent:"space-between",gap:"24px",alignItems:"center",marginBottom:"28px",flexWrap:"wrap"},headerActions:{display:"flex",gap:"10px",flexWrap:"wrap"},kicker:{margin:0,color:"#4f6f52",textTransform:"uppercase",letterSpacing:"0.12em",fontSize:"12px",fontWeight:700},title:{margin:"6px 0",fontSize:"clamp(28px, 4vw, 44px)"},subtitle:{margin:0,color:"#64748b"},refreshButton:{border:"none",borderRadius:"999px",padding:"12px 18px",background:"#2f4f35",color:"white",fontWeight:700,cursor:"pointer"},logoutButton:{border:"none",borderRadius:"999px",padding:"12px 18px",background:"#dc2626",color:"white",fontWeight:700,cursor:"pointer"},statsGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))",gap:"16px",marginBottom:"22px"},statCard:{textAlign:"left",border:"none",background:"white",borderRadius:"22px",padding:"20px",boxShadow:"0 12px 30px rgba(0,0,0,0.08)",cursor:"pointer"},statLabel:{color:"#64748b",fontSize:"14px"},statValue:{display:"block",fontSize:"30px",marginTop:"8px"},toolbar:{display:"flex",gap:"12px",marginBottom:"18px",flexWrap:"wrap"},searchInput:{flex:"1 1 280px",padding:"14px 16px",borderRadius:"16px",border:"1px solid #d6d3c8",fontSize:"15px"},select:{padding:"14px 16px",borderRadius:"16px",border:"1px solid #d6d3c8",background:"white"},tabs:{display:"flex",gap:"10px",flexWrap:"wrap",marginBottom:"20px"},tab:{border:"1px solid #d6d3c8",background:"white",borderRadius:"999px",padding:"10px 16px",cursor:"pointer"},activeTab:{border:"1px solid #2f4f35",background:"#2f4f35",color:"white",borderRadius:"999px",padding:"10px 16px",cursor:"pointer"},panel:{background:"white",borderRadius:"28px",padding:"22px",boxShadow:"0 12px 30px rgba(0,0,0,0.08)"},panelHeader:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:"12px",flexWrap:"wrap"},panelTitle:{marginTop:0,marginBottom:"18px"},badge:{color:"white",borderRadius:"999px",padding:"5px 10px",fontSize:"12px",fontWeight:700,whiteSpace:"nowrap"},muted:{color:"#64748b",fontSize:"14px",margin:"4px 0"},tableWrapper:{overflowX:"auto",maxHeight:"70vh",border:"1px solid #e5e7eb",borderRadius:"18px"},table:{minWidth:"1200px",width:"100%",borderCollapse:"collapse",fontSize:"14px"},stickyHead:{position:"sticky",top:0,background:"white",zIndex:2},th:{textAlign:"left",padding:"12px",borderBottom:"1px solid #e5e7eb",whiteSpace:"nowrap",background:"white"},thButton:{border:"none",background:"transparent",fontWeight:800,cursor:"pointer",padding:0},td:{padding:"12px",borderBottom:"1px solid #e5e7eb",cursor:"pointer",verticalAlign:"top"},clickableRow:{cursor:"pointer"},selectedRow:{cursor:"pointer",background:"#f0fdf4"},reservationSheet:{display:"grid",gap:"18px"},detailHeader:{display:"flex",justifyContent:"space-between",gap:"16px",flexWrap:"wrap"},detailTitle:{margin:0,fontSize:"26px"},subTitle:{margin:"6px 0 0",color:"#2f4f35"},detailGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))",gap:"12px"},infoItem:{background:"#f8fafc",borderRadius:"16px",padding:"14px",display:"grid",gap:"5px"},noteBox:{background:"#f8fafc",borderRadius:"16px",padding:"16px",lineHeight:1.5},actions:{display:"flex",gap:"10px",flexWrap:"wrap",paddingTop:"8px"},acceptButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#16a34a",color:"white",cursor:"pointer"},refuseButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#dc2626",color:"white",cursor:"pointer"},confirmButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#15803d",color:"white",cursor:"pointer"},cancelButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#6b7280",color:"white",cursor:"pointer"},addButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#2f4f35",color:"white",cursor:"pointer"},smallButton:{border:"none",borderRadius:"999px",padding:"7px 10px",background:"#e2e8f0",cursor:"pointer",whiteSpace:"nowrap"},linkButton:{borderRadius:"999px",padding:"7px 10px",background:"#dbeafe",color:"#1d4ed8",textDecoration:"none",whiteSpace:"nowrap"},contactButtons:{display:"flex",gap:"8px",flexWrap:"wrap"},chipList:{display:"flex",gap:"6px",flexWrap:"wrap"},historyChip:{border:"none",borderRadius:"999px",padding:"6px 9px",background:"#eef2ff",color:"#3730a3",cursor:"pointer"},deleteButton:{border:"none",borderRadius:"999px",background:"#dc2626",color:"white",padding:"8px 12px",cursor:"pointer"},empty:{color:"#64748b",lineHeight:1.6},info:{background:"white",padding:"20px",borderRadius:"18px"},error:{background:"#fee2e2",color:"#991b1b",padding:"20px",borderRadius:"18px"},historyBox:{background:"#fff",border:"1px solid #e5e7eb",borderRadius:"18px",padding:"14px"},historyList:{display:"grid",gap:"10px"},historyItem:{background:"#f8fafc",borderRadius:"14px",padding:"12px",lineHeight:1.45},modalOverlay:{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50,padding:"20px"},modal:{background:"white",width:"100%",maxWidth:"760px",borderRadius:"28px",padding:"24px",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",maxHeight:"90vh",overflowY:"auto"},modalHeader:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"16px",marginBottom:"12px"},closeButton:{border:"none",background:"#e5e7eb",borderRadius:"999px",width:"36px",height:"36px",cursor:"pointer",fontSize:"22px"},label:{display:"grid",gap:"8px",fontWeight:700,marginTop:"16px"},input:{padding:"12px 14px",borderRadius:"14px",border:"1px solid #d1d5db",fontSize:"15px"},largeTextarea:{minHeight:"220px",padding:"14px",borderRadius:"16px",border:"1px solid #d1d5db",fontSize:"15px",resize:"vertical",lineHeight:1.5},securityBox:{display:"flex",gap:"10px",alignItems:"flex-start",marginTop:"18px",padding:"14px",borderRadius:"16px",background:"#fff7ed",border:"1px solid #fed7aa",lineHeight:1.5},modalActions:{display:"flex",justifyContent:"flex-end",gap:"10px",marginTop:"20px",flexWrap:"wrap"}
 };

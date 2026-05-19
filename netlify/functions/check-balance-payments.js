@@ -14,6 +14,32 @@ const supabase = createClient(
 const STOP_STATUSES = ["cancelled", "refused", "expired", "fully_paid", "confirmed"];
 const STOP_BALANCE_STATUSES = ["paid", "remboursé", "rembourse", "annulé", "annule", "cancelled"];
 
+async function logBookingEvent({ bookingId, eventType, label, message, metadata = {} }) {
+  if (!bookingId) return;
+  const { error } = await supabase.from("booking_events").insert([{
+    booking_request_id: bookingId,
+    event_type: eventType,
+    label,
+    message,
+    metadata,
+  }]);
+  if (error) console.error("Erreur log booking_events:", error.message);
+}
+
+async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null }) {
+  const { error } = await supabase.from("email_logs").insert([{
+    booking_request_id: bookingId || null,
+    email_type: emailType,
+    to_email: toEmail,
+    subject,
+    status,
+    error_message: errorMessage,
+    provider_id: providerId,
+    sent_at: new Date().toISOString(),
+  }]);
+  if (error) console.error("Erreur log email_logs:", error.message);
+}
+
 function formatDate(value) {
   if (!value) return "-";
   return new Date(value).toLocaleDateString("fr-FR");
@@ -209,7 +235,15 @@ async function sendEmail(booking, paymentLink, amount, step) {
     }),
   });
 
-  if (!response.ok) throw new Error(await response.text());
+  if (!response.ok) {
+    const errorText = await response.text();
+    await logEmail({ bookingId: booking.id, emailType: `balance:${step}`, toEmail: booking.guest_email, subject: `${labels[step]} - La Maison Verte`, status: "error", errorMessage: errorText });
+    throw new Error(errorText);
+  }
+
+  let responseData = null;
+  try { responseData = await response.json(); } catch (_) {}
+  await logEmail({ bookingId: booking.id, emailType: `balance:${step}`, toEmail: booking.guest_email, subject: `${labels[step]} - La Maison Verte`, status: "sent", providerId: responseData?.id || null });
 }
 
 export async function handler() {
@@ -280,6 +314,14 @@ export async function handler() {
         .eq("id", booking.id);
 
       if (updateError) throw updateError;
+
+      await logBookingEvent({
+        bookingId: booking.id,
+        eventType: `balance_${step}`,
+        label: `Solde : ${step}`,
+        message: `Lien solde envoyé pour ${formatMoney(balance)}`,
+        metadata: { step, balance, days, sessionId: session.id },
+      });
 
       processed.push({ bookingId: booking.id, step, balance, days });
     }

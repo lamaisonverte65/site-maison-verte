@@ -4,6 +4,51 @@ import { createClient } from "@supabase/supabase-js";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
+async function logBookingEvent({ bookingId, eventType, label, message, metadata = {} }) {
+  if (!bookingId) return;
+  const { error } = await supabase.from("booking_events").insert([{
+    booking_request_id: bookingId,
+    event_type: eventType,
+    label,
+    message,
+    metadata,
+  }]);
+  if (error) console.error("Erreur log booking_events:", error.message);
+}
+
+async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null }) {
+  const { error } = await supabase.from("email_logs").insert([{
+    booking_request_id: bookingId || null,
+    email_type: emailType,
+    to_email: toEmail,
+    subject,
+    status,
+    error_message: errorMessage,
+    provider_id: providerId,
+    sent_at: new Date().toISOString(),
+  }]);
+  if (error) console.error("Erreur log email_logs:", error.message);
+}
+
+async function upsertPayment({ bookingId, session, paymentType, amount, manualReason = null }) {
+  if (!bookingId || !session?.id) return;
+  const { error } = await supabase.from("payments").upsert({
+    booking_request_id: bookingId,
+    payment_type: paymentType,
+    manual_reason: manualReason,
+    amount: Number(amount || 0),
+    currency: session.currency || "eur",
+    status: "paid",
+    stripe_checkout_session_id: session.id,
+    stripe_payment_intent_id: session.payment_intent || null,
+    customer_email: session.customer_email || session.customer_details?.email || null,
+    paid_at: new Date().toISOString(),
+    metadata: session.metadata || {},
+  }, { onConflict: "stripe_checkout_session_id" });
+
+  if (error) console.error("Erreur upsert payments:", error.message);
+}
+
 function formatDate(value) {
   if (!value) return "-";
   return new Date(value).toLocaleDateString("fr-FR");
@@ -130,8 +175,32 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
   });
 
   if (!response.ok) {
-    console.error("Erreur email paiement reçu :", await response.text());
+    const errorText = await response.text();
+    console.error("Erreur email paiement reçu :", errorText);
+    await logEmail({
+      bookingId: booking.id,
+      emailType: `payment_confirmation:${paymentType}`,
+      toEmail: booking.guest_email,
+      subject: isFull ? "Paiement reçu - La Maison Verte" : isBalance ? "Solde reçu - La Maison Verte" : isManual ? "Paiement reçu - La Maison Verte" : "Acompte reçu - La Maison Verte",
+      status: "error",
+      errorMessage: errorText,
+    });
+    return;
   }
+
+  let responseData = null;
+  try {
+    responseData = await response.json();
+  } catch (_) {}
+
+  await logEmail({
+    bookingId: booking.id,
+    emailType: `payment_confirmation:${paymentType}`,
+    toEmail: booking.guest_email,
+    subject: isFull ? "Paiement reçu - La Maison Verte" : isBalance ? "Solde reçu - La Maison Verte" : isManual ? "Paiement reçu - La Maison Verte" : "Acompte reçu - La Maison Verte",
+    status: "sent",
+    providerId: responseData?.id || null,
+  });
 }
 
 export async function handler(event) {
@@ -290,6 +359,22 @@ export async function handler(event) {
 
       const { error: updateError } = await supabase.from("booking_requests").update(updatePayload).eq("id", bookingId);
       if (updateError) return { statusCode: 500, body: updateError.message };
+
+      await upsertPayment({
+        bookingId,
+        session,
+        paymentType,
+        manualReason: paymentType === "manual" ? manualReason : null,
+        amount: updatePayload.last_payment_amount || paidAmount,
+      });
+
+      await logBookingEvent({
+        bookingId,
+        eventType: "payment_received",
+        label: paymentType === "manual" ? `Paiement manuel reçu : ${getReasonLabel(manualReason)}` : `Paiement reçu : ${paymentType}`,
+        message: `Montant reçu : ${formatCurrency(updatePayload.last_payment_amount || paidAmount)}`,
+        metadata: { paymentType, manualReason, sessionId: session.id, paymentIntentId: session.payment_intent, amount: updatePayload.last_payment_amount || paidAmount },
+      });
 
       if (["deposit", "full", "balance", "manual"].includes(paymentType)) {
         await supabase.from("booking_requests").update({ status: "expired", updated_at: now })

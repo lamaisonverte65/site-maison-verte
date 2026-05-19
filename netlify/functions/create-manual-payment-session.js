@@ -4,6 +4,32 @@ import { createClient } from "@supabase/supabase-js";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
+async function logBookingEvent({ bookingId, eventType, label, message, metadata = {} }) {
+  if (!bookingId) return;
+  const { error } = await supabase.from("booking_events").insert([{
+    booking_request_id: bookingId,
+    event_type: eventType,
+    label,
+    message,
+    metadata,
+  }]);
+  if (error) console.error("Erreur log booking_events:", error.message);
+}
+
+async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null }) {
+  const { error } = await supabase.from("email_logs").insert([{
+    booking_request_id: bookingId || null,
+    email_type: emailType,
+    to_email: toEmail,
+    subject,
+    status,
+    error_message: errorMessage,
+    provider_id: providerId,
+    sent_at: new Date().toISOString(),
+  }]);
+  if (error) console.error("Erreur log email_logs:", error.message);
+}
+
 function formatDate(value) {
   if (!value) return "-";
   return new Date(value).toLocaleDateString("fr-FR");
@@ -33,7 +59,7 @@ function getButtonLabel(reason) {
   return labels[reason] || "Procéder au paiement";
 }
 
-async function sendManualPaymentEmail({ guestEmail, guestFirstName, guestLastName, startDate, endDate, amount, reason, message, paymentLink }) {
+async function sendManualPaymentEmail({ bookingId, guestEmail, guestFirstName, guestLastName, startDate, endDate, amount, reason, message, paymentLink }) {
   const reasonLabel = getReasonLabel(reason);
   const buttonLabel = getButtonLabel(reason);
 
@@ -93,8 +119,14 @@ async function sendManualPaymentEmail({ guestEmail, guestFirstName, guestLastNam
   });
 
   if (!response.ok) {
-    throw new Error(await response.text());
+    const errorText = await response.text();
+    await logEmail({ bookingId, emailType: `manual_payment:${reason}`, toEmail: guestEmail, subject: `${reasonLabel} à régler - La Maison Verte`, status: "error", errorMessage: errorText });
+    throw new Error(errorText);
   }
+
+  let responseData = null;
+  try { responseData = await response.json(); } catch (_) {}
+  await logEmail({ bookingId, emailType: `manual_payment:${reason}`, toEmail: guestEmail, subject: `${reasonLabel} à régler - La Maison Verte`, status: "sent", providerId: responseData?.id || null });
 }
 
 export async function handler(event) {
@@ -162,6 +194,7 @@ export async function handler(event) {
     });
 
     await sendManualPaymentEmail({
+      bookingId,
       guestEmail,
       guestFirstName,
       guestLastName,
@@ -185,6 +218,14 @@ export async function handler(event) {
     }).eq("id", bookingId);
 
     if (error) throw error;
+
+    await logBookingEvent({
+      bookingId,
+      eventType: "manual_payment_link_sent",
+      label: `${reasonLabel} demandé`,
+      message: `Lien de paiement envoyé pour ${formatMoney(numericAmount)}`,
+      metadata: { reason: safeReason, amount: numericAmount, sessionId: session.id },
+    });
 
     return {
       statusCode: 200,

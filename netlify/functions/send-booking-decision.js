@@ -1,3 +1,21 @@
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null }) {
+  const { error } = await supabase.from("email_logs").insert([{
+    booking_request_id: bookingId || null,
+    email_type: emailType,
+    to_email: toEmail,
+    subject,
+    status,
+    error_message: errorMessage,
+    provider_id: providerId,
+    sent_at: new Date().toISOString(),
+  }]);
+  if (error) console.error("Erreur log email_logs:", error.message);
+}
+
 function formatDateTime(value) {
   if (!value) return null;
 
@@ -91,6 +109,7 @@ export async function handler(event) {
     const data = JSON.parse(event.body || "{}");
 
     const {
+      bookingId,
       type,
       guestEmail,
       guestFirstName,
@@ -316,12 +335,17 @@ export async function handler(event) {
     if (!response.ok) {
       const error = await response.text();
       console.error("Erreur Resend :", error);
+      await logEmail({ bookingId, emailType: `booking_decision:${type}`, toEmail: guestEmail, subject, status: "error", errorMessage: error });
 
       return {
         statusCode: 500,
         body: JSON.stringify({ error }),
       };
     }
+
+    let responseData = null;
+    try { responseData = await response.json(); } catch (_) {}
+    await logEmail({ bookingId, emailType: `booking_decision:${type}`, toEmail: guestEmail, subject, status: "sent", providerId: responseData?.id || null });
 
     return {
       statusCode: 200,
