@@ -2,6 +2,63 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
+async function requireAdmin(event) {
+  const rawHeader =
+    event.headers?.authorization ||
+    event.headers?.Authorization ||
+    "";
+
+  const token = rawHeader.startsWith("Bearer ")
+    ? rawHeader.slice("Bearer ".length)
+    : null;
+
+  if (!token) {
+    return {
+      error: {
+        statusCode: 401,
+        body: JSON.stringify({ error: "Unauthorized" }),
+      },
+    };
+  }
+
+  const { data, error } = await supabase.auth.getUser(token);
+
+  if (error || !data?.user) {
+    return {
+      error: {
+        statusCode: 401,
+        body: JSON.stringify({ error: "Invalid admin session" }),
+      },
+    };
+  }
+
+  const allowedRaw =
+    process.env.ADMIN_EMAILS ||
+    process.env.ADMIN_EMAIL ||
+    "";
+
+  const allowedEmails = allowedRaw
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (
+    allowedEmails.length > 0 &&
+    !allowedEmails.includes(String(data.user.email || "").toLowerCase())
+  ) {
+    return {
+      error: {
+        statusCode: 403,
+        body: JSON.stringify({ error: "Forbidden" }),
+      },
+    };
+  }
+
+  return { user: data.user };
+}
+
+
+
 async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null }) {
   const { error } = await supabase.from("email_logs").insert([{
     booking_request_id: bookingId || null,
@@ -104,6 +161,9 @@ export async function handler(event) {
       body: "Method Not Allowed",
     };
   }
+
+  const adminAuth = await requireAdmin(event);
+  if (adminAuth.error) return adminAuth.error;
 
   try {
     const data = JSON.parse(event.body || "{}");

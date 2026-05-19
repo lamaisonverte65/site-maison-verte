@@ -217,10 +217,22 @@ export default function Admin() {
     });
   }
 
+
+  async function getAdminFetchHeaders() {
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+
+    return {
+      "Content-Type": "application/json",
+      ...(currentSession?.access_token
+        ? { Authorization: `Bearer ${currentSession.access_token}` }
+        : {}),
+    };
+  }
+
   async function createCheckoutSession(request, ownerPrice) {
     const response = await fetch("/.netlify/functions/create-checkout-session", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await getAdminFetchHeaders(),
       body: JSON.stringify({
         bookingId: request.id,
         guestFirstName: request.guest_first_name,
@@ -266,7 +278,7 @@ export default function Admin() {
   async function createManualPayment(request, amount, reason, message) {
     const response = await fetch("/.netlify/functions/create-manual-payment-session", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await getAdminFetchHeaders(),
       body: JSON.stringify({
         bookingId: request.id,
         guestEmail: request.guest_email,
@@ -287,7 +299,7 @@ export default function Admin() {
   async function refundBookingPayment(request, values) {
     const response = await fetch("/.netlify/functions/refund-booking-payment", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await getAdminFetchHeaders(),
       body: JSON.stringify({
         bookingId: request.id,
         cancellationType: values.cancellationType,
