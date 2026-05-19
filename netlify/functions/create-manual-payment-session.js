@@ -17,15 +17,26 @@ function getReasonLabel(reason) {
   const labels = {
     acompte: "Acompte",
     solde: "Solde",
+    total: "Paiement total / tarif promo",
     complement: "Complément",
-    total: "Paiement total",
-    autre: "Paiement",
   };
   return labels[reason] || "Paiement";
 }
 
+function getButtonLabel(reason) {
+  const labels = {
+    acompte: "Payer l’acompte",
+    solde: "Payer le solde",
+    total: "Payer le séjour",
+    complement: "Payer le complément",
+  };
+  return labels[reason] || "Procéder au paiement";
+}
+
 async function sendManualPaymentEmail({ guestEmail, guestFirstName, guestLastName, startDate, endDate, amount, reason, message, paymentLink }) {
   const reasonLabel = getReasonLabel(reason);
+  const buttonLabel = getButtonLabel(reason);
+
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6;">
       <h2>${reasonLabel} à régler — La Maison Verte</h2>
@@ -44,11 +55,18 @@ async function sendManualPaymentEmail({ guestEmail, guestFirstName, guestLastNam
         <strong>Montant à payer :</strong> ${formatMoney(amount)}
       </p>
 
+      ${reason === "total" ? `
+        <p>
+          Ce paiement correspond au montant total convenu pour votre séjour.
+          Après règlement, votre réservation sera considérée comme soldée.
+        </p>
+      ` : ""}
+
       ${message ? `<p><strong>Message :</strong><br />${message}</p>` : ""}
 
       <p style="margin-top:30px;">
         <a href="${paymentLink}" style="background:#16a34a;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;">
-          Payer ${reasonLabel.toLowerCase()}
+          ${buttonLabel}
         </a>
       </p>
 
@@ -86,17 +104,31 @@ export async function handler(event) {
 
   try {
     const data = JSON.parse(event.body || "{}");
-    const { bookingId, guestEmail, guestFirstName, guestLastName, startDate, endDate, amount, reason = "autre", message = "" } = data;
+    const {
+      bookingId,
+      guestEmail,
+      guestFirstName,
+      guestLastName,
+      startDate,
+      endDate,
+      amount,
+      reason = "solde",
+      message = "",
+    } = data;
 
+    const allowedReasons = ["acompte", "solde", "total", "complement"];
+    const safeReason = allowedReasons.includes(reason) ? reason : "complement";
     const numericAmount = Number(amount || 0);
+
     if (!bookingId || !guestEmail) {
       return { statusCode: 400, body: JSON.stringify({ error: "bookingId et guestEmail obligatoires" }) };
     }
+
     if (!numericAmount || numericAmount <= 0) {
       return { statusCode: 400, body: JSON.stringify({ error: "Montant invalide" }) };
     }
 
-    const reasonLabel = getReasonLabel(reason);
+    const reasonLabel = getReasonLabel(safeReason);
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -105,7 +137,7 @@ export async function handler(event) {
       metadata: {
         booking_id: bookingId,
         payment_type: "manual",
-        manual_reason: reason,
+        manual_reason: safeReason,
         manual_amount: String(numericAmount),
         guest_first_name: guestFirstName || "",
         guest_last_name: guestLastName || "",
@@ -129,12 +161,22 @@ export async function handler(event) {
       cancel_url: "https://lamaisonverte65.fr/cancel",
     });
 
-    await sendManualPaymentEmail({ guestEmail, guestFirstName, guestLastName, startDate, endDate, amount: numericAmount, reason, message, paymentLink: session.url });
+    await sendManualPaymentEmail({
+      guestEmail,
+      guestFirstName,
+      guestLastName,
+      startDate,
+      endDate,
+      amount: numericAmount,
+      reason: safeReason,
+      message,
+      paymentLink: session.url,
+    });
 
     const { error } = await supabase.from("booking_requests").update({
       manual_payment_amount: numericAmount,
       manual_payment_link: session.url,
-      manual_payment_reason: reason,
+      manual_payment_reason: safeReason,
       manual_payment_message: message,
       manual_payment_status: "à payer",
       manual_payment_requested_at: new Date().toISOString(),
@@ -144,7 +186,10 @@ export async function handler(event) {
 
     if (error) throw error;
 
-    return { statusCode: 200, body: JSON.stringify({ url: session.url, sessionId: session.id, amount: numericAmount, reason }) };
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ url: session.url, sessionId: session.id, amount: numericAmount, reason: safeReason }),
+    };
   } catch (error) {
     console.error("Erreur create-manual-payment-session:", error);
     return { statusCode: 500, body: JSON.stringify({ error: error.message }) };

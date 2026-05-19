@@ -318,7 +318,7 @@ export default function Admin() {
       price: "",
       reason: "solde",
       message: "Merci de procéder au paiement via le lien sécurisé ci-dessous.",
-      helper: "Saisis un montant manuel, choisis le motif, puis confirme l’envoi au client.",
+      helper: "Saisis un montant manuel, choisis le motif précis, puis confirme l’envoi au client. Le motif pilotera les statuts après paiement.",
       confirmText: "Je confirme la création du lien Stripe et l’envoi de l’email au client.",
     });
   }
@@ -422,48 +422,19 @@ export default function Admin() {
 
       if (modal.type === "manual_payment") {
         const amount = Number(values.price || 0);
-        const reason = values.reason || "autre";
         if (!amount || amount <= 0) return alert("Montant invalide.");
 
-        const payment = await createManualPayment(request, amount, reason, values.message);
+        const payment = await createManualPayment(request, amount, values.reason || "solde", values.message);
 
-        const manualUpdate = {
+        const { error } = await supabase.from("booking_requests").update({
           manual_payment_amount: amount,
           manual_payment_link: payment.url,
-          manual_payment_reason: reason,
+          manual_payment_reason: values.reason || "solde",
           manual_payment_message: values.message,
           manual_payment_status: "à payer",
           manual_payment_requested_at: new Date().toISOString(),
-          payment_status: "manual_payment_requested",
           updated_at: new Date().toISOString(),
-        };
-
-        // Si le lien manuel est utilisé pour faire payer le séjour complet
-        // ou une réservation encore en attente, on bloque les dates immédiatement
-        // comme pour une demande acceptée classique.
-        if ((request.status || "pending") === "pending") {
-          manualUpdate.status = "accepted";
-          manualUpdate.accepted_at = request.accepted_at || new Date().toISOString();
-        }
-
-        if (reason === "total") {
-          manualUpdate.status = "accepted";
-          manualUpdate.owner_price = amount;
-          manualUpdate.deposit_amount = 0;
-          manualUpdate.balance_amount = amount;
-          manualUpdate.deposit_status = "non applicable";
-          manualUpdate.balance_status = "à payer";
-        }
-
-        if (reason === "solde") {
-          manualUpdate.balance_status = request.balance_status === "paid" ? "paid" : "à payer";
-        }
-
-        if (reason === "acompte") {
-          manualUpdate.deposit_status = request.deposit_status === "paid" ? "paid" : "à payer";
-        }
-
-        const { error } = await supabase.from("booking_requests").update(manualUpdate).eq("id", request.id);
+        }).eq("id", request.id);
 
         if (error) throw error;
         alert("Lien de paiement créé et email envoyé au client.");
@@ -962,7 +933,7 @@ function ActionModal({ modal, onClose, onSubmit }) {
         {modal.type === "manual_payment" && (
           <>
             <label style={styles.label}>Montant à payer (€)<input style={styles.input} value={price} onChange={(event) => setPrice(event.target.value)} placeholder="Ex : 168" /></label>
-            <label style={styles.label}>Motif du paiement<select style={styles.input} value={reason} onChange={(event) => setReason(event.target.value)}><option value="total">Paiement total / séjour soldé</option><option value="solde">Solde</option><option value="acompte">Acompte</option><option value="complement">Complément</option><option value="autre">Autre</option></select></label>
+            <label style={styles.label}>Motif du paiement<select style={styles.input} value={reason} onChange={(event) => setReason(event.target.value)}><option value="solde">Solde</option><option value="acompte">Acompte</option><option value="total">Paiement total / tarif promo</option><option value="complement">Complément</option></select></label>
           </>
         )}
 

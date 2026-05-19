@@ -18,10 +18,27 @@ function getReasonLabel(reason) {
   const labels = {
     acompte: "Acompte",
     solde: "Solde",
+    total: "Paiement total / tarif promo",
     complement: "Complément",
-    autre: "Paiement",
   };
   return labels[reason] || "Paiement";
+}
+
+function getCheckoutAmount(session, fallback = 0) {
+  if (typeof session.amount_total === "number") return session.amount_total / 100;
+  return Number(fallback || 0);
+}
+
+function getTotalDueAfterPayment(booking, paymentType, manualReason, paidAmount) {
+  const currentTotal = Number(booking.owner_price || booking.estimated_total || 0);
+
+  // Cas métier important : paiement manuel "total" = tarif final convenu.
+  // Exemple : séjour affiché 240 €, tarif promo accepté 200 €, paiement 200 € => séjour soldé.
+  if (paymentType === "manual" && manualReason === "total") {
+    return paidAmount;
+  }
+
+  return currentTotal;
 }
 
 async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
@@ -33,7 +50,7 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
   const isFull = paymentType === "full";
   const isBalance = paymentType === "balance";
   const isManual = paymentType === "manual";
-  const manualReason = extra.manualReason || booking.manual_payment_reason || "autre";
+  const manualReason = extra.manualReason || booking.manual_payment_reason || "complement";
   const manualAmount = Number(extra.manualAmount || booking.manual_payment_amount || 0);
 
   const title = isFull
@@ -132,11 +149,18 @@ export async function handler(event) {
       const { data: booking, error: readError } = await supabase.from("booking_requests").select("*").eq("id", bookingId).single();
       if (readError) return { statusCode: 500, body: readError.message };
 
-      const total = Number(booking.owner_price || booking.estimated_total || session.metadata?.total_price || 0);
-      const deposit = Number(booking.deposit_amount || session.metadata?.deposit_amount || Math.round(total * 0.3));
-      const balance = Number(booking.balance_amount || session.metadata?.balance_amount || Math.max(total - deposit, 0));
-      const manualAmount = Number(session.metadata?.manual_amount || booking.manual_payment_amount || 0);
       const now = new Date().toISOString();
+      const manualReason = session.metadata?.manual_reason || booking.manual_payment_reason || "complement";
+      const manualAmountFromMetadata = Number(session.metadata?.manual_amount || booking.manual_payment_amount || 0);
+      const paidAmount = getCheckoutAmount(session, manualAmountFromMetadata);
+
+      const currentTotal = Number(booking.owner_price || booking.estimated_total || session.metadata?.total_price || 0);
+      const totalDue = getTotalDueAfterPayment(booking, paymentType, manualReason, paidAmount);
+      const deposit = Number(booking.deposit_amount || session.metadata?.deposit_amount || Math.round(totalDue * 0.3));
+      const balance = Number(booking.balance_amount || session.metadata?.balance_amount || Math.max(totalDue - deposit, 0));
+      const previousPaid = Number(booking.amount_paid || booking.total_paid || 0);
+      const newTotalPaid = paymentType === "full" ? totalDue : previousPaid + paidAmount;
+      const fullyPaid = totalDue > 0 && newTotalPaid >= totalDue;
 
       let updatePayload = {};
 
@@ -145,15 +169,15 @@ export async function handler(event) {
           status: "fully_paid",
           payment_status: "paid",
           deposit_amount: 0,
-          balance_amount: total,
+          balance_amount: totalDue,
           deposit_status: "non applicable",
           balance_status: "paid",
           balance_paid_at: now,
-          amount_paid: total,
+          amount_paid: totalDue,
           stripe_checkout_session_id: session.id,
           stripe_payment_intent_id: session.payment_intent,
           last_payment_type: "full",
-          last_payment_amount: total,
+          last_payment_amount: totalDue,
           last_payment_paid_at: now,
           confirmed_at: now,
           updated_at: now,
@@ -164,16 +188,16 @@ export async function handler(event) {
         updatePayload = {
           status: "deposit_paid",
           payment_status: "paid",
-          deposit_amount: deposit,
-          balance_amount: balance,
+          deposit_amount: paidAmount || deposit,
+          balance_amount: Math.max(totalDue - (paidAmount || deposit), 0),
           deposit_status: "paid",
           deposit_paid_at: now,
           balance_status: "en attente",
-          amount_paid: deposit,
+          amount_paid: paidAmount || deposit,
           stripe_checkout_session_id: session.id,
           stripe_payment_intent_id: session.payment_intent,
           last_payment_type: "deposit",
-          last_payment_amount: deposit,
+          last_payment_amount: paidAmount || deposit,
           last_payment_paid_at: now,
           confirmed_at: now,
           updated_at: now,
@@ -181,17 +205,16 @@ export async function handler(event) {
       }
 
       if (paymentType === "balance") {
-        const amountPaid = Number(booking.amount_paid || booking.deposit_amount || 0) + balance;
         updatePayload = {
-          status: "fully_paid",
+          status: fullyPaid ? "fully_paid" : "paid",
           payment_status: "paid",
-          balance_status: "paid",
-          balance_paid_at: now,
-          amount_paid: amountPaid,
+          balance_status: fullyPaid ? "paid" : "partiellement payé",
+          balance_paid_at: fullyPaid ? now : booking.balance_paid_at || null,
+          amount_paid: newTotalPaid,
           stripe_checkout_session_id: session.id,
           stripe_payment_intent_id: session.payment_intent,
           last_payment_type: "balance",
-          last_payment_amount: balance,
+          last_payment_amount: paidAmount || balance,
           last_payment_paid_at: now,
           confirmed_at: now,
           updated_at: now,
@@ -199,64 +222,76 @@ export async function handler(event) {
       }
 
       if (paymentType === "manual") {
-        const manualReason = session.metadata?.manual_reason || "autre";
-        const previousPaid = Number(booking.amount_paid || 0);
-        const amountPaid = previousPaid + manualAmount;
-        const totalDue = Number(booking.owner_price || booking.estimated_total || 0);
-        const depositDue = Number(booking.deposit_amount || Math.round(totalDue * 0.3) || 0);
-        const balanceDue = Number(booking.balance_amount || Math.max(totalDue - depositDue, 0));
-        const isFullyPaid = totalDue > 0 && amountPaid >= totalDue;
-
-        updatePayload = {
+        const manualPayload = {
           manual_payment_status: "paid",
           manual_payment_paid_at: now,
-          amount_paid: amountPaid,
-          total_paid: amountPaid,
-          payment_status: "paid",
+          manual_payment_amount: paidAmount,
+          manual_payment_reason: manualReason,
+          amount_paid: newTotalPaid,
           stripe_checkout_session_id: session.id,
           stripe_payment_intent_id: session.payment_intent,
           last_payment_type: `manual:${manualReason}`,
-          last_payment_amount: manualAmount,
+          last_payment_amount: paidAmount,
           last_payment_paid_at: now,
           updated_at: now,
         };
 
-        // Cas le plus important : paiement manuel total ou cumul des paiements >= total dû.
-        // On bloque les dates, on solde la réservation et on stoppe toute boucle de relance.
-        if (manualReason === "total" || isFullyPaid) {
-          updatePayload.status = "fully_paid";
-          updatePayload.deposit_status = "paid";
-          updatePayload.balance_status = "paid";
-          updatePayload.balance_paid_at = now;
-          updatePayload.confirmed_at = booking.confirmed_at || now;
-          updatePayload.deposit_amount = booking.deposit_amount || 0;
-          updatePayload.balance_amount = totalDue;
-        } else if (manualReason === "solde") {
-          updatePayload.balance_status = "paid";
-          updatePayload.balance_paid_at = now;
-          updatePayload.status = ["pending", "accepted", "deposit_paid", "paid"].includes(booking.status)
-            ? "fully_paid"
-            : booking.status;
-          updatePayload.confirmed_at = booking.confirmed_at || now;
+        if (manualReason === "total") {
+          const discountAmount = Number(booking.estimated_total || currentTotal || 0) - paidAmount;
+          updatePayload = {
+            ...manualPayload,
+            status: "fully_paid",
+            payment_status: "paid",
+            owner_price: paidAmount,
+            amount_paid: paidAmount,
+            deposit_amount: 0,
+            balance_amount: paidAmount,
+            deposit_status: "non applicable",
+            balance_status: "paid",
+            balance_paid_at: now,
+            discount_amount: discountAmount > 0 ? discountAmount : booking.discount_amount || 0,
+            discount_reason: discountAmount > 0 ? "Paiement total manuel / tarif promo" : booking.discount_reason || null,
+            confirmed_at: now,
+          };
         } else if (manualReason === "acompte") {
-          updatePayload.deposit_status = "paid";
-          updatePayload.deposit_paid_at = now;
-          updatePayload.balance_status = booking.balance_status || "en attente";
-          updatePayload.status = ["pending", "accepted"].includes(booking.status) ? "deposit_paid" : booking.status;
-          updatePayload.confirmed_at = booking.confirmed_at || now;
-          updatePayload.deposit_amount = booking.deposit_amount || manualAmount;
-          updatePayload.balance_amount = booking.balance_amount || Math.max(totalDue - manualAmount, 0);
-        } else {
-          // Complément ou autre paiement partiel : on conserve le statut si déjà bloquant.
-          // Si la résa était encore pending, on la passe accepted pour bloquer les dates.
-          updatePayload.status = booking.status === "pending" ? "accepted" : booking.status;
+          updatePayload = {
+            ...manualPayload,
+            status: fullyPaid ? "fully_paid" : "deposit_paid",
+            payment_status: "paid",
+            deposit_amount: paidAmount,
+            deposit_status: "paid",
+            deposit_paid_at: now,
+            balance_amount: Math.max(totalDue - newTotalPaid, 0),
+            balance_status: fullyPaid ? "paid" : "en attente",
+            balance_paid_at: fullyPaid ? now : booking.balance_paid_at || null,
+            confirmed_at: now,
+          };
+        } else if (manualReason === "solde") {
+          updatePayload = {
+            ...manualPayload,
+            status: fullyPaid ? "fully_paid" : "paid",
+            payment_status: "paid",
+            balance_status: fullyPaid ? "paid" : "partiellement payé",
+            balance_amount: Math.max(totalDue - Number(booking.deposit_amount || 0), 0),
+            balance_paid_at: fullyPaid ? now : booking.balance_paid_at || null,
+            confirmed_at: now,
+          };
+        } else if (manualReason === "complement") {
+          updatePayload = {
+            ...manualPayload,
+            status: fullyPaid ? "fully_paid" : "paid",
+            payment_status: "paid",
+            balance_status: fullyPaid ? "paid" : (booking.balance_status || "partiellement payé"),
+            balance_paid_at: fullyPaid ? now : booking.balance_paid_at || null,
+            confirmed_at: now,
+          };
         }
       }
 
       const { error: updateError } = await supabase.from("booking_requests").update(updatePayload).eq("id", bookingId);
       if (updateError) return { statusCode: 500, body: updateError.message };
 
-      if (["deposit", "full", "manual"].includes(paymentType) && ["deposit_paid", "paid", "fully_paid", "confirmed", "accepted"].includes(updatePayload.status)) {
+      if (["deposit", "full", "balance", "manual"].includes(paymentType)) {
         await supabase.from("booking_requests").update({ status: "expired", updated_at: now })
           .neq("id", bookingId)
           .in("status", ["pending", "accepted"])
@@ -265,11 +300,11 @@ export async function handler(event) {
       }
 
       await sendPaymentConfirmationEmail({ ...booking, ...updatePayload }, paymentType, {
-        manualReason: session.metadata?.manual_reason,
-        manualAmount,
+        manualReason,
+        manualAmount: paidAmount,
       });
 
-      console.log("Paiement Stripe validé :", bookingId, paymentType);
+      console.log("Paiement Stripe validé :", bookingId, paymentType, manualReason, paidAmount);
     }
 
     return { statusCode: 200, body: JSON.stringify({ received: true }) };
