@@ -1,0 +1,25 @@
+[build]
+  publish = "dist"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/calendar.ics"
+  to = "/.netlify/functions/export-ical"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[functions]
+  node_bundler = "esbuild"
+
+[functions."check-balance-payments"]
+  schedule = "0 8 * * *"
+
+[functions."check-expired-bookings"]
+  schedule = "0 * * * *"
+
+[functions."send-arrival-reminder"]
+  schedule = "0 9 * * *"
