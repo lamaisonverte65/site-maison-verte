@@ -1,10 +1,6 @@
+import { schedule } from "@netlify/functions";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-
-export const config = {
-  schedule: "0 8 * * *",
-};
-
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -246,7 +242,7 @@ async function sendEmail(booking, paymentLink, amount, step) {
   await logEmail({ bookingId: booking.id, emailType: `balance:${step}`, toEmail: booking.guest_email, subject: `${labels[step]} - La Maison Verte`, status: "sent", providerId: responseData?.id || null });
 }
 
-export async function handler() {
+export const handler = schedule("0 8 * * *", async (event) => {
   try {
     const { data: bookings, error } = await supabase
       .from("booking_requests")
@@ -334,4 +330,5 @@ export async function handler() {
     console.error("Erreur check-balance-payments:", error);
     return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
   }
-}
+});
+
