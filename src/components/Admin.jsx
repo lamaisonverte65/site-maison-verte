@@ -284,6 +284,23 @@ export default function Admin() {
     return await response.json();
   }
 
+  async function refundBookingPayment(request, values) {
+    const response = await fetch("/.netlify/functions/refund-booking-payment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        bookingId: request.id,
+        cancellationType: values.cancellationType,
+        refundMode: values.refundMode,
+        refundAmount: values.refundAmount,
+        message: values.message,
+      }),
+    });
+
+    if (!response.ok) throw new Error(await response.text());
+    return await response.json();
+  }
+
   function openAcceptModal(request) {
     if (hasDateConflict(request)) {
       alert("Impossible d’accepter : une autre demande est déjà acceptée/payée/confirmée sur ces dates.");
@@ -332,14 +349,17 @@ export default function Admin() {
   }
 
   function openCancelModal(request) {
+    const paid = getAmounts(request).paid;
     setModal({
       type: "cancel",
       request,
-      title: "Annuler la réservation",
-      message: "La réservation est annulée.",
-      helper: "Choisis le traitement remboursement à noter. Le remboursement Stripe automatique sera branché à l’étape suivante.",
-      confirmText: "Je confirme l’annulation de cette réservation.",
-      refund: false,
+      title: "Annuler / rembourser la réservation",
+      message: "La réservation est annulée. Le remboursement sera traité selon les conditions applicables.",
+      helper: `Montant déjà payé : ${formatMoney(paid)}. Choisis qui annule et le remboursement à effectuer. L'action Stripe sera déclenchée après confirmation.`,
+      confirmText: "Je confirme l’annulation et l’éventuel remboursement Stripe.",
+      cancellationType: "client",
+      refundMode: "policy",
+      refundAmount: "",
     });
   }
 
@@ -444,17 +464,11 @@ export default function Admin() {
       }
 
       if (modal.type === "cancel") {
-        const refundNote = values.refundMode && values.refundMode !== "none" ? `\n\nRemboursement demandé : ${values.refundMode}.` : "\n\nAucun remboursement automatique effectué.";
-        const { error } = await supabase.from("booking_requests").update({
-          status: "cancelled",
-          owner_message: `${values.message}${refundNote}`,
-          deposit_status: values.refundMode === "deposit" || values.refundMode === "total" ? "à rembourser" : request.deposit_status || "annulé",
-          balance_status: values.refundMode === "balance" || values.refundMode === "total" ? "à rembourser" : request.balance_status || "annulé",
-          updated_at: new Date().toISOString(),
-        }).eq("id", request.id);
-        if (error) throw error;
-        await logBookingEvent(request.id, "booking_cancelled", "Réservation annulée", `${values.message}${refundNote}`, { refundMode: values.refundMode || "none" });
-        alert("Réservation annulée. Procédure remboursement notée dans la fiche.");
+        const result = await refundBookingPayment(request, values);
+        const refunded = Number(result.refundedAmount || 0);
+        alert(refunded > 0
+          ? `Réservation annulée et remboursement Stripe effectué : ${formatMoney(refunded)}.`
+          : "Réservation annulée sans remboursement Stripe.");
       }
 
 
@@ -915,6 +929,8 @@ function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, on
         <Info label="Paiement manuel" value={request.manual_payment_status ? `${request.manual_payment_status} — ${formatMoney(request.manual_payment_amount)}` : "-"} />
         <Info label="Total séjour" value={formatMoney(amounts.total)} />
         <Info label="Total payé" value={formatMoney(amounts.paid)} />
+        <Info label="Total remboursé" value={formatMoney(request.refunded_amount || 0)} />
+        <Info label="Dernier remboursement Stripe" value={request.stripe_refund_id || "-"} />
         <Info label="Expiration acompte" value={formatDateTime(request.acceptance_expires_at)} />
       </div>
 
@@ -996,12 +1012,14 @@ function ActionModal({ modal, onClose, onSubmit }) {
   const [price, setPrice] = useState(modal.price || "");
   const [reason, setReason] = useState(modal.reason || "solde");
   const [message, setMessage] = useState(modal.message || "");
-  const [refundMode, setRefundMode] = useState("none");
+  const [refundMode, setRefundMode] = useState(modal.refundMode || "none");
+  const [refundAmount, setRefundAmount] = useState(modal.refundAmount || "");
+  const [cancellationType, setCancellationType] = useState(modal.cancellationType || "client");
   const [confirmed, setConfirmed] = useState(false);
 
   function submit(event) {
     event.preventDefault();
-    onSubmit({ price, reason, message, refundMode, confirmed });
+    onSubmit({ price, reason, message, refundMode, refundAmount, cancellationType, confirmed });
   }
 
   return (
@@ -1028,7 +1046,34 @@ function ActionModal({ modal, onClose, onSubmit }) {
         <label style={styles.label}>Message envoyé au client / note interne<textarea style={styles.largeTextarea} value={message} onChange={(event) => setMessage(event.target.value)} /></label>
 
         {modal.type === "cancel" && (
-          <label style={styles.label}>Traitement remboursement<select style={styles.input} value={refundMode} onChange={(event) => setRefundMode(event.target.value)}><option value="none">Aucun remboursement automatique</option><option value="deposit">Acompte à rembourser</option><option value="balance">Solde à rembourser</option><option value="total">Remboursement total</option></select></label>
+          <>
+            <label style={styles.label}>
+              Type d’annulation
+              <select style={styles.input} value={cancellationType} onChange={(event) => setCancellationType(event.target.value)}>
+                <option value="client">Annulation client</option>
+                <option value="owner">Annulation propriétaire</option>
+              </select>
+            </label>
+
+            <label style={styles.label}>
+              Remboursement
+              <select style={styles.input} value={refundMode} onChange={(event) => setRefundMode(event.target.value)}>
+                <option value="policy">Calculer selon les conditions</option>
+                <option value="none">Aucun remboursement</option>
+                <option value="deposit">Rembourser l’acompte</option>
+                <option value="balance">Rembourser le solde</option>
+                <option value="total">Remboursement total</option>
+                <option value="custom">Montant libre</option>
+              </select>
+            </label>
+
+            {refundMode === "custom" && (
+              <label style={styles.label}>
+                Montant à rembourser (€)
+                <input style={styles.input} value={refundAmount} onChange={(event) => setRefundAmount(event.target.value)} placeholder="Ex : 72" />
+              </label>
+            )}
+          </>
         )}
 
         <label style={styles.securityBox}><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>{modal.confirmText || "Je confirme cette action."}</span></label>
