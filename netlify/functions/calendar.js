@@ -7,6 +7,7 @@ const supabase = createClient(
 );
 
 const BLOCKING_BOOKING_STATUSES = [
+  "pending",
   "accepted",
   "deposit_paid",
   "paid",
