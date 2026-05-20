@@ -34,14 +34,28 @@ export async function handler(event) {
 
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-        <h2>Paiement demandé — La Maison Verte</h2>
+        
+<h2 style="color:#14532d;">Paiement demandé — La Maison Verte</h2>
+
+<p>
+  Bonjour,
+</p>
+
+<p>
+  Merci encore pour votre réservation à <strong>La Maison Verte à Arreau</strong>.
+</p>
+
+<p>
+  Vous trouverez ci-dessous les informations concernant ce règlement.
+</p>
+
 
         <p>
           Bonjour ${guestFirstName || ""} ${guestLastName || ""},
         </p>
 
         <p>
-          Un paiement vous est demandé pour votre réservation à
+          Un règlement est actuellement nécessaire pour votre réservation à
           <strong>La Maison Verte à Arreau</strong>.
         </p>
 

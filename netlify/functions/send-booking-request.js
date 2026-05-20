@@ -27,7 +27,18 @@ export async function handler(event) {
   const data = JSON.parse(event.body || "{}");
 
   const ownerEmailHtml = `
-    <h2>Nouvelle demande de réservation</h2>
+    
+<div style="font-family:Arial,sans-serif;line-height:1.7;color:#1e293b;">
+  <h2 style="color:#14532d;">Nouvelle demande de réservation</h2>
+  <p>Bonjour Raphaël,</p>
+  <p>
+    Une nouvelle demande de réservation vient d’être reçue pour
+    <strong>La Maison Verte à Arreau</strong>.
+  </p>
+  <p>
+    Voici le récapitulatif de la demande :
+  </p>
+
     <p><strong>Nom :</strong> ${data.guestFirstName} ${data.guestLastName}</p>
     <p><strong>Email :</strong> ${data.guestEmail}</p>
     <p><strong>Téléphone :</strong> ${data.guestPhone}</p>
@@ -35,10 +46,23 @@ export async function handler(event) {
     <p><strong>Départ :</strong> ${data.endDate}</p>
     <p><strong>Nuits :</strong> ${data.nights}</p>
     <p><strong>Total estimatif :</strong> ${data.total}€</p>
+  
+<hr style="margin:32px 0 20px;border:none;border-top:1px solid #e5e7eb;" />
+<p style="font-size:14px;color:#475569;line-height:1.7;">
+  <strong>La Maison Verte</strong><br/>
+  Centre historique d’Arreau — Hautes‑Pyrénées<br/>
+  <a href="https://lamaisonverte65.fr" style="color:#14532d;">lamaisonverte65.fr</a><br/>
+  contact@lamaisonverte65.fr
+</p>
+
+</div>
   `;
 
   const guestEmailHtml = `
-    <h2>Votre demande a bien été reçue</h2>
+    
+<div style="font-family:Arial,sans-serif;line-height:1.7;color:#1e293b;">
+  <h2 style="color:#14532d;">Votre demande a bien été reçue</h2>
+
 
     <p>Bonjour ${data.guestFirstName} ${data.guestLastName},</p>
 
@@ -61,6 +85,16 @@ export async function handler(event) {
     <p>
       Merci et à bientôt dans les Pyrénées 🙂
     </p>
+  
+<hr style="margin:32px 0 20px;border:none;border-top:1px solid #e5e7eb;" />
+<p style="font-size:14px;color:#475569;line-height:1.7;">
+  <strong>La Maison Verte</strong><br/>
+  Centre historique d’Arreau — Hautes‑Pyrénées<br/>
+  <a href="https://lamaisonverte65.fr" style="color:#14532d;">lamaisonverte65.fr</a><br/>
+  contact@lamaisonverte65.fr
+</p>
+
+</div>
   `;
 
   const ownerResponse = await fetch("https://api.resend.com/emails", {
