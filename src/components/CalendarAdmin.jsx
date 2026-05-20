@@ -429,69 +429,12 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   }
 
 
-  async function editDefaultNightPrice() {
-    const nightPrice = window.prompt("Tarif par défaut par nuit (€) :", String(defaultNightPrice || 80));
-    if (nightPrice === null) return;
-
-    const notes = window.prompt("Notes tarif par défaut :", "Hors saison et hors tarif spécifique");
-    if (notes === null) return;
-
-    try {
-      const response = await fetch("/.netlify/functions/save-price-rule", {
-        method: "POST",
-        headers: await getAdminFetchHeaders(),
-        body: JSON.stringify({
-          action: "update_default_price",
-          defaultNightPrice: Number(nightPrice),
-          notes,
-        }),
-      });
-
-      if (!response.ok) throw new Error(await response.text());
-      await loadCalendar();
-    } catch (error) {
-      alert("Erreur tarif par défaut : " + error.message);
-    }
+  function editDefaultNightPrice() {
+    alert("La modification du tarif par défaut se fait maintenant dans l’onglet Tarifs, avec une interface complète.");
   }
 
-  async function editSeasonPrice(rule) {
-    const label = window.prompt("Nom de la saison :", rule?.label || "Nouvelle saison");
-    if (label === null) return;
-    const startDate = window.prompt("Date début YYYY-MM-DD :", rule?.start_date || "");
-    if (startDate === null) return;
-    const endDate = window.prompt("Date fin exclusive YYYY-MM-DD :", rule?.end_date || "");
-    if (endDate === null) return;
-    const nightPrice = window.prompt("Prix par nuit (€) :", rule?.night_price ?? "80");
-    if (nightPrice === null) return;
-    const minimumNights = window.prompt("Séjour minimum sur cette saison (vide = 2 nuits) :", rule?.minimum_nights ?? "");
-    if (minimumNights === null) return;
-    const notes = window.prompt("Notes :", rule?.notes || "");
-    if (notes === null) return;
-
-    try {
-      const response = await fetch("/.netlify/functions/save-price-rule", {
-        method: "POST",
-        headers: await getAdminFetchHeaders(),
-        body: JSON.stringify({
-          action: rule?.id ? "update" : "create",
-          ruleType: "season",
-          id: rule?.id,
-          label,
-          startDate,
-          endDate,
-          nightPrice: Number(nightPrice),
-          minimumNights: minimumNights === "" ? null : Number(minimumNights),
-          allowedArrivalDays: [0, 6],
-          notes,
-          isActive: true,
-        }),
-      });
-
-      if (!response.ok) throw new Error(await response.text());
-      await loadCalendar();
-    } catch (error) {
-      alert("Erreur saison : " + error.message);
-    }
+  function editSeasonPrice() {
+    alert("La modification des saisons se fait maintenant dans l’onglet Tarifs, avec une interface complète.");
   }
 
   async function createOrUpdateCustomer({ firstName, lastName, email, phone, source, notes }) {
@@ -636,7 +579,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
               return (
                 <div style={styles.dayCellContent}>
                   <div>{arg.dayNumberText}</div>
-                  <div style={styles.dayPrice}>{getPriceForDate(key)}€</div>
+                  <div style={styles.dayPricePill}>{getPriceForDate(key)}€</div>
                 </div>
               );
             }}
@@ -683,7 +626,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
             <h3>Tarif par défaut</h3>
             <p style={styles.muted}>Ce tarif est utilisé hors saison et hors tarif spécifique.</p>
           </div>
-          <button style={styles.primaryButton} onClick={editDefaultNightPrice}>Modifier le tarif par défaut</button>
+          <button style={styles.primaryButton} onClick={editDefaultNightPrice}>Modifier dans Tarifs</button>
         </div>
         <div style={styles.priceItem}>
           <strong>{formatMoney(defaultNightPrice)} / nuit</strong>
@@ -697,7 +640,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
             <h3>Tarifs saisonniers</h3>
             <p style={styles.muted}>Tu peux modifier les dates et prix des vacances année par année.</p>
           </div>
-          <button style={styles.primaryButton} onClick={() => editSeasonPrice(null)}>Ajouter une saison</button>
+          <button style={styles.primaryButton} onClick={() => editSeasonPrice(null)}>Gérer dans Tarifs</button>
         </div>
         {seasonPrices.length === 0 ? (
           <p style={styles.muted}>Aucun tarif saisonnier.</p>
@@ -709,10 +652,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
                 <p style={styles.muted}>{formatDate(rule.start_date)} → {formatDate(rule.end_date)} · {formatMoney(rule.night_price)} / nuit</p>
                 {rule.minimum_nights && <p style={styles.muted}>Minimum : {rule.minimum_nights} nuits</p>}
                 {rule.notes && <p style={styles.muted}>{rule.notes}</p>}
-                <div style={styles.actionsRow}>
-                  <button style={styles.smallButton} onClick={() => editSeasonPrice(rule)}>Modifier</button>
-                  <button style={styles.deleteButton} onClick={() => deletePriceRule("season", rule.id)}>Supprimer</button>
-                </div>
+                <p style={styles.muted}>Modification centralisée dans l’onglet Tarifs.</p>
               </div>
             ))}
           </div>
