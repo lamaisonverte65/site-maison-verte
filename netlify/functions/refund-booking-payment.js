@@ -279,6 +279,86 @@ async function sendCancellationEmail({ booking, cancellationType, refundedAmount
   });
 }
 
+async function sendRefundOnlyEmail({ booking, refundedAmount, message, policyLabel }) {
+  if (!booking?.guest_email) return;
+
+  const subject = "Remboursement effectué - La Maison Verte";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+      <h2>Remboursement effectué</h2>
+
+      <p>Bonjour ${booking.guest_first_name || ""} ${booking.guest_last_name || ""},</p>
+
+      <p>
+        Nous vous confirmons qu’un remboursement de <strong>${formatCurrency(refundedAmount)}</strong>
+        a été déclenché via Stripe concernant votre séjour à <strong>La Maison Verte à Arreau</strong>.
+      </p>
+
+      <p>
+        <strong>Arrivée :</strong> ${formatDate(booking.start_date)}<br />
+        <strong>Départ :</strong> ${formatDate(booking.end_date)}
+      </p>
+
+      ${message ? `<p><strong>Message :</strong><br />${message}</p>` : ""}
+
+      <p><strong>Motif :</strong><br />${policyLabel}</p>
+
+      <p>
+        Ce remboursement ne modifie pas automatiquement votre réservation. Le délai d’apparition sur votre compte bancaire dépend de votre banque.
+      </p>
+
+      <p style="margin-top:30px;font-size:13px;color:#666;">
+        Pensez à vérifier vos courriers indésirables / spams si vous ne recevez pas nos prochains messages,
+        puis ajoutez contact@lamaisonverte65.fr à vos contacts.
+      </p>
+    </div>
+  `;
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: "La Maison Verte <contact@lamaisonverte65.fr>",
+      to: [booking.guest_email],
+      reply_to: "contact@lamaisonverte65.fr",
+      subject,
+      html,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Erreur email remboursement simple :", errorText);
+    await logEmail({
+      bookingId: booking.id,
+      emailType: "refund_only",
+      toEmail: booking.guest_email,
+      subject,
+      status: "error",
+      errorMessage: errorText,
+      metadata: { refundedAmount, policyLabel },
+    });
+    return;
+  }
+
+  let responseData = null;
+  try { responseData = await response.json(); } catch (_) {}
+
+  await logEmail({
+    bookingId: booking.id,
+    emailType: "refund_only",
+    toEmail: booking.guest_email,
+    subject,
+    status: "sent",
+    providerId: responseData?.id || null,
+    metadata: { refundedAmount, policyLabel },
+  });
+}
+
 export async function handler(event) {
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method Not Allowed" };
@@ -291,6 +371,8 @@ export async function handler(event) {
     const data = JSON.parse(event.body || "{}");
     const {
       bookingId,
+      action = "cancel_refund",
+      refundOnly = false,
       cancellationType = "client",
       refundMode = "policy",
       refundAmount,
@@ -300,6 +382,8 @@ export async function handler(event) {
     if (!bookingId) {
       return { statusCode: 400, body: JSON.stringify({ error: "bookingId obligatoire." }) };
     }
+
+    const isRefundOnly = action === "refund_only" || refundOnly === true;
 
     const { data: booking, error: bookingError } = await supabase
       .from("booking_requests")
@@ -349,6 +433,7 @@ export async function handler(event) {
           payment_id: payment.id,
           cancellation_type: cancellationType,
           refund_mode: refundMode,
+          action: isRefundOnly ? "refund_only" : "cancel_refund",
         },
       });
 
@@ -392,57 +477,99 @@ export async function handler(event) {
     const paidAmount = Number(booking.amount_paid || 0);
     const remainingPaid = Math.max(paidAmount - refundedAmount, 0);
 
-    const depositStatus =
-      refundedAmount > 0 && refundMode === "deposit" ? "remboursé" :
-      refundedAmount > 0 && ["total", "policy"].includes(refundMode) && cancellationType === "owner" ? "remboursé" :
-      booking.deposit_status || "annulé";
+    if (isRefundOnly) {
+      const { error: updateError } = await supabase.from("booking_requests").update({
+        payment_status: refundedAmount > 0
+          ? (remainingPaid > 0 ? "partially_refunded" : "refunded")
+          : booking.payment_status,
+        owner_message: message || booking.owner_message,
+        refund_policy_applied: requested.label,
+        refund_reason: message || requested.label,
+        refunded_amount: totalRefunded,
+        stripe_refund_id: lastRefundId,
+        amount_paid: remainingPaid,
+        updated_at: now,
+      }).eq("id", bookingId);
 
-    const balanceStatus =
-      refundedAmount > 0 && ["balance", "total", "policy", "custom"].includes(refundMode) ? "remboursé / à vérifier" :
-      booking.balance_status || "annulé";
+      if (updateError) {
+        return { statusCode: 500, body: JSON.stringify({ error: updateError.message }) };
+      }
 
-    const { error: updateError } = await supabase.from("booking_requests").update({
-      status: "cancelled",
-      payment_status: refundedAmount > 0 ? "refunded_or_cancelled" : booking.payment_status || "cancelled",
-      owner_message: message,
-      cancelled_at: now,
-      cancelled_by: cancellationType,
-      refund_policy_applied: requested.label,
-      refund_reason: message || requested.label,
-      refunded_amount: totalRefunded,
-      stripe_refund_id: lastRefundId,
-      amount_paid: remainingPaid,
-      deposit_status: depositStatus,
-      balance_status: balanceStatus,
-      manual_payment_status: booking.manual_payment_status === "paid" && refundedAmount > 0 ? "remboursé / à vérifier" : booking.manual_payment_status,
-      updated_at: now,
-    }).eq("id", bookingId);
+      await logBookingEvent({
+        bookingId,
+        eventType: "refund_only",
+        label: refundedAmount > 0 ? "Remboursement simple effectué" : "Remboursement simple sans montant remboursé",
+        message: `${requested.label}. Montant remboursé : ${formatCurrency(refundedAmount)}. ${message}`,
+        metadata: {
+          refundMode,
+          requestedAmount: requested.amount,
+          refundedAmount,
+          stripeRefundIds: refundResults.map((item) => item.refund.id),
+          reservationStatusKept: booking.status,
+        },
+      });
 
-    if (updateError) {
-      return { statusCode: 500, body: JSON.stringify({ error: updateError.message }) };
-    }
+      if (refundedAmount > 0) {
+        await sendRefundOnlyEmail({
+          booking,
+          refundedAmount,
+          message,
+          policyLabel: requested.label,
+        });
+      }
+    } else {
+      const depositStatus =
+        refundedAmount > 0 && refundMode === "deposit" ? "remboursé" :
+        refundedAmount > 0 && ["total", "policy"].includes(refundMode) && cancellationType === "owner" ? "remboursé" :
+        booking.deposit_status || "annulé";
 
-    await logBookingEvent({
-      bookingId,
-      eventType: "booking_cancelled_refund",
-      label: refundedAmount > 0 ? "Réservation annulée et remboursement effectué" : "Réservation annulée sans remboursement",
-      message: `${requested.label}. Montant remboursé : ${formatCurrency(refundedAmount)}. ${message}`,
-      metadata: {
+      const balanceStatus =
+        refundedAmount > 0 && ["balance", "total", "policy", "custom"].includes(refundMode) ? "remboursé / à vérifier" :
+        booking.balance_status || "annulé";
+
+      const { error: updateError } = await supabase.from("booking_requests").update({
+        status: "cancelled",
+        payment_status: refundedAmount > 0 ? "refunded_or_cancelled" : booking.payment_status || "cancelled",
+        owner_message: message,
+        cancelled_at: now,
+        cancelled_by: cancellationType,
+        refund_policy_applied: requested.label,
+        refund_reason: message || requested.label,
+        refunded_amount: totalRefunded,
+        stripe_refund_id: lastRefundId,
+        amount_paid: remainingPaid,
+        deposit_status: depositStatus,
+        balance_status: balanceStatus,
+        manual_payment_status: booking.manual_payment_status === "paid" && refundedAmount > 0 ? "remboursé / à vérifier" : booking.manual_payment_status,
+        updated_at: now,
+      }).eq("id", bookingId);
+
+      if (updateError) {
+        return { statusCode: 500, body: JSON.stringify({ error: updateError.message }) };
+      }
+
+      await logBookingEvent({
+        bookingId,
+        eventType: "booking_cancelled_refund",
+        label: refundedAmount > 0 ? "Réservation annulée et remboursement effectué" : "Réservation annulée sans remboursement",
+        message: `${requested.label}. Montant remboursé : ${formatCurrency(refundedAmount)}. ${message}`,
+        metadata: {
+          cancellationType,
+          refundMode,
+          requestedAmount: requested.amount,
+          refundedAmount,
+          stripeRefundIds: refundResults.map((item) => item.refund.id),
+        },
+      });
+
+      await sendCancellationEmail({
+        booking,
         cancellationType,
-        refundMode,
-        requestedAmount: requested.amount,
         refundedAmount,
-        stripeRefundIds: refundResults.map((item) => item.refund.id),
-      },
-    });
-
-    await sendCancellationEmail({
-      booking,
-      cancellationType,
-      refundedAmount,
-      message,
-      policyLabel: requested.label,
-    });
+        message,
+        policyLabel: requested.label,
+      });
+    }
 
     return {
       statusCode: 200,
@@ -451,6 +578,7 @@ export async function handler(event) {
         refundedAmount,
         refundCount: refundResults.length,
         policy: requested.label,
+        action: isRefundOnly ? "refund_only" : "cancel_refund",
       }),
     };
   } catch (error) {

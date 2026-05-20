@@ -303,6 +303,8 @@ export default function Admin() {
       headers: await getAdminFetchHeaders(),
       body: JSON.stringify({
         bookingId: request.id,
+        action: values.action || "cancel_refund",
+        refundOnly: values.refundOnly || false,
         cancellationType: values.cancellationType,
         refundMode: values.refundMode,
         refundAmount: values.refundAmount,
@@ -377,16 +379,53 @@ export default function Admin() {
   }
 
 
-  function openManualPaymentModal(request) {
+  function openManualPaymentModal(request, reason = "solde") {
+    const amounts = getAmounts(request);
+    const amountPaid = Number(amounts.paid || 0);
+    const suggestedAmounts = {
+      acompte: Math.max(Number(amounts.deposit || 0) - amountPaid, 0),
+      solde: Math.max(Number(amounts.total || 0) - amountPaid, 0),
+      total: Number(amounts.total || 0),
+      complement: "",
+    };
+
+    const titles = {
+      acompte: "Demander un acompte",
+      solde: "Demander le solde",
+      total: "Demander un paiement total",
+      complement: "Demander un complément",
+    };
+
+    const messages = {
+      acompte: "Merci de régler l’acompte via le lien sécurisé ci-dessous afin de confirmer votre réservation.",
+      solde: "Merci de régler le solde de votre séjour via le lien sécurisé ci-dessous.",
+      total: "Merci de régler le montant total convenu pour votre séjour via le lien sécurisé ci-dessous.",
+      complement: "Merci de régler le complément demandé via le lien sécurisé ci-dessous.",
+    };
+
     setModal({
       type: "manual_payment",
       request,
-      title: "Envoyer un lien de paiement",
-      price: "",
-      reason: "solde",
-      message: "Merci de procéder au paiement via le lien sécurisé ci-dessous.",
-      helper: "Saisis un montant manuel, choisis le motif précis, puis confirme l’envoi au client. Le motif pilotera les statuts après paiement.",
+      title: titles[reason] || "Envoyer un lien de paiement",
+      price: suggestedAmounts[reason] === 0 ? "" : String(suggestedAmounts[reason] ?? ""),
+      reason,
+      message: messages[reason] || "Merci de procéder au paiement via le lien sécurisé ci-dessous.",
+      helper: "Le lien Stripe sera créé depuis l’admin et envoyé au client. Le motif choisi pilotera les statuts après paiement.",
       confirmText: "Je confirme la création du lien Stripe et l’envoi de l’email au client.",
+    });
+  }
+
+  function openRefundOnlyModal(request) {
+    const paid = getAmounts(request).paid;
+    setModal({
+      type: "refund_only",
+      request,
+      title: "Remboursement simple sans annulation",
+      message: "Un remboursement va être effectué sans annuler votre réservation.",
+      helper: `Montant déjà payé : ${formatMoney(paid)}. Cette action déclenche un remboursement Stripe mais ne change pas le statut de la réservation et ne libère pas les dates.`,
+      confirmText: "Je confirme ce remboursement Stripe sans annulation de la réservation.",
+      refundMode: "custom",
+      refundAmount: "",
     });
   }
 
@@ -482,6 +521,14 @@ export default function Admin() {
         alert(refunded > 0
           ? `Réservation annulée et remboursement Stripe effectué : ${formatMoney(refunded)}.`
           : "Réservation annulée sans remboursement Stripe.");
+      }
+
+      if (modal.type === "refund_only") {
+        const result = await refundBookingPayment(request, { ...values, action: "refund_only", refundOnly: true });
+        const refunded = Number(result.refundedAmount || 0);
+        alert(refunded > 0
+          ? `Remboursement Stripe effectué sans annulation : ${formatMoney(refunded)}.`
+          : "Aucun remboursement Stripe n’a été effectué.");
       }
 
 
@@ -782,6 +829,7 @@ export default function Admin() {
                 onConfirm={openConfirmModal}
                 onCancel={openCancelModal}
                 onManualPayment={openManualPaymentModal}
+                onRefundOnly={openRefundOnlyModal}
                 onEmail={contactEmail}
                 onPhone={contactPhone}
                 onSms={contactSms}
@@ -897,7 +945,7 @@ export default function Admin() {
   );
 }
 
-function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, onManualPayment, onEmail, onPhone, onSms, payments = [], events = [], emailLogs = [] }) {
+function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, onManualPayment, onRefundOnly, onEmail, onPhone, onSms, payments = [], events = [], emailLogs = [] }) {
   const status = request.status || "pending";
   const amounts = getAmounts(request);
 
@@ -915,7 +963,6 @@ function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, on
         <button style={styles.smallButton} onClick={() => onEmail(request.guest_email)}>Email</button>
         <button style={styles.smallButton} onClick={() => onPhone(request.guest_phone)}>Appel</button>
         <button style={styles.smallButton} onClick={() => onSms(request.guest_phone)}>SMS</button>
-        <button style={styles.confirmButton} onClick={() => onManualPayment(request)}>Envoyer un lien de paiement</button>
         {request.payment_link && <a style={styles.linkButton} href={request.payment_link} target="_blank" rel="noreferrer">Lien Stripe acompte/total</a>}
         {request.balance_payment_link && <a style={styles.linkButton} href={request.balance_payment_link} target="_blank" rel="noreferrer">Lien solde</a>}
         {request.manual_payment_link && <a style={styles.linkButton} href={request.manual_payment_link} target="_blank" rel="noreferrer">Lien paiement manuel</a>}
@@ -948,6 +995,15 @@ function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, on
         <Info label="Total remboursé" value={formatMoney(request.refunded_amount || 0)} />
         <Info label="Dernier remboursement Stripe" value={request.stripe_refund_id || "-"} />
         <Info label="Expiration acompte" value={formatDateTime(request.acceptance_expires_at)} />
+      </div>
+
+      <h3 style={styles.subTitle}>Actions financières</h3>
+      <div style={styles.financeActionsBox}>
+        <button style={styles.paymentButton} onClick={() => onManualPayment(request, "acompte")}>Demander acompte</button>
+        <button style={styles.paymentButton} onClick={() => onManualPayment(request, "solde")}>Demander solde</button>
+        <button style={styles.paymentButton} onClick={() => onManualPayment(request, "complement")}>Demander complément</button>
+        <button style={styles.paymentButton} onClick={() => onManualPayment(request, "total")}>Demander paiement total</button>
+        {amounts.paid > 0 && <button style={styles.refundButton} onClick={() => onRefundOnly(request)}>Remboursement simple</button>}
       </div>
 
       <h3 style={styles.subTitle}>Contrat</h3>
@@ -1061,21 +1117,23 @@ function ActionModal({ modal, onClose, onSubmit }) {
 
         <label style={styles.label}>Message envoyé au client / note interne<textarea style={styles.largeTextarea} value={message} onChange={(event) => setMessage(event.target.value)} /></label>
 
-        {modal.type === "cancel" && (
+        {(modal.type === "cancel" || modal.type === "refund_only") && (
           <>
-            <label style={styles.label}>
-              Type d’annulation
-              <select style={styles.input} value={cancellationType} onChange={(event) => setCancellationType(event.target.value)}>
-                <option value="client">Annulation client</option>
-                <option value="owner">Annulation propriétaire</option>
-              </select>
-            </label>
+            {modal.type === "cancel" && (
+              <label style={styles.label}>
+                Type d’annulation
+                <select style={styles.input} value={cancellationType} onChange={(event) => setCancellationType(event.target.value)}>
+                  <option value="client">Annulation client</option>
+                  <option value="owner">Annulation propriétaire</option>
+                </select>
+              </label>
+            )}
 
             <label style={styles.label}>
               Remboursement
               <select style={styles.input} value={refundMode} onChange={(event) => setRefundMode(event.target.value)}>
-                <option value="policy">Calculer selon les conditions</option>
-                <option value="none">Aucun remboursement</option>
+                {modal.type === "cancel" && <option value="policy">Calculer selon les conditions</option>}
+                {modal.type === "cancel" && <option value="none">Aucun remboursement</option>}
                 <option value="deposit">Rembourser l’acompte</option>
                 <option value="balance">Rembourser le solde</option>
                 <option value="total">Remboursement total</option>
@@ -1110,5 +1168,5 @@ function SortableTh({ label, sortKey, sort, onSort }) { const active = sort.key 
 function EditableTd({ value, onClick }) { return <td style={styles.td} onClick={onClick} title="Cliquer pour modifier">{value || "-"}</td>; }
 
 const styles = {
-  page:{minHeight:"100vh",padding:"32px",background:"#f3f0e8",color:"#1f2933",fontFamily:"Inter, system-ui, sans-serif"},header:{display:"flex",justifyContent:"space-between",gap:"24px",alignItems:"center",marginBottom:"28px",flexWrap:"wrap"},headerActions:{display:"flex",gap:"10px",flexWrap:"wrap"},kicker:{margin:0,color:"#4f6f52",textTransform:"uppercase",letterSpacing:"0.12em",fontSize:"12px",fontWeight:700},title:{margin:"6px 0",fontSize:"clamp(28px, 4vw, 44px)"},subtitle:{margin:0,color:"#64748b"},refreshButton:{border:"none",borderRadius:"999px",padding:"12px 18px",background:"#2f4f35",color:"white",fontWeight:700,cursor:"pointer"},logoutButton:{border:"none",borderRadius:"999px",padding:"12px 18px",background:"#dc2626",color:"white",fontWeight:700,cursor:"pointer"},statsGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))",gap:"16px",marginBottom:"22px"},statCard:{textAlign:"left",border:"none",background:"white",borderRadius:"22px",padding:"20px",boxShadow:"0 12px 30px rgba(0,0,0,0.08)",cursor:"pointer"},statLabel:{color:"#64748b",fontSize:"14px"},statValue:{display:"block",fontSize:"30px",marginTop:"8px"},toolbar:{display:"flex",gap:"12px",marginBottom:"18px",flexWrap:"wrap"},searchInput:{flex:"1 1 280px",padding:"14px 16px",borderRadius:"16px",border:"1px solid #d6d3c8",fontSize:"15px"},select:{padding:"14px 16px",borderRadius:"16px",border:"1px solid #d6d3c8",background:"white"},tabs:{display:"flex",gap:"10px",flexWrap:"wrap",marginBottom:"20px"},tab:{border:"1px solid #d6d3c8",background:"white",borderRadius:"999px",padding:"10px 16px",cursor:"pointer"},activeTab:{border:"1px solid #2f4f35",background:"#2f4f35",color:"white",borderRadius:"999px",padding:"10px 16px",cursor:"pointer"},panel:{background:"white",borderRadius:"28px",padding:"22px",boxShadow:"0 12px 30px rgba(0,0,0,0.08)"},panelHeader:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:"12px",flexWrap:"wrap"},panelTitle:{marginTop:0,marginBottom:"18px"},badge:{color:"white",borderRadius:"999px",padding:"5px 10px",fontSize:"12px",fontWeight:700,whiteSpace:"nowrap"},muted:{color:"#64748b",fontSize:"14px",margin:"4px 0"},tableWrapper:{overflowX:"auto",maxHeight:"70vh",border:"1px solid #e5e7eb",borderRadius:"18px"},table:{minWidth:"1200px",width:"100%",borderCollapse:"collapse",fontSize:"14px"},stickyHead:{position:"sticky",top:0,background:"white",zIndex:2},th:{textAlign:"left",padding:"12px",borderBottom:"1px solid #e5e7eb",whiteSpace:"nowrap",background:"white"},thButton:{border:"none",background:"transparent",fontWeight:800,cursor:"pointer",padding:0},td:{padding:"12px",borderBottom:"1px solid #e5e7eb",cursor:"pointer",verticalAlign:"top"},clickableRow:{cursor:"pointer"},selectedRow:{cursor:"pointer",background:"#f0fdf4"},reservationSheet:{display:"grid",gap:"18px"},detailHeader:{display:"flex",justifyContent:"space-between",gap:"16px",flexWrap:"wrap"},detailTitle:{margin:0,fontSize:"26px"},subTitle:{margin:"6px 0 0",color:"#2f4f35"},detailGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))",gap:"12px"},infoItem:{background:"#f8fafc",borderRadius:"16px",padding:"14px",display:"grid",gap:"5px"},noteBox:{background:"#f8fafc",borderRadius:"16px",padding:"16px",lineHeight:1.5},actions:{display:"flex",gap:"10px",flexWrap:"wrap",paddingTop:"8px"},acceptButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#16a34a",color:"white",cursor:"pointer"},refuseButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#dc2626",color:"white",cursor:"pointer"},confirmButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#15803d",color:"white",cursor:"pointer"},cancelButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#6b7280",color:"white",cursor:"pointer"},addButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#2f4f35",color:"white",cursor:"pointer"},smallButton:{border:"none",borderRadius:"999px",padding:"7px 10px",background:"#e2e8f0",cursor:"pointer",whiteSpace:"nowrap"},linkButton:{borderRadius:"999px",padding:"7px 10px",background:"#dbeafe",color:"#1d4ed8",textDecoration:"none",whiteSpace:"nowrap"},contactButtons:{display:"flex",gap:"8px",flexWrap:"wrap"},chipList:{display:"flex",gap:"6px",flexWrap:"wrap"},historyChip:{border:"none",borderRadius:"999px",padding:"6px 9px",background:"#eef2ff",color:"#3730a3",cursor:"pointer"},deleteButton:{border:"none",borderRadius:"999px",background:"#dc2626",color:"white",padding:"8px 12px",cursor:"pointer"},empty:{color:"#64748b",lineHeight:1.6},info:{background:"white",padding:"20px",borderRadius:"18px"},error:{background:"#fee2e2",color:"#991b1b",padding:"20px",borderRadius:"18px"},historyBox:{background:"#fff",border:"1px solid #e5e7eb",borderRadius:"18px",padding:"14px"},historyList:{display:"grid",gap:"10px"},historyItem:{background:"#f8fafc",borderRadius:"14px",padding:"12px",lineHeight:1.45},modalOverlay:{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50,padding:"20px"},modal:{background:"white",width:"100%",maxWidth:"760px",borderRadius:"28px",padding:"24px",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",maxHeight:"90vh",overflowY:"auto"},modalHeader:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"16px",marginBottom:"12px"},closeButton:{border:"none",background:"#e5e7eb",borderRadius:"999px",width:"36px",height:"36px",cursor:"pointer",fontSize:"22px"},label:{display:"grid",gap:"8px",fontWeight:700,marginTop:"16px"},input:{padding:"12px 14px",borderRadius:"14px",border:"1px solid #d1d5db",fontSize:"15px"},largeTextarea:{minHeight:"220px",padding:"14px",borderRadius:"16px",border:"1px solid #d1d5db",fontSize:"15px",resize:"vertical",lineHeight:1.5},securityBox:{display:"flex",gap:"10px",alignItems:"flex-start",marginTop:"18px",padding:"14px",borderRadius:"16px",background:"#fff7ed",border:"1px solid #fed7aa",lineHeight:1.5},modalActions:{display:"flex",justifyContent:"flex-end",gap:"10px",marginTop:"20px",flexWrap:"wrap"}
+  page:{minHeight:"100vh",padding:"32px",background:"#f3f0e8",color:"#1f2933",fontFamily:"Inter, system-ui, sans-serif"},header:{display:"flex",justifyContent:"space-between",gap:"24px",alignItems:"center",marginBottom:"28px",flexWrap:"wrap"},headerActions:{display:"flex",gap:"10px",flexWrap:"wrap"},kicker:{margin:0,color:"#4f6f52",textTransform:"uppercase",letterSpacing:"0.12em",fontSize:"12px",fontWeight:700},title:{margin:"6px 0",fontSize:"clamp(28px, 4vw, 44px)"},subtitle:{margin:0,color:"#64748b"},refreshButton:{border:"none",borderRadius:"999px",padding:"12px 18px",background:"#2f4f35",color:"white",fontWeight:700,cursor:"pointer"},logoutButton:{border:"none",borderRadius:"999px",padding:"12px 18px",background:"#dc2626",color:"white",fontWeight:700,cursor:"pointer"},statsGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))",gap:"16px",marginBottom:"22px"},statCard:{textAlign:"left",border:"none",background:"white",borderRadius:"22px",padding:"20px",boxShadow:"0 12px 30px rgba(0,0,0,0.08)",cursor:"pointer"},statLabel:{color:"#64748b",fontSize:"14px"},statValue:{display:"block",fontSize:"30px",marginTop:"8px"},toolbar:{display:"flex",gap:"12px",marginBottom:"18px",flexWrap:"wrap"},searchInput:{flex:"1 1 280px",padding:"14px 16px",borderRadius:"16px",border:"1px solid #d6d3c8",fontSize:"15px"},select:{padding:"14px 16px",borderRadius:"16px",border:"1px solid #d6d3c8",background:"white"},tabs:{display:"flex",gap:"10px",flexWrap:"wrap",marginBottom:"20px"},tab:{border:"1px solid #d6d3c8",background:"white",borderRadius:"999px",padding:"10px 16px",cursor:"pointer"},activeTab:{border:"1px solid #2f4f35",background:"#2f4f35",color:"white",borderRadius:"999px",padding:"10px 16px",cursor:"pointer"},panel:{background:"white",borderRadius:"28px",padding:"22px",boxShadow:"0 12px 30px rgba(0,0,0,0.08)"},panelHeader:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:"12px",flexWrap:"wrap"},panelTitle:{marginTop:0,marginBottom:"18px"},badge:{color:"white",borderRadius:"999px",padding:"5px 10px",fontSize:"12px",fontWeight:700,whiteSpace:"nowrap"},muted:{color:"#64748b",fontSize:"14px",margin:"4px 0"},tableWrapper:{overflowX:"auto",maxHeight:"70vh",border:"1px solid #e5e7eb",borderRadius:"18px"},table:{minWidth:"1200px",width:"100%",borderCollapse:"collapse",fontSize:"14px"},stickyHead:{position:"sticky",top:0,background:"white",zIndex:2},th:{textAlign:"left",padding:"12px",borderBottom:"1px solid #e5e7eb",whiteSpace:"nowrap",background:"white"},thButton:{border:"none",background:"transparent",fontWeight:800,cursor:"pointer",padding:0},td:{padding:"12px",borderBottom:"1px solid #e5e7eb",cursor:"pointer",verticalAlign:"top"},clickableRow:{cursor:"pointer"},selectedRow:{cursor:"pointer",background:"#f0fdf4"},reservationSheet:{display:"grid",gap:"18px"},detailHeader:{display:"flex",justifyContent:"space-between",gap:"16px",flexWrap:"wrap"},detailTitle:{margin:0,fontSize:"26px"},subTitle:{margin:"6px 0 0",color:"#2f4f35"},detailGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))",gap:"12px"},infoItem:{background:"#f8fafc",borderRadius:"16px",padding:"14px",display:"grid",gap:"5px"},noteBox:{background:"#f8fafc",borderRadius:"16px",padding:"16px",lineHeight:1.5},actions:{display:"flex",gap:"10px",flexWrap:"wrap",paddingTop:"8px"},acceptButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#16a34a",color:"white",cursor:"pointer"},refuseButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#dc2626",color:"white",cursor:"pointer"},confirmButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#15803d",color:"white",cursor:"pointer"},cancelButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#6b7280",color:"white",cursor:"pointer"},addButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#2f4f35",color:"white",cursor:"pointer"},smallButton:{border:"none",borderRadius:"999px",padding:"7px 10px",background:"#e2e8f0",cursor:"pointer",whiteSpace:"nowrap"},linkButton:{borderRadius:"999px",padding:"7px 10px",background:"#dbeafe",color:"#1d4ed8",textDecoration:"none",whiteSpace:"nowrap"},contactButtons:{display:"flex",gap:"8px",flexWrap:"wrap"},financeActionsBox:{display:"flex",gap:"10px",flexWrap:"wrap",padding:"14px",background:"#f8fafc",border:"1px solid #e5e7eb",borderRadius:"18px"},paymentButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#2563eb",color:"white",cursor:"pointer",fontWeight:700},refundButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#9333ea",color:"white",cursor:"pointer",fontWeight:700},chipList:{display:"flex",gap:"6px",flexWrap:"wrap"},historyChip:{border:"none",borderRadius:"999px",padding:"6px 9px",background:"#eef2ff",color:"#3730a3",cursor:"pointer"},deleteButton:{border:"none",borderRadius:"999px",background:"#dc2626",color:"white",padding:"8px 12px",cursor:"pointer"},empty:{color:"#64748b",lineHeight:1.6},info:{background:"white",padding:"20px",borderRadius:"18px"},error:{background:"#fee2e2",color:"#991b1b",padding:"20px",borderRadius:"18px"},historyBox:{background:"#fff",border:"1px solid #e5e7eb",borderRadius:"18px",padding:"14px"},historyList:{display:"grid",gap:"10px"},historyItem:{background:"#f8fafc",borderRadius:"14px",padding:"12px",lineHeight:1.45},modalOverlay:{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50,padding:"20px"},modal:{background:"white",width:"100%",maxWidth:"760px",borderRadius:"28px",padding:"24px",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",maxHeight:"90vh",overflowY:"auto"},modalHeader:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"16px",marginBottom:"12px"},closeButton:{border:"none",background:"#e5e7eb",borderRadius:"999px",width:"36px",height:"36px",cursor:"pointer",fontSize:"22px"},label:{display:"grid",gap:"8px",fontWeight:700,marginTop:"16px"},input:{padding:"12px 14px",borderRadius:"14px",border:"1px solid #d1d5db",fontSize:"15px"},largeTextarea:{minHeight:"220px",padding:"14px",borderRadius:"16px",border:"1px solid #d1d5db",fontSize:"15px",resize:"vertical",lineHeight:1.5},securityBox:{display:"flex",gap:"10px",alignItems:"flex-start",marginTop:"18px",padding:"14px",borderRadius:"16px",background:"#fff7ed",border:"1px solid #fed7aa",lineHeight:1.5},modalActions:{display:"flex",justifyContent:"flex-end",gap:"10px",marginTop:"20px",flexWrap:"wrap"}
 };
