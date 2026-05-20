@@ -69,26 +69,6 @@ function formatLocalDate(date) {
 }
 
 
-function addDays(date, days) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function getDateWindow(monthsBefore = 2, monthsAfter = 18) {
-  const start = new Date();
-  start.setMonth(start.getMonth() - monthsBefore);
-  start.setDate(1);
-
-  const end = new Date();
-  end.setMonth(end.getMonth() + monthsAfter);
-  end.setDate(1);
-
-  return {
-    startDate: formatLocalDate(start),
-    endDate: formatLocalDate(end),
-  };
-}
 
 function nightsBetween(startDate, endDate) {
   const start = parseLocalDate(startDate);
@@ -107,7 +87,6 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   const [seasonPrices, setSeasonPrices] = useState([]);
   const [priceOverrides, setPriceOverrides] = useState([]);
   const [defaultNightPrice, setDefaultNightPrice] = useState(80);
-  const [pricesByDate, setPricesByDate] = useState({});
   const [calendarRenderKey, setCalendarRenderKey] = useState(0);
   const [selectedExternalEvent, setSelectedExternalEvent] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
@@ -128,31 +107,23 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   }
 
 
-  async function loadPricingByDate() {
-    const { startDate, endDate } = getDateWindow(2, 18);
+  async function loadPricing(calendarData = null) {
+    if (calendarData) {
+      const seasons = calendarData.seasonPrices || [];
+      const overrides = calendarData.priceOverrides || [];
+      const defaultPrice = Number(calendarData.defaultNightPrice || 80);
 
-    const response = await fetch(`/.netlify/functions/get-pricing?start=${startDate}&end=${endDate}`);
+      setDefaultNightPrice(defaultPrice);
+      setSeasonPrices(seasons);
+      setPriceOverrides(overrides);
 
-    if (!response.ok) {
-      throw new Error(await response.text());
+      return {
+        seasons,
+        overrides,
+        defaultNightPrice: defaultPrice,
+      };
     }
 
-    const data = await response.json();
-
-    const nextPricesByDate = data.pricesByDate || data.prices || {};
-    setPricesByDate(nextPricesByDate);
-
-    if (data.defaultNightPrice || data.defaultPrice) {
-      setDefaultNightPrice(Number(data.defaultNightPrice || data.defaultPrice || 80));
-    }
-
-    return {
-      pricesByDate: nextPricesByDate,
-      defaultNightPrice: Number(data.defaultNightPrice || data.defaultPrice || defaultNightPrice || 80),
-    };
-  }
-
-  async function loadPricing() {
     const { data: settings, error: settingsError } = await supabase
       .from("pricing_settings")
       .select("*")
@@ -189,8 +160,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
       const calendarResponse = await fetch("/.netlify/functions/calendar");
       const calendarData = await calendarResponse.json();
 
-      const pricingByDate = await loadPricingByDate();
-      const pricing = await loadPricing();
+      const pricing = await loadPricing(calendarData);
 
       const { data: externalClientLinks } = await supabase
         .from("external_reservation_clients")
@@ -295,15 +265,24 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
 
   function getPriceForDate(key) {
     const cleanKey = String(key || "").slice(0, 10);
-    const priceInfo = pricesByDate[cleanKey];
 
-    if (typeof priceInfo === "number") {
-      return Number(priceInfo || defaultNightPrice || 80);
-    }
+    const override = priceOverrides.find(
+      (item) =>
+        item.is_active !== false &&
+        cleanKey >= item.start_date &&
+        cleanKey < item.end_date
+    );
 
-    if (priceInfo && typeof priceInfo === "object") {
-      return Number(priceInfo.price || priceInfo.nightPrice || priceInfo.night_price || defaultNightPrice || 80);
-    }
+    if (override) return Number(override.night_price || defaultNightPrice || 80);
+
+    const season = seasonPrices.find(
+      (item) =>
+        item.is_active !== false &&
+        cleanKey >= item.start_date &&
+        cleanKey < item.end_date
+    );
+
+    if (season) return Number(season.night_price || defaultNightPrice || 80);
 
     return Number(defaultNightPrice || 80);
   }
@@ -622,7 +601,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   const selectedPeriodTotal = useMemo(() => {
     if (!selectedPeriod) return 0;
     return computeTotal(selectedPeriod.startStr, selectedPeriod.endStr);
-  }, [selectedPeriod, pricesByDate, defaultNightPrice]);
+  }, [selectedPeriod, seasonPrices, priceOverrides, defaultNightPrice]);
 
   return (
     <div style={styles.wrapper}>
@@ -669,7 +648,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
             <div>
               <h3>Fiche calendrier</h3>
               <p style={styles.muted}>Sélectionne une période pour bloquer, créer une résa perso ou changer les tarifs.</p>
-              <p style={styles.muted}>Les prix affichés ici proviennent de la même source serveur que le site public.</p>
+              <p style={styles.muted}>Les prix affichés ici utilisent exactement les mêmes données que le calendrier du site public.</p>
               <p style={styles.muted}>Clique sur une réservation directe pour ouvrir la fiche résa centrale.</p>
               <p style={styles.muted}>Clique sur Airbnb/Booking pour renseigner les infos client.</p>
             </div>
