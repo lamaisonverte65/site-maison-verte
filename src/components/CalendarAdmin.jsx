@@ -232,10 +232,10 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   }
 
   function getPriceForDate(key) {
-    const override = priceOverrides.find((item) => item.is_active !== false && key >= item.start_date && key < item.end_date);
+    const override = priceOverrides.find((item) => item.is_active !== false && key >= item.start_date && key <= item.end_date);
     if (override) return Number(override.night_price || defaultNightPrice || 80);
 
-    const season = seasonPrices.find((item) => item.is_active !== false && key >= item.start_date && key < item.end_date);
+    const season = seasonPrices.find((item) => item.is_active !== false && key >= item.start_date && key <= item.end_date);
     if (season) return Number(season.night_price || defaultNightPrice || 80);
 
     return Number(defaultNightPrice || 80);
