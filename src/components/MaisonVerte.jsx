@@ -7,6 +7,7 @@ export default function MaisonVerte() {
 
   const [selectedDates, setSelectedDates] = useState([]);
   const [unavailableDates, setUnavailableDates] = useState([]);
+  const [pricingRules, setPricingRules] = useState({ defaultNightPrice: 80, seasonPrices: [], priceOverrides: [] });
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [scrolled, setScrolled] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -147,6 +148,12 @@ function parseLocalDate(value) {
           data.unavailableDates || []
         );
 
+        setPricingRules({
+          defaultNightPrice: data.defaultNightPrice || 80,
+          seasonPrices: data.seasonPrices || [],
+          priceOverrides: data.priceOverrides || [],
+        });
+
       } catch (error) {
 
         console.error(
@@ -242,69 +249,43 @@ function toggleDay(day) {
   setSelectedDates([realStart, end]);
 }
 
-  const defaultPrice = 80;
+  const defaultPrice = pricingRules.defaultNightPrice || 80;
 
-const pricePeriods = [
-  {
-    name: "Vacances d’été",
-    start: "2026-07-04",
-    end: "2026-08-30",
-    price: 100
-  },
-  {
-    name: "Vacances de Toussaint",
-    start: "2026-10-17",
-    end: "2026-11-01",
-    price: 80
-  },
-  {
-    name: "Vacances de Noël",
-    start: "2026-12-19",
-    end: "2027-01-03",
-    price: 110
-  },
-  {
-    name: "Vacances de février",
-    start: "2027-02-06",
-    end: "2027-03-07",
-    price: 110
-  }
-];
+const pricePeriods = (pricingRules.seasonPrices || []).map((period) => ({
+  name: period.label,
+  start: period.start_date,
+  end: period.end_date,
+  price: Number(period.night_price || defaultPrice),
+  minimumNights: period.minimum_nights,
+  allowedArrivalDays: period.allowed_arrival_days,
+}));
 
-const stayRules = [
-  {
-    name: "Vacances d’été",
-    start: "2026-07-04",
-    end: "2026-08-30",
-    minimumNights: 6,
-    allowedArrivalDays: [0, 6]
-  },
-  {
-    name: "Vacances de Toussaint",
-    start: "2026-10-17",
-    end: "2026-11-01",
-    minimumNights: 6,
-    allowedArrivalDays: [0, 6]
-  },
-  {
-    name: "Vacances de Noël",
-    start: "2026-12-19",
-    end: "2027-01-03",
-    minimumNights: 6,
-    allowedArrivalDays: [0, 6]
-  },
-  {
-    name: "Vacances de février",
-    start: "2027-02-06",
-    end: "2027-03-07",
-    minimumNights: 6,
-    allowedArrivalDays: [0, 6]
-  }
-];
+const priceOverrides = (pricingRules.priceOverrides || []).map((override) => ({
+  name: override.label,
+  start: override.start_date,
+  end: override.end_date,
+  price: Number(override.night_price || defaultPrice),
+}));
+
+const stayRules = pricePeriods
+  .filter((period) => period.minimumNights || period.allowedArrivalDays)
+  .map((period) => ({
+    name: period.name,
+    start: period.start,
+    end: period.end,
+    minimumNights: Number(period.minimumNights || 2),
+    allowedArrivalDays: Array.isArray(period.allowedArrivalDays) ? period.allowedArrivalDays : [0, 6],
+  }));
 
 function getPriceForDate(key) {
+  const override = priceOverrides.find(
+    override => key >= override.start && key < override.end
+  );
+
+  if (override) return override.price;
+
   const period = pricePeriods.find(
-    period => key >= period.start && key <= period.end
+    period => key >= period.start && key < period.end
   );
 
   return period ? period.price : defaultPrice;
@@ -332,7 +313,7 @@ function getSelectedNights() {
 
 function getRuleForStay(nights) {
   return stayRules.find(rule =>
-    nights.some(night => night >= rule.start && night <= rule.end)
+    nights.some(night => night >= rule.start && night < rule.end)
   );
 }
 

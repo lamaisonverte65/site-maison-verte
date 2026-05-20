@@ -827,7 +827,7 @@ export default function Admin() {
         </section>
       )}
 
-      {!loading && !error && activeTab === "calendar" && <section style={styles.panel}><h2 style={styles.panelTitle}>Calendrier central</h2><CalendarAdmin onSelectReservation={selectReservation} /></section>}
+      {!loading && !error && activeTab === "calendar" && <section style={styles.panel}><h2 style={styles.panelTitle}>Calendrier central</h2><CalendarAdmin onSelectReservation={selectReservation} onCalendarUpdated={loadAdminData} /></section>}
 
       {!loading && !error && activeTab === "customers" && (
         <section style={styles.panel}>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -14,6 +14,7 @@ const COLORS = {
   fully_paid: "#052e16",
   confirmed: "#15803d",
   admin_block: "#7c3aed",
+  price: "#0f766e",
 };
 
 function getColor(status) {
@@ -25,14 +26,67 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString("fr-FR");
 }
 
+function formatMoney(value) {
+  if (value === null || value === undefined || value === "" || Number.isNaN(Number(value))) return "-";
+  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(value));
+}
+
 function emptyClientForm() {
   return { firstName: "", lastName: "", phone: "", email: "", notes: "" };
 }
 
-export default function CalendarAdmin({ onSelectReservation }) {
+function emptySelectionForm(selection = null) {
+  return {
+    action: "block",
+    title: "Blocage admin",
+    notes: "",
+    firstName: "Réservation",
+    lastName: "personnelle",
+    phone: "",
+    email: "",
+    total: "0",
+    amountPaid: "0",
+    priceLabel: "Tarif spécifique",
+    nightPrice: "80",
+    priceReason: "ajustement",
+    priceNotes: "",
+    startDate: selection?.startStr || "",
+    endDate: selection?.endStr || "",
+  };
+}
+
+function parseLocalDate(value) {
+  if (!value) return null;
+  const [year, month, day] = String(value).slice(0, 10).split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatLocalDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function nightsBetween(startDate, endDate) {
+  const start = parseLocalDate(startDate);
+  const end = parseLocalDate(endDate);
+  if (!start || !end) return [];
+  const nights = [];
+  for (let d = new Date(start); d < end; d.setDate(d.getDate() + 1)) {
+    nights.push(formatLocalDate(d));
+  }
+  return nights;
+}
+
+export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }) {
   const [events, setEvents] = useState([]);
   const [blocks, setBlocks] = useState([]);
+  const [seasonPrices, setSeasonPrices] = useState([]);
+  const [priceOverrides, setPriceOverrides] = useState([]);
   const [selectedExternalEvent, setSelectedExternalEvent] = useState(null);
+  const [selectedPeriod, setSelectedPeriod] = useState(null);
+  const [selectionForm, setSelectionForm] = useState(emptySelectionForm());
   const [clientForm, setClientForm] = useState(emptyClientForm());
   const [loading, setLoading] = useState(false);
 
@@ -40,12 +94,42 @@ export default function CalendarAdmin({ onSelectReservation }) {
     loadCalendar();
   }, []);
 
+  async function getAdminFetchHeaders() {
+    const { data: { session } } = await supabase.auth.getSession();
+    return {
+      "Content-Type": "application/json",
+      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+    };
+  }
+
+  async function loadPricing() {
+    const { data: seasons, error: seasonsError } = await supabase
+      .from("season_prices")
+      .select("*")
+      .order("start_date", { ascending: true });
+
+    if (seasonsError) throw seasonsError;
+
+    const { data: overrides, error: overridesError } = await supabase
+      .from("price_overrides")
+      .select("*")
+      .order("start_date", { ascending: true });
+
+    if (overridesError) throw overridesError;
+
+    setSeasonPrices(seasons || []);
+    setPriceOverrides(overrides || []);
+
+    return { seasons: seasons || [], overrides: overrides || [] };
+  }
+
   async function loadCalendar() {
     setLoading(true);
 
     try {
       const calendarResponse = await fetch("/.netlify/functions/calendar");
       const calendarData = await calendarResponse.json();
+      const pricing = await loadPricing();
 
       const { data: externalClientLinks } = await supabase
         .from("external_reservation_clients")
@@ -87,9 +171,10 @@ export default function CalendarAdmin({ onSelectReservation }) {
         .map((reservation) => {
           const status = reservation.status || "pending";
           const color = getColor(status);
+          const price = reservation.owner_price || reservation.estimated_total;
           return {
             id: reservation.id,
-            title: status === "pending" ? `Demande - ${reservation.guest_first_name || "Client"}` : `Direct - ${reservation.guest_first_name || "Client"}`,
+            title: `${status === "pending" ? "Demande" : "Direct"} - ${reservation.guest_first_name || "Client"}${price ? ` · ${formatMoney(price)}` : ""}`,
             start: reservation.start_date,
             end: reservation.end_date,
             backgroundColor: color,
@@ -118,12 +203,36 @@ export default function CalendarAdmin({ onSelectReservation }) {
         extendedProps: { type: "admin_block", block },
       }));
 
-      setEvents([...externalEvents, ...directEvents, ...blockEvents]);
+      const priceEvents = (pricing.overrides || []).filter((rule) => rule.is_active !== false).map((rule) => ({
+        id: `price-${rule.id}`,
+        title: `${rule.label} · ${Number(rule.night_price)}€/nuit`,
+        start: rule.start_date,
+        end: rule.end_date,
+        display: "background",
+        backgroundColor: "rgba(15,118,110,0.14)",
+        extendedProps: { type: "price_override", rule },
+      }));
+
+      setEvents([...priceEvents, ...externalEvents, ...directEvents, ...blockEvents]);
     } catch (error) {
       alert("Erreur calendrier : " + error.message);
     }
 
     setLoading(false);
+  }
+
+  function getPriceForDate(key) {
+    const override = priceOverrides.find((item) => item.is_active !== false && key >= item.start_date && key < item.end_date);
+    if (override) return Number(override.night_price || 80);
+
+    const season = seasonPrices.find((item) => item.is_active !== false && key >= item.start_date && key < item.end_date);
+    if (season) return Number(season.night_price || 80);
+
+    return 80;
+  }
+
+  function computeTotal(startDate, endDate) {
+    return nightsBetween(startDate, endDate).reduce((sum, key) => sum + getPriceForDate(key), 0);
   }
 
   function openEvent(info) {
@@ -143,36 +252,99 @@ export default function CalendarAdmin({ onSelectReservation }) {
         email: existing.guest_email || "",
         notes: existing.notes || "",
       });
+      setSelectedPeriod(null);
       setSelectedExternalEvent({ title: info.event.title, start: info.event.startStr, end: info.event.endStr, ...props });
       return;
     }
 
     if (props.type === "admin_block") {
+      setSelectedPeriod(null);
       setSelectedExternalEvent({ title: info.event.title, start: info.event.startStr, end: info.event.endStr, ...props });
     }
   }
 
-  async function handleDateSelect(selectionInfo) {
-    const reason = window.prompt(
-      `Motif du blocage :\n\nDu ${formatDate(selectionInfo.startStr)} au ${formatDate(selectionInfo.endStr)}`,
-      "Résa perso"
-    );
+  function handleDateSelect(selectionInfo) {
+    const computedTotal = computeTotal(selectionInfo.startStr, selectionInfo.endStr);
+    setSelectedExternalEvent(null);
+    setSelectedPeriod(selectionInfo);
+    setSelectionForm({
+      ...emptySelectionForm(selectionInfo),
+      total: String(computedTotal),
+      nightPrice: String(getPriceForDate(selectionInfo.startStr)),
+    });
+  }
 
-    if (reason === null) return;
+  async function saveSelectionAction(event) {
+    event.preventDefault();
 
-    const { error } = await supabase.from("calendar_blocks").insert([
-      {
-        title: reason || "Blocage admin",
-        start_date: selectionInfo.startStr,
-        end_date: selectionInfo.endStr,
-        notes: reason || null,
-        source: "admin",
-        status: "blocked",
-      },
-    ]);
+    if (!selectedPeriod) return;
 
-    if (error) return alert("Erreur lors du blocage : " + error.message);
-    await loadCalendar();
+    try {
+      if (selectionForm.action === "block") {
+        const { error } = await supabase.from("calendar_blocks").insert([
+          {
+            title: selectionForm.title || "Blocage admin",
+            start_date: selectedPeriod.startStr,
+            end_date: selectedPeriod.endStr,
+            notes: selectionForm.notes || null,
+            source: "admin",
+            status: "blocked",
+          },
+        ]);
+
+        if (error) throw error;
+        alert("Dates bloquées.");
+      }
+
+      if (selectionForm.action === "personal") {
+        const response = await fetch("/.netlify/functions/create-personal-booking", {
+          method: "POST",
+          headers: await getAdminFetchHeaders(),
+          body: JSON.stringify({
+            startDate: selectedPeriod.startStr,
+            endDate: selectedPeriod.endStr,
+            firstName: selectionForm.firstName,
+            lastName: selectionForm.lastName,
+            phone: selectionForm.phone,
+            email: selectionForm.email,
+            total: Number(selectionForm.total || 0),
+            amountPaid: Number(selectionForm.amountPaid || 0),
+            notes: selectionForm.notes,
+          }),
+        });
+
+        if (!response.ok) throw new Error(await response.text());
+        const result = await response.json();
+        alert("Réservation personnelle créée.");
+        onSelectReservation?.(result.booking);
+        onCalendarUpdated?.();
+      }
+
+      if (selectionForm.action === "price") {
+        const response = await fetch("/.netlify/functions/save-price-rule", {
+          method: "POST",
+          headers: await getAdminFetchHeaders(),
+          body: JSON.stringify({
+            action: "create",
+            ruleType: "override",
+            label: selectionForm.priceLabel || "Tarif spécifique",
+            startDate: selectedPeriod.startStr,
+            endDate: selectedPeriod.endStr,
+            nightPrice: Number(selectionForm.nightPrice || 0),
+            reason: selectionForm.priceReason || "ajustement",
+            notes: selectionForm.priceNotes || selectionForm.notes || null,
+          }),
+        });
+
+        if (!response.ok) throw new Error(await response.text());
+        alert("Tarif spécifique enregistré.");
+      }
+
+      setSelectedPeriod(null);
+      await loadCalendar();
+    } catch (error) {
+      alert("Erreur : " + error.message);
+    }
   }
 
   async function deleteBlock(blockId) {
@@ -181,6 +353,63 @@ export default function CalendarAdmin({ onSelectReservation }) {
     if (error) return alert("Erreur suppression : " + error.message);
     setSelectedExternalEvent(null);
     await loadCalendar();
+  }
+
+  async function deletePriceRule(ruleType, id) {
+    if (!window.confirm("Supprimer cette règle de prix ?")) return;
+
+    try {
+      const response = await fetch("/.netlify/functions/save-price-rule", {
+        method: "POST",
+        headers: await getAdminFetchHeaders(),
+        body: JSON.stringify({ action: "delete", ruleType, id }),
+      });
+
+      if (!response.ok) throw new Error(await response.text());
+      await loadCalendar();
+    } catch (error) {
+      alert("Erreur suppression tarif : " + error.message);
+    }
+  }
+
+  async function editSeasonPrice(rule) {
+    const label = window.prompt("Nom de la saison :", rule?.label || "Nouvelle saison");
+    if (label === null) return;
+    const startDate = window.prompt("Date début YYYY-MM-DD :", rule?.start_date || "");
+    if (startDate === null) return;
+    const endDate = window.prompt("Date fin exclusive YYYY-MM-DD :", rule?.end_date || "");
+    if (endDate === null) return;
+    const nightPrice = window.prompt("Prix par nuit (€) :", rule?.night_price ?? "80");
+    if (nightPrice === null) return;
+    const minimumNights = window.prompt("Séjour minimum sur cette saison (vide = 2 nuits) :", rule?.minimum_nights ?? "");
+    if (minimumNights === null) return;
+    const notes = window.prompt("Notes :", rule?.notes || "");
+    if (notes === null) return;
+
+    try {
+      const response = await fetch("/.netlify/functions/save-price-rule", {
+        method: "POST",
+        headers: await getAdminFetchHeaders(),
+        body: JSON.stringify({
+          action: rule?.id ? "update" : "create",
+          ruleType: "season",
+          id: rule?.id,
+          label,
+          startDate,
+          endDate,
+          nightPrice: Number(nightPrice),
+          minimumNights: minimumNights === "" ? null : Number(minimumNights),
+          allowedArrivalDays: [0, 6],
+          notes,
+          isActive: true,
+        }),
+      });
+
+      if (!response.ok) throw new Error(await response.text());
+      await loadCalendar();
+    } catch (error) {
+      alert("Erreur saison : " + error.message);
+    }
   }
 
   async function createOrUpdateCustomer({ firstName, lastName, email, phone, source, notes }) {
@@ -287,6 +516,11 @@ export default function CalendarAdmin({ onSelectReservation }) {
     }
   }
 
+  const selectedPeriodTotal = useMemo(() => {
+    if (!selectedPeriod) return 0;
+    return computeTotal(selectedPeriod.startStr, selectedPeriod.endStr);
+  }, [selectedPeriod, seasonPrices, priceOverrides]);
+
   return (
     <div style={styles.wrapper}>
       <div style={styles.legend}>
@@ -297,6 +531,7 @@ export default function CalendarAdmin({ onSelectReservation }) {
         <Legend color={COLORS.deposit_paid} label="Acompte payé" />
         <Legend color={COLORS.confirmed} label="Confirmée" />
         <Legend color={COLORS.admin_block} label="Blocage" />
+        <Legend color={COLORS.price} label="Tarif spécifique" />
       </div>
 
       {loading && <p>Chargement du calendrier...</p>}
@@ -313,16 +548,35 @@ export default function CalendarAdmin({ onSelectReservation }) {
             selectMirror={true}
             select={handleDateSelect}
             eventClick={openEvent}
+            dayCellContent={(arg) => {
+              const key = formatLocalDate(arg.date);
+              return (
+                <div style={styles.dayCellContent}>
+                  <div>{arg.dayNumberText}</div>
+                  <div style={styles.dayPrice}>{getPriceForDate(key)}€</div>
+                </div>
+              );
+            }}
           />
         </div>
 
         <aside style={styles.sidePanel}>
-          {!selectedExternalEvent ? (
+          {!selectedExternalEvent && !selectedPeriod ? (
             <div>
               <h3>Fiche calendrier</h3>
+              <p style={styles.muted}>Sélectionne une période pour bloquer, créer une résa perso ou changer les tarifs.</p>
               <p style={styles.muted}>Clique sur une réservation directe pour ouvrir la fiche résa centrale.</p>
               <p style={styles.muted}>Clique sur Airbnb/Booking pour renseigner les infos client.</p>
             </div>
+          ) : selectedPeriod ? (
+            <SelectionPanel
+              selection={selectedPeriod}
+              form={selectionForm}
+              setForm={setSelectionForm}
+              total={selectedPeriodTotal}
+              onClose={() => setSelectedPeriod(null)}
+              onSubmit={saveSelectionAction}
+            />
           ) : (
             <div>
               <button style={styles.closePanelButton} onClick={() => setSelectedExternalEvent(null)}>Fermer la fiche</button>
@@ -337,6 +591,50 @@ export default function CalendarAdmin({ onSelectReservation }) {
           )}
         </aside>
       </div>
+
+      <section style={styles.blockList}>
+        <div style={styles.sectionHeader}>
+          <h3>Tarifs saisonniers</h3>
+          <button style={styles.primaryButton} onClick={() => editSeasonPrice(null)}>Ajouter une saison</button>
+        </div>
+        {seasonPrices.length === 0 ? (
+          <p style={styles.muted}>Aucun tarif saisonnier.</p>
+        ) : (
+          <div style={styles.priceGrid}>
+            {seasonPrices.map((rule) => (
+              <div key={rule.id} style={styles.priceItem}>
+                <strong>{rule.label}</strong>
+                <p style={styles.muted}>{formatDate(rule.start_date)} → {formatDate(rule.end_date)} · {formatMoney(rule.night_price)} / nuit</p>
+                {rule.minimum_nights && <p style={styles.muted}>Minimum : {rule.minimum_nights} nuits</p>}
+                {rule.notes && <p style={styles.muted}>{rule.notes}</p>}
+                <div style={styles.actionsRow}>
+                  <button style={styles.smallButton} onClick={() => editSeasonPrice(rule)}>Modifier</button>
+                  <button style={styles.deleteButton} onClick={() => deletePriceRule("season", rule.id)}>Supprimer</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section style={styles.blockList}>
+        <h3>Tarifs spécifiques</h3>
+        {priceOverrides.length === 0 ? (
+          <p style={styles.muted}>Aucun tarif spécifique enregistré.</p>
+        ) : (
+          <div style={styles.priceGrid}>
+            {priceOverrides.map((rule) => (
+              <div key={rule.id} style={styles.priceItem}>
+                <strong>{rule.label}</strong>
+                <p style={styles.muted}>{formatDate(rule.start_date)} → {formatDate(rule.end_date)} · {formatMoney(rule.night_price)} / nuit</p>
+                {rule.reason && <p style={styles.muted}>Motif : {rule.reason}</p>}
+                {rule.notes && <p style={styles.muted}>{rule.notes}</p>}
+                <button style={styles.deleteButton} onClick={() => deletePriceRule("override", rule.id)}>Supprimer</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section style={styles.blockList}>
         <h3>Blocages admin</h3>
@@ -356,6 +654,61 @@ export default function CalendarAdmin({ onSelectReservation }) {
         )}
       </section>
     </div>
+  );
+}
+
+function SelectionPanel({ selection, form, setForm, total, onClose, onSubmit }) {
+  return (
+    <form onSubmit={onSubmit}>
+      <button type="button" style={styles.closePanelButton} onClick={onClose}>Fermer</button>
+      <h3>Période sélectionnée</h3>
+      <p style={styles.muted}>{formatDate(selection.startStr)} → {formatDate(selection.endStr)}</p>
+      <p style={styles.muted}>Total théorique selon tarifs actuels : <strong>{formatMoney(total)}</strong></p>
+
+      <label style={styles.label}>Action
+        <select style={styles.input} value={form.action} onChange={(event) => setForm({ ...form, action: event.target.value })}>
+          <option value="block">Bloquer les dates</option>
+          <option value="personal">Créer une résa perso</option>
+          <option value="price">Changer les tarifs de cette période</option>
+        </select>
+      </label>
+
+      {form.action === "block" && (
+        <>
+          <input style={styles.input} placeholder="Titre" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
+          <textarea style={styles.textarea} placeholder="Notes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
+        </>
+      )}
+
+      {form.action === "personal" && (
+        <div style={styles.formGrid}>
+          <input style={styles.input} placeholder="Prénom" value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} />
+          <input style={styles.input} placeholder="Nom" value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} />
+          <input style={styles.input} placeholder="Téléphone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+          <input style={styles.input} placeholder="Email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+          <input style={styles.input} placeholder="Total séjour (€)" value={form.total} onChange={(event) => setForm({ ...form, total: event.target.value })} />
+          <input style={styles.input} placeholder="Montant déjà payé (€)" value={form.amountPaid} onChange={(event) => setForm({ ...form, amountPaid: event.target.value })} />
+          <textarea style={styles.textarea} placeholder="Notes internes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
+        </div>
+      )}
+
+      {form.action === "price" && (
+        <div style={styles.formGrid}>
+          <input style={styles.input} placeholder="Nom du tarif" value={form.priceLabel} onChange={(event) => setForm({ ...form, priceLabel: event.target.value })} />
+          <input style={styles.input} placeholder="Prix par nuit (€)" value={form.nightPrice} onChange={(event) => setForm({ ...form, nightPrice: event.target.value })} />
+          <select style={styles.input} value={form.priceReason} onChange={(event) => setForm({ ...form, priceReason: event.target.value })}>
+            <option value="ajustement">Ajustement</option>
+            <option value="promo">Promo</option>
+            <option value="vacances">Vacances</option>
+            <option value="pont">Pont / week-end spécial</option>
+            <option value="evenement">Événement</option>
+          </select>
+          <textarea style={styles.textarea} placeholder="Notes" value={form.priceNotes} onChange={(event) => setForm({ ...form, priceNotes: event.target.value })} />
+        </div>
+      )}
+
+      <button style={styles.primaryButton} type="submit">Valider</button>
+    </form>
   );
 }
 
@@ -401,16 +754,24 @@ const styles = {
   wrapper: { background: "white", borderRadius: "24px", padding: "20px" },
   legend: { display: "flex", gap: "18px", marginBottom: "20px", flexWrap: "wrap" },
   legendItem: { display: "flex", alignItems: "center", gap: "8px" },
-  layout: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(300px, 380px)", gap: "20px", alignItems: "start" },
+  layout: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(300px, 400px)", gap: "20px", alignItems: "start" },
   calendar: { minWidth: 0 },
   sidePanel: { background: "#f8fafc", borderRadius: "20px", padding: "18px", position: "sticky", top: "20px" },
   closePanelButton: { border: "none", borderRadius: "999px", padding: "8px 12px", background: "#e2e8f0", cursor: "pointer", marginBottom: "12px" },
   muted: { color: "#64748b", margin: "4px 0" },
+  label: { display: "grid", gap: "8px", margin: "12px 0", fontWeight: 700 },
   formGrid: { display: "grid", gap: "10px", margin: "16px 0" },
-  input: { padding: "12px 14px", borderRadius: "14px", border: "1px solid #d1d5db", fontSize: "14px" },
-  textarea: { padding: "12px 14px", borderRadius: "14px", border: "1px solid #d1d5db", fontSize: "14px", minHeight: "100px", resize: "vertical" },
+  input: { padding: "12px 14px", borderRadius: "14px", border: "1px solid #d1d5db", fontSize: "14px", width: "100%", boxSizing: "border-box" },
+  textarea: { padding: "12px 14px", borderRadius: "14px", border: "1px solid #d1d5db", fontSize: "14px", minHeight: "100px", resize: "vertical", width: "100%", boxSizing: "border-box" },
   primaryButton: { border: "none", borderRadius: "999px", padding: "10px 14px", background: "#2f4f35", color: "white", cursor: "pointer", fontWeight: 700 },
+  smallButton: { border: "none", borderRadius: "999px", padding: "8px 12px", background: "#e2e8f0", cursor: "pointer", fontWeight: 700 },
   deleteButton: { border: "none", borderRadius: "999px", background: "#dc2626", color: "white", padding: "10px 14px", cursor: "pointer" },
   blockList: { marginTop: "28px" },
+  sectionHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" },
   blockItem: { display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "center", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "14px", marginBottom: "10px" },
+  priceGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "12px" },
+  priceItem: { border: "1px solid #e5e7eb", borderRadius: "16px", padding: "14px", background: "#f8fafc" },
+  actionsRow: { display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "10px" },
+  dayCellContent: { display: "grid", gap: "2px", justifyItems: "center" },
+  dayPrice: { fontSize: "11px", color: "#0f766e", fontWeight: 800 },
 };

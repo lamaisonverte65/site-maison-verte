@@ -129,6 +129,26 @@ export async function handler() {
       );
     }
 
+    const { data: seasonPrices, error: seasonPricesError } = await supabase
+      .from("season_prices")
+      .select("*")
+      .eq("is_active", true)
+      .order("start_date", { ascending: true });
+
+    if (seasonPricesError) {
+      console.error("Erreur season_prices calendrier :", seasonPricesError);
+    }
+
+    const { data: priceOverrides, error: priceOverridesError } = await supabase
+      .from("price_overrides")
+      .select("*")
+      .eq("is_active", true)
+      .order("start_date", { ascending: true });
+
+    if (priceOverridesError) {
+      console.error("Erreur price_overrides calendrier :", priceOverridesError);
+    }
+
     return {
       statusCode: 200,
       headers: {
@@ -138,6 +158,9 @@ export async function handler() {
       body: JSON.stringify({
         unavailableDates: [...new Set(unavailableDates)].sort(),
         externalReservations,
+        defaultNightPrice: 80,
+        seasonPrices: seasonPrices || [],
+        priceOverrides: priceOverrides || [],
       }),
     };
   } catch (error) {

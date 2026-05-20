@@ -1,0 +1,108 @@
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+function getAdminEmails() {
+  return String(process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+async function requireAdmin(event, supabase) {
+  const authHeader = event.headers.authorization || event.headers.Authorization || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+  if (!token) {
+    return { ok: false, statusCode: 401, error: "Session admin manquante." };
+  }
+
+  const { data, error } = await supabase.auth.getUser(token);
+  const email = data?.user?.email?.toLowerCase();
+  const allowed = getAdminEmails();
+
+  if (error || !email) {
+    return { ok: false, statusCode: 401, error: "Session admin invalide." };
+  }
+
+  if (allowed.length > 0 && !allowed.includes(email)) {
+    return { ok: false, statusCode: 403, error: "Compte non autorisé." };
+  }
+
+  return { ok: true, user: data.user };
+}
+
+function cleanNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function validateDateRange(startDate, endDate) {
+  if (!startDate || !endDate) return "Dates obligatoires.";
+  if (String(endDate) <= String(startDate)) return "La date de fin doit être après la date de début.";
+  return null;
+}
+
+export async function handler(event) {
+  if (event.httpMethod !== "POST") {
+    return { statusCode: 405, body: "Method Not Allowed" };
+  }
+
+  try {
+    const admin = await requireAdmin(event, supabase);
+    if (!admin.ok) {
+      return { statusCode: admin.statusCode, body: JSON.stringify({ error: admin.error }) };
+    }
+
+    const body = JSON.parse(event.body || "{}");
+    const { action, ruleType, id } = body;
+
+    if (action === "delete") {
+      const table = ruleType === "season" ? "season_prices" : "price_overrides";
+      const { error } = await supabase.from(table).delete().eq("id", id);
+      if (error) throw error;
+      return { statusCode: 200, body: JSON.stringify({ success: true }) };
+    }
+
+    const table = ruleType === "season" ? "season_prices" : "price_overrides";
+    const payload = {
+      label: body.label || (ruleType === "season" ? "Saison" : "Tarif spécifique"),
+      start_date: body.startDate,
+      end_date: body.endDate,
+      night_price: cleanNumber(body.nightPrice),
+      notes: body.notes || null,
+      is_active: body.isActive !== false,
+      updated_at: new Date().toISOString(),
+    };
+
+    const dateError = validateDateRange(payload.start_date, payload.end_date);
+    if (dateError) return { statusCode: 400, body: JSON.stringify({ error: dateError }) };
+    if (payload.night_price === null || payload.night_price < 0) {
+      return { statusCode: 400, body: JSON.stringify({ error: "Prix invalide." }) };
+    }
+
+    if (ruleType === "season") {
+      payload.minimum_nights = cleanNumber(body.minimumNights);
+      payload.allowed_arrival_days = Array.isArray(body.allowedArrivalDays) ? body.allowedArrivalDays : null;
+    } else {
+      payload.reason = body.reason || null;
+    }
+
+    let result;
+    if (action === "update" && id) {
+      result = await supabase.from(table).update(payload).eq("id", id).select().single();
+    } else {
+      result = await supabase.from(table).insert([payload]).select().single();
+    }
+
+    if (result.error) throw result.error;
+
+    return { statusCode: 200, body: JSON.stringify({ success: true, rule: result.data }) };
+  } catch (error) {
+    console.error("Erreur save-price-rule :", error);
+    return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
+  }
+}
