@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import CalendarAdmin from "./CalendarAdmin";
+import PricingAdmin from "./PricingAdmin";
 import AdminLogin from "./AdminLogin";
 
 const STATUS_LABELS = {
@@ -713,6 +714,7 @@ export default function Admin() {
         <button style={activeTab === "requests" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("requests")}>Demandes</button>
         <button style={activeTab === "reservations" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("reservations")}>Réservations</button>
         <button style={activeTab === "calendar" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("calendar")}>Calendrier</button>
+        <button style={activeTab === "pricing" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("pricing")}>Tarifs</button>
         <button style={activeTab === "customers" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("customers")}>Clients</button>
         <button style={activeTab === "payments" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("payments")}>Paiements</button>
       </nav>
@@ -828,6 +830,8 @@ export default function Admin() {
       )}
 
       {!loading && !error && activeTab === "calendar" && <section style={styles.panel}><h2 style={styles.panelTitle}>Calendrier central</h2><CalendarAdmin onSelectReservation={selectReservation} onCalendarUpdated={loadAdminData} /></section>}
+
+      {!loading && !error && activeTab === "pricing" && <section style={styles.panel}><h2 style={styles.panelTitle}>Gestion des tarifs</h2><PricingAdmin /></section>}
 
       {!loading && !error && activeTab === "customers" && (
         <section style={styles.panel}>

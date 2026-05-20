@@ -7,6 +7,14 @@ const supabase = createClient(
 
 export async function handler() {
   try {
+    const { data: settings, error: settingsError } = await supabase
+      .from("pricing_settings")
+      .select("*")
+      .eq("id", "default")
+      .maybeSingle();
+
+    if (settingsError) throw settingsError;
+
     const { data: seasonPrices, error: seasonError } = await supabase
       .from("season_prices")
       .select("*")
@@ -30,7 +38,7 @@ export async function handler() {
         "Cache-Control": "no-store, max-age=0",
       },
       body: JSON.stringify({
-        defaultNightPrice: 80,
+        defaultNightPrice: Number(settings?.default_night_price || 80),
         seasonPrices: seasonPrices || [],
         priceOverrides: priceOverrides || [],
       }),

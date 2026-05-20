@@ -129,6 +129,17 @@ export async function handler() {
       );
     }
 
+
+    const { data: pricingSettings, error: pricingSettingsError } = await supabase
+      .from("pricing_settings")
+      .select("*")
+      .eq("id", "default")
+      .maybeSingle();
+
+    if (pricingSettingsError) {
+      console.error("Erreur pricing_settings calendrier :", pricingSettingsError);
+    }
+
     const { data: seasonPrices, error: seasonPricesError } = await supabase
       .from("season_prices")
       .select("*")
@@ -158,7 +169,7 @@ export async function handler() {
       body: JSON.stringify({
         unavailableDates: [...new Set(unavailableDates)].sort(),
         externalReservations,
-        defaultNightPrice: 80,
+        defaultNightPrice: Number(pricingSettings?.default_night_price || 80),
         seasonPrices: seasonPrices || [],
         priceOverrides: priceOverrides || [],
       }),

@@ -84,6 +84,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   const [blocks, setBlocks] = useState([]);
   const [seasonPrices, setSeasonPrices] = useState([]);
   const [priceOverrides, setPriceOverrides] = useState([]);
+  const [defaultNightPrice, setDefaultNightPrice] = useState(80);
   const [selectedExternalEvent, setSelectedExternalEvent] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [selectionForm, setSelectionForm] = useState(emptySelectionForm());
@@ -103,6 +104,15 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   }
 
   async function loadPricing() {
+    const { data: settings, error: settingsError } = await supabase
+      .from("pricing_settings")
+      .select("*")
+      .eq("id", "default")
+      .maybeSingle();
+
+    if (settingsError) throw settingsError;
+    setDefaultNightPrice(Number(settings?.default_night_price || 80));
+
     const { data: seasons, error: seasonsError } = await supabase
       .from("season_prices")
       .select("*")
@@ -120,7 +130,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
     setSeasonPrices(seasons || []);
     setPriceOverrides(overrides || []);
 
-    return { seasons: seasons || [], overrides: overrides || [] };
+    return { seasons: seasons || [], overrides: overrides || [], defaultNightPrice: Number(settings?.default_night_price || 80) };
   }
 
   async function loadCalendar() {
@@ -223,12 +233,12 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
 
   function getPriceForDate(key) {
     const override = priceOverrides.find((item) => item.is_active !== false && key >= item.start_date && key < item.end_date);
-    if (override) return Number(override.night_price || 80);
+    if (override) return Number(override.night_price || defaultNightPrice || 80);
 
     const season = seasonPrices.find((item) => item.is_active !== false && key >= item.start_date && key < item.end_date);
-    if (season) return Number(season.night_price || 80);
+    if (season) return Number(season.night_price || defaultNightPrice || 80);
 
-    return 80;
+    return Number(defaultNightPrice || 80);
   }
 
   function computeTotal(startDate, endDate) {
@@ -369,6 +379,32 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
       await loadCalendar();
     } catch (error) {
       alert("Erreur suppression tarif : " + error.message);
+    }
+  }
+
+
+  async function editDefaultNightPrice() {
+    const nightPrice = window.prompt("Tarif par défaut par nuit (€) :", String(defaultNightPrice || 80));
+    if (nightPrice === null) return;
+
+    const notes = window.prompt("Notes tarif par défaut :", "Hors saison et hors tarif spécifique");
+    if (notes === null) return;
+
+    try {
+      const response = await fetch("/.netlify/functions/save-price-rule", {
+        method: "POST",
+        headers: await getAdminFetchHeaders(),
+        body: JSON.stringify({
+          action: "update_default_price",
+          defaultNightPrice: Number(nightPrice),
+          notes,
+        }),
+      });
+
+      if (!response.ok) throw new Error(await response.text());
+      await loadCalendar();
+    } catch (error) {
+      alert("Erreur tarif par défaut : " + error.message);
     }
   }
 
@@ -592,9 +628,27 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
         </aside>
       </div>
 
+
       <section style={styles.blockList}>
         <div style={styles.sectionHeader}>
-          <h3>Tarifs saisonniers</h3>
+          <div>
+            <h3>Tarif par défaut</h3>
+            <p style={styles.muted}>Ce tarif est utilisé hors saison et hors tarif spécifique.</p>
+          </div>
+          <button style={styles.primaryButton} onClick={editDefaultNightPrice}>Modifier le tarif par défaut</button>
+        </div>
+        <div style={styles.priceItem}>
+          <strong>{formatMoney(defaultNightPrice)} / nuit</strong>
+          <p style={styles.muted}>Priorité appliquée : tarif spécifique → tarif saisonnier → tarif par défaut.</p>
+        </div>
+      </section>
+
+      <section style={styles.blockList}>
+        <div style={styles.sectionHeader}>
+          <div>
+            <h3>Tarifs saisonniers</h3>
+            <p style={styles.muted}>Tu peux modifier les dates et prix des vacances année par année.</p>
+          </div>
           <button style={styles.primaryButton} onClick={() => editSeasonPrice(null)}>Ajouter une saison</button>
         </div>
         {seasonPrices.length === 0 ? (

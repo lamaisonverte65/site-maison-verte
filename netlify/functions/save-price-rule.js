@@ -66,6 +66,29 @@ export async function handler(event) {
       if (error) throw error;
       return { statusCode: 200, body: JSON.stringify({ success: true }) };
     }
+    if (action === "update_default_price") {
+      const defaultNightPrice = cleanNumber(body.defaultNightPrice);
+
+      if (defaultNightPrice === null || defaultNightPrice < 0) {
+        return { statusCode: 400, body: JSON.stringify({ error: "Tarif par défaut invalide." }) };
+      }
+
+      const { data, error } = await supabase
+        .from("pricing_settings")
+        .upsert({
+          id: "default",
+          default_night_price: defaultNightPrice,
+          notes: body.notes || null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "id" })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return { statusCode: 200, body: JSON.stringify({ success: true, settings: data }) };
+    }
+
 
     const table = ruleType === "season" ? "season_prices" : "price_overrides";
     const payload = {
