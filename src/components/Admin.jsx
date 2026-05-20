@@ -786,6 +786,7 @@ export default function Admin() {
                     <th style={styles.th}>N° demande</th>
                     <th style={styles.th}>Client</th>
                     <th style={styles.th}>Date demande</th>
+                    <th style={styles.th}>Statut</th>
                     <th style={styles.th}>Début séjour</th>
                     <th style={styles.th}>Fin séjour</th>
                     <th style={styles.th}>Nuits</th>
@@ -799,6 +800,7 @@ export default function Admin() {
                       <td style={styles.td}>{shortId(request.id)}</td>
                       <td style={styles.td}>{getRequestName(request)}</td>
                       <td style={styles.td}>{formatDateTime(request.created_at)}</td>
+                      <td style={styles.td}><StatusBadge status={request.status || "pending"} /></td>
                       <td style={styles.td}>{formatDate(request.start_date)}</td>
                       <td style={styles.td}>{formatDate(request.end_date)}</td>
                       <td style={styles.td}>{request.nights || "-"}</td>
@@ -949,31 +951,6 @@ function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, on
   const status = request.status || "pending";
   const amounts = getAmounts(request);
 
-  const primaryActions = (
-    <div style={styles.primaryActionsBox}>
-      {status === "pending" && (
-        <>
-          <button style={styles.acceptButtonLarge} onClick={() => onAccept(request)}>Accepter</button>
-          <button style={styles.refuseButtonLarge} onClick={() => onRefuse(request)}>Refuser</button>
-          <button style={styles.cancelButtonLarge} onClick={() => onCancel(request)}>Annuler</button>
-        </>
-      )}
-      {status === "accepted" && (
-        <>
-          <button style={styles.confirmButtonLarge} onClick={() => onConfirm(request)}>Confirmer manuellement</button>
-          <button style={styles.cancelButtonLarge} onClick={() => onCancel(request)}>Annuler</button>
-        </>
-      )}
-      {["deposit_paid", "paid", "fully_paid", "confirmed"].includes(status) && (
-        <button style={styles.cancelButtonLarge} onClick={() => onCancel(request)}>Annuler / remboursement</button>
-      )}
-      {["refused", "expired", "cancelled"].includes(status) && (
-        <p style={styles.empty}>Dossier conservé dans l’historique.</p>
-      )}
-    </div>
-  );
-
-
   return (
     <div style={styles.reservationSheet}>
       <div style={styles.detailHeader}>
@@ -984,6 +961,15 @@ function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, on
         <StatusBadge status={status} />
       </div>
 
+      <ReservationMainActions
+        status={status}
+        request={request}
+        onAccept={onAccept}
+        onRefuse={onRefuse}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+      />
+
       <div style={styles.contactButtons}>
         <button style={styles.smallButton} onClick={() => onEmail(request.guest_email)}>Email</button>
         <button style={styles.smallButton} onClick={() => onPhone(request.guest_phone)}>Appel</button>
@@ -992,8 +978,6 @@ function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, on
         {request.balance_payment_link && <a style={styles.linkButton} href={request.balance_payment_link} target="_blank" rel="noreferrer">Lien solde</a>}
         {request.manual_payment_link && <a style={styles.linkButton} href={request.manual_payment_link} target="_blank" rel="noreferrer">Lien paiement manuel</a>}
       </div>
-
-      {primaryActions}
 
       <h3 style={styles.subTitle}>Client</h3>
       <div style={styles.detailGrid}>
@@ -1067,7 +1051,41 @@ function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, on
         </div>
       )} />
 
+      {["refused", "expired", "cancelled"].includes(status) && <p style={styles.empty}>Dossier conservé dans l’historique.</p>}
+    </div>
+  );
+}
 
+function ReservationMainActions({ status, request, onAccept, onRefuse, onConfirm, onCancel }) {
+  if (["refused", "expired", "cancelled"].includes(status)) return null;
+
+  return (
+    <div style={styles.priorityActionsBox}>
+      <div>
+        <strong style={styles.priorityActionsTitle}>Actions principales</strong>
+        <p style={styles.muted}>Les décisions importantes sont regroupées ici, en haut de fiche.</p>
+      </div>
+
+      <div style={styles.priorityActionsButtons}>
+        {status === "pending" && (
+          <>
+            <button style={{ ...styles.priorityButton, ...styles.acceptActionButton }} onClick={() => onAccept(request)}>Accepter</button>
+            <button style={{ ...styles.priorityButton, ...styles.refuseActionButton }} onClick={() => onRefuse(request)}>Refuser</button>
+            <button style={{ ...styles.priorityButton, ...styles.cancelActionButton }} onClick={() => onCancel(request)}>Annuler</button>
+          </>
+        )}
+
+        {status === "accepted" && (
+          <>
+            <button style={{ ...styles.priorityButton, ...styles.confirmActionButton }} onClick={() => onConfirm(request)}>Confirmer manuellement</button>
+            <button style={{ ...styles.priorityButton, ...styles.cancelActionButton }} onClick={() => onCancel(request)}>Annuler</button>
+          </>
+        )}
+
+        {["deposit_paid", "paid", "fully_paid", "confirmed"].includes(status) && (
+          <button style={{ ...styles.priorityButton, ...styles.cancelActionButton }} onClick={() => onCancel(request)}>Annuler / remboursement</button>
+        )}
+      </div>
     </div>
   );
 }
