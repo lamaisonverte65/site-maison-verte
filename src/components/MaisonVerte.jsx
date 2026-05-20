@@ -142,7 +142,6 @@ function parseLocalDate(value) {
 
         const data =
           await response.json();
-          console.log("Dates iCal reçues :", data.unavailableDates);
 
         setUnavailableDates(
           data.unavailableDates || []
