@@ -468,7 +468,7 @@ async function submitBookingRequest() {
       })
     });
 
-    alert("Votre demande de réservation a bien été envoyée. Un email de confirmation vient de vous être adressé. Pensez à vérifier vos courriers indésirables / spams si vous ne le recevez pas rapidement.");
+    alert("Votre demande de réservation a bien été envoyée. Un email de confirmation vient de vous être adressé. Pensez à vérifier vos courriers indésirables / spams si vous ne le recevez pas rapidement. Le calendrier va maintenant se mettre à jour.");
 
     setGuestFirstName("");
     setGuestLastName("");
@@ -479,6 +479,8 @@ async function submitBookingRequest() {
 
     setSelectedDates([]);
     setContractAccepted(false);
+
+    window.location.reload();
 
   } catch (err) {
 
@@ -636,6 +638,39 @@ return (
 </Helmet>
 
 
+<style>{`
+  .mobile-reserve-button {
+    display: none;
+  }
+
+  @media (max-width: 640px) and (orientation: portrait) {
+    nav {
+      padding: 12px 18px !important;
+      gap: 12px;
+    }
+
+    nav .nav-links,
+    nav .nav-contact {
+      display: none !important;
+    }
+
+    .mobile-reserve-button {
+      display: inline-flex !important;
+      align-items: center;
+      justify-content: center;
+      margin-left: auto;
+      padding: 10px 16px !important;
+      font-size: 0.95rem !important;
+      white-space: nowrap;
+      box-shadow: 0 8px 22px rgba(0,0,0,0.16);
+    }
+
+    nav img {
+      height: 52px !important;
+    }
+  }
+`}</style>
+
 {/* MENU */}
 
 <nav
@@ -691,8 +726,17 @@ return (
 
   </div>
 
+  {/* BOUTON RESERVER MOBILE PORTRAIT */}
+  <a
+    href="#reservation"
+    className="button mobile-reserve-button"
+    style={{ textDecoration: "none" }}
+  >
+    Réserver
+  </a>
+
   {/* CONTACT DROITE */}
-  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+  <div className="nav-contact" style={{ display: "flex", justifyContent: "flex-end" }}>
     <a href="#contact" className="button" style={{ textDecoration: "none" }}>Contact</a>
   </div>
 

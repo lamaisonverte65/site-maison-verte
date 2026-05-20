@@ -949,6 +949,31 @@ function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, on
   const status = request.status || "pending";
   const amounts = getAmounts(request);
 
+  const primaryActions = (
+    <div style={styles.primaryActionsBox}>
+      {status === "pending" && (
+        <>
+          <button style={styles.acceptButtonLarge} onClick={() => onAccept(request)}>Accepter</button>
+          <button style={styles.refuseButtonLarge} onClick={() => onRefuse(request)}>Refuser</button>
+          <button style={styles.cancelButtonLarge} onClick={() => onCancel(request)}>Annuler</button>
+        </>
+      )}
+      {status === "accepted" && (
+        <>
+          <button style={styles.confirmButtonLarge} onClick={() => onConfirm(request)}>Confirmer manuellement</button>
+          <button style={styles.cancelButtonLarge} onClick={() => onCancel(request)}>Annuler</button>
+        </>
+      )}
+      {["deposit_paid", "paid", "fully_paid", "confirmed"].includes(status) && (
+        <button style={styles.cancelButtonLarge} onClick={() => onCancel(request)}>Annuler / remboursement</button>
+      )}
+      {["refused", "expired", "cancelled"].includes(status) && (
+        <p style={styles.empty}>Dossier conservé dans l’historique.</p>
+      )}
+    </div>
+  );
+
+
   return (
     <div style={styles.reservationSheet}>
       <div style={styles.detailHeader}>
@@ -967,6 +992,8 @@ function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, on
         {request.balance_payment_link && <a style={styles.linkButton} href={request.balance_payment_link} target="_blank" rel="noreferrer">Lien solde</a>}
         {request.manual_payment_link && <a style={styles.linkButton} href={request.manual_payment_link} target="_blank" rel="noreferrer">Lien paiement manuel</a>}
       </div>
+
+      {primaryActions}
 
       <h3 style={styles.subTitle}>Client</h3>
       <div style={styles.detailGrid}>
@@ -1040,23 +1067,7 @@ function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, on
         </div>
       )} />
 
-      <div style={styles.actions}>
-        {status === "pending" && (
-          <>
-            <button style={styles.acceptButton} onClick={() => onAccept(request)}>Accepter</button>
-            <button style={styles.refuseButton} onClick={() => onRefuse(request)}>Refuser</button>
-            <button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button>
-          </>
-        )}
-        {status === "accepted" && (
-          <>
-            <button style={styles.confirmButton} onClick={() => onConfirm(request)}>Confirmer manuellement</button>
-            <button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler</button>
-          </>
-        )}
-        {["deposit_paid", "paid", "fully_paid", "confirmed"].includes(status) && <button style={styles.cancelButton} onClick={() => onCancel(request)}>Annuler / remboursement</button>}
-        {["refused", "expired", "cancelled"].includes(status) && <p style={styles.empty}>Dossier conservé dans l’historique.</p>}
-      </div>
+
     </div>
   );
 }
