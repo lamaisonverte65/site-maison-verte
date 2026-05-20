@@ -68,6 +68,28 @@ function formatLocalDate(date) {
   return `${year}-${month}-${day}`;
 }
 
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function getDateWindow(monthsBefore = 2, monthsAfter = 18) {
+  const start = new Date();
+  start.setMonth(start.getMonth() - monthsBefore);
+  start.setDate(1);
+
+  const end = new Date();
+  end.setMonth(end.getMonth() + monthsAfter);
+  end.setDate(1);
+
+  return {
+    startDate: formatLocalDate(start),
+    endDate: formatLocalDate(end),
+  };
+}
+
 function nightsBetween(startDate, endDate) {
   const start = parseLocalDate(startDate);
   const end = parseLocalDate(endDate);
@@ -85,6 +107,8 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   const [seasonPrices, setSeasonPrices] = useState([]);
   const [priceOverrides, setPriceOverrides] = useState([]);
   const [defaultNightPrice, setDefaultNightPrice] = useState(80);
+  const [pricesByDate, setPricesByDate] = useState({});
+  const [calendarRenderKey, setCalendarRenderKey] = useState(0);
   const [selectedExternalEvent, setSelectedExternalEvent] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [selectionForm, setSelectionForm] = useState(emptySelectionForm());
@@ -100,6 +124,31 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
     return {
       "Content-Type": "application/json",
       ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+    };
+  }
+
+
+  async function loadPricingByDate() {
+    const { startDate, endDate } = getDateWindow(2, 18);
+
+    const response = await fetch(`/.netlify/functions/get-pricing?start=${startDate}&end=${endDate}`);
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const data = await response.json();
+
+    const nextPricesByDate = data.pricesByDate || data.prices || {};
+    setPricesByDate(nextPricesByDate);
+
+    if (data.defaultNightPrice || data.defaultPrice) {
+      setDefaultNightPrice(Number(data.defaultNightPrice || data.defaultPrice || 80));
+    }
+
+    return {
+      pricesByDate: nextPricesByDate,
+      defaultNightPrice: Number(data.defaultNightPrice || data.defaultPrice || defaultNightPrice || 80),
     };
   }
 
@@ -139,6 +188,8 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
     try {
       const calendarResponse = await fetch("/.netlify/functions/calendar");
       const calendarData = await calendarResponse.json();
+
+      const pricingByDate = await loadPricingByDate();
       const pricing = await loadPricing();
 
       const { data: externalClientLinks } = await supabase
@@ -213,17 +264,28 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
         extendedProps: { type: "admin_block", block },
       }));
 
-      const priceEvents = (pricing.overrides || []).filter((rule) => rule.is_active !== false).map((rule) => ({
+      const seasonPriceEvents = (pricing.seasons || []).filter((rule) => rule.is_active !== false).map((rule) => ({
+        id: `season-price-${rule.id}`,
+        title: `${rule.label} · ${Number(rule.night_price)}€/nuit`,
+        start: rule.start_date,
+        end: rule.end_date,
+        display: "background",
+        backgroundColor: "rgba(37,99,235,0.10)",
+        extendedProps: { type: "season_price", rule },
+      }));
+
+      const overridePriceEvents = (pricing.overrides || []).filter((rule) => rule.is_active !== false).map((rule) => ({
         id: `price-${rule.id}`,
         title: `${rule.label} · ${Number(rule.night_price)}€/nuit`,
         start: rule.start_date,
         end: rule.end_date,
         display: "background",
-        backgroundColor: "rgba(15,118,110,0.14)",
+        backgroundColor: "rgba(15,118,110,0.18)",
         extendedProps: { type: "price_override", rule },
       }));
 
-      setEvents([...priceEvents, ...externalEvents, ...directEvents, ...blockEvents]);
+      setEvents([...seasonPriceEvents, ...overridePriceEvents, ...externalEvents, ...directEvents, ...blockEvents]);
+      setCalendarRenderKey((previous) => previous + 1);
     } catch (error) {
       alert("Erreur calendrier : " + error.message);
     }
@@ -232,11 +294,16 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   }
 
   function getPriceForDate(key) {
-    const override = priceOverrides.find((item) => item.is_active !== false && key >= item.start_date && key <= item.end_date);
-    if (override) return Number(override.night_price || defaultNightPrice || 80);
+    const cleanKey = String(key || "").slice(0, 10);
+    const priceInfo = pricesByDate[cleanKey];
 
-    const season = seasonPrices.find((item) => item.is_active !== false && key >= item.start_date && key <= item.end_date);
-    if (season) return Number(season.night_price || defaultNightPrice || 80);
+    if (typeof priceInfo === "number") {
+      return Number(priceInfo || defaultNightPrice || 80);
+    }
+
+    if (priceInfo && typeof priceInfo === "object") {
+      return Number(priceInfo.price || priceInfo.nightPrice || priceInfo.night_price || defaultNightPrice || 80);
+    }
 
     return Number(defaultNightPrice || 80);
   }
@@ -555,7 +622,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   const selectedPeriodTotal = useMemo(() => {
     if (!selectedPeriod) return 0;
     return computeTotal(selectedPeriod.startStr, selectedPeriod.endStr);
-  }, [selectedPeriod, seasonPrices, priceOverrides]);
+  }, [selectedPeriod, pricesByDate, defaultNightPrice]);
 
   return (
     <div style={styles.wrapper}>
@@ -567,7 +634,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
         <Legend color={COLORS.deposit_paid} label="Acompte payé" />
         <Legend color={COLORS.confirmed} label="Confirmée" />
         <Legend color={COLORS.admin_block} label="Blocage" />
-        <Legend color={COLORS.price} label="Tarif spécifique" />
+        <Legend color={COLORS.price} label="Tarif spécifique / saison" />
       </div>
 
       {loading && <p>Chargement du calendrier...</p>}
@@ -575,6 +642,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
       <div style={styles.layout}>
         <div style={styles.calendar}>
           <FullCalendar
+            key={calendarRenderKey}
             plugins={[dayGridPlugin, interactionPlugin]}
             initialView="dayGridMonth"
             locale="fr"
@@ -601,6 +669,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
             <div>
               <h3>Fiche calendrier</h3>
               <p style={styles.muted}>Sélectionne une période pour bloquer, créer une résa perso ou changer les tarifs.</p>
+              <p style={styles.muted}>Les prix affichés ici proviennent de la même source serveur que le site public.</p>
               <p style={styles.muted}>Clique sur une réservation directe pour ouvrir la fiche résa centrale.</p>
               <p style={styles.muted}>Clique sur Airbnb/Booking pour renseigner les infos client.</p>
             </div>
