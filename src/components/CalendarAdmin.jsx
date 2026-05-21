@@ -235,27 +235,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
         extendedProps: { type: "admin_block", block },
       }));
 
-      const seasonPriceEvents = (pricing.seasons || []).filter((rule) => rule.is_active !== false).map((rule) => ({
-        id: `season-price-${rule.id}`,
-        title: `${rule.label} · ${Number(rule.night_price)}€/nuit`,
-        start: rule.start_date,
-        end: rule.end_date,
-        display: "background",
-        backgroundColor: "rgba(37,99,235,0.10)",
-        extendedProps: { type: "season_price", rule },
-      }));
-
-      const overridePriceEvents = (pricing.overrides || []).filter((rule) => rule.is_active !== false).map((rule) => ({
-        id: `price-${rule.id}`,
-        title: `${rule.label} · ${Number(rule.night_price)}€/nuit`,
-        start: rule.start_date,
-        end: rule.end_date,
-        display: "background",
-        backgroundColor: "rgba(15,118,110,0.18)",
-        extendedProps: { type: "price_override", rule },
-      }));
-
-      setEvents([...seasonPriceEvents, ...overridePriceEvents, ...externalEvents, ...directEvents, ...blockEvents]);
+      setEvents([...externalEvents, ...directEvents, ...blockEvents]);
       setCalendarRenderKey((previous) => previous + 1);
     } catch (error) {
       alert("Erreur calendrier : " + error.message);
@@ -294,6 +274,10 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
 
   function openEvent(info) {
     const props = info.event.extendedProps;
+
+    if (props.type === "selected_period") {
+      return;
+    }
 
     if (props.type === "booking_request") {
       onSelectReservation?.(props.reservation);
@@ -592,6 +576,23 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
     return computeTotal(selectedPeriod.startStr, selectedPeriod.endStr);
   }, [selectedPeriod, seasonPrices, priceOverrides, defaultNightPrice]);
 
+  const calendarEvents = useMemo(() => {
+    const selectedRangeEvent = selectedPeriod
+      ? [{
+          id: "admin-selected-period",
+          title: "Période sélectionnée",
+          start: selectedPeriod.startStr,
+          end: selectedPeriod.endStr,
+          display: "background",
+          backgroundColor: "rgba(249, 115, 22, 0.22)",
+          borderColor: "#f97316",
+          extendedProps: { type: "selected_period" },
+        }]
+      : [];
+
+    return [...selectedRangeEvent, ...events];
+  }, [events, selectedPeriod]);
+
   return (
     <div style={styles.wrapper}>
       <style>{`
@@ -624,6 +625,10 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
           .calendar-admin-calendar .fc-daygrid-day-frame {
             min-height: 82px;
           }
+
+          .calendar-admin-calendar .fc-bg-event {
+            opacity: 1 !important;
+          }
         }
       `}</style>
       <div style={styles.legend}>
@@ -647,7 +652,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
             initialView="dayGridMonth"
             locale="fr"
             height="auto"
-            events={events}
+            events={calendarEvents}
             selectable={true}
             selectMirror={true}
             select={handleDateSelect}
