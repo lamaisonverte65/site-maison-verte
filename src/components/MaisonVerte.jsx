@@ -256,7 +256,6 @@ const pricePeriods = (pricingRules.seasonPrices || []).map((period) => ({
   end: period.end_date,
   price: Number(period.night_price || defaultPrice),
   minimumNights: period.minimum_nights,
-  allowedArrivalDays: period.allowed_arrival_days,
 }));
 
 const priceOverrides = (pricingRules.priceOverrides || []).map((override) => ({
@@ -267,13 +266,12 @@ const priceOverrides = (pricingRules.priceOverrides || []).map((override) => ({
 }));
 
 const stayRules = pricePeriods
-  .filter((period) => period.minimumNights || period.allowedArrivalDays)
+  .filter((period) => period.minimumNights)
   .map((period) => ({
     name: period.name,
     start: period.start,
     end: period.end,
     minimumNights: Number(period.minimumNights || 2),
-    allowedArrivalDays: Array.isArray(period.allowedArrivalDays) ? period.allowedArrivalDays : [0, 6],
   }));
 
 function getPriceForDate(key) {
@@ -334,37 +332,21 @@ const accommodationTotal =
 
 const activeStayRule = getRuleForStay(selectedNights);
 
-const arrivalDay =
-  selectedDates.length >= 1
-    ? parseLocalDate(selectedDates[0]).getDay()
-    : null;
-
 const minimumNights =
   activeStayRule ? activeStayRule.minimumNights : 2;
-
-const isLongStay =
-  numberOfNights >= 6;
-
-const isArrivalDayAllowed =
-  !activeStayRule ||
-  isLongStay ||
-  activeStayRule.allowedArrivalDays.includes(arrivalDay);
 
 const reservationMessage =
   selectedDates.length !== 2
     ? "Sélectionnez vos dates d’arrivée et de départ."
     : numberOfNights < minimumNights
     ? `Séjour minimum : ${minimumNights} nuits sur cette période.`
-    : !isArrivalDayAllowed
-    ? "Pendant les vacances, les arrivées sont possibles le samedi ou le dimanche pour les courts séjours. Pour 6 nuits ou plus, les arrivées sont possibles tous les jours."
     : activeStayRule
     ? "Votre demande concerne une période de forte demande. Elle sera étudiée avant confirmation."
     : "Renseignez vos coordonnées.";
 
 const canRequestBooking =
   selectedDates.length === 2 &&
-  numberOfNights >= minimumNights &&
-  isArrivalDayAllowed;
+  numberOfNights >= minimumNights;
 
 const isEmailValid =
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail);

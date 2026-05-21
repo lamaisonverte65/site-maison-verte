@@ -90,6 +90,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   const [calendarRenderKey, setCalendarRenderKey] = useState(0);
   const [selectedExternalEvent, setSelectedExternalEvent] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
+  const [pendingRangeStart, setPendingRangeStart] = useState(null);
   const [selectionForm, setSelectionForm] = useState(emptySelectionForm());
   const [clientForm, setClientForm] = useState(emptyClientForm());
   const [loading, setLoading] = useState(false);
@@ -319,7 +320,17 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
     }
   }
 
-  function handleDateSelect(selectionInfo) {
+  function buildSelectionFromDates(startStr, endStr) {
+    return {
+      startStr,
+      endStr,
+      start: parseLocalDate(startStr),
+      end: parseLocalDate(endStr),
+      allDay: true,
+    };
+  }
+
+  function openSelectedPeriod(selectionInfo) {
     const computedTotal = computeTotal(selectionInfo.startStr, selectionInfo.endStr);
     setSelectedExternalEvent(null);
     setSelectedPeriod(selectionInfo);
@@ -328,6 +339,40 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
       total: String(computedTotal),
       nightPrice: String(getPriceForDate(selectionInfo.startStr)),
     });
+  }
+
+  function handleDateSelect(selectionInfo) {
+    openSelectedPeriod(selectionInfo);
+  }
+
+  function handleDateClick(info) {
+    const clickedDate = parseLocalDate(info.dateStr);
+    if (!clickedDate) return;
+
+    setSelectedExternalEvent(null);
+
+    if (!pendingRangeStart) {
+      setSelectedPeriod(null);
+      setPendingRangeStart(info.dateStr);
+      setSelectionForm(emptySelectionForm({ startStr: info.dateStr, endStr: "" }));
+      return;
+    }
+
+    if (info.dateStr === pendingRangeStart) {
+      const nextDay = new Date(clickedDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      setPendingRangeStart(null);
+      openSelectedPeriod(buildSelectionFromDates(pendingRangeStart, formatLocalDate(nextDay)));
+      return;
+    }
+
+    const start = pendingRangeStart < info.dateStr ? pendingRangeStart : info.dateStr;
+    const lastClickedDate = pendingRangeStart < info.dateStr ? clickedDate : parseLocalDate(pendingRangeStart);
+    const endDate = new Date(lastClickedDate);
+    endDate.setDate(endDate.getDate() + 1);
+
+    setPendingRangeStart(null);
+    openSelectedPeriod(buildSelectionFromDates(start, formatLocalDate(endDate)));
   }
 
   async function saveSelectionAction(event) {
@@ -396,6 +441,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
         alert("Tarif spécifique enregistré.");
       }
 
+      setPendingRangeStart(null);
       setSelectedPeriod(null);
       await loadCalendar();
     } catch (error) {
@@ -548,6 +594,38 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
 
   return (
     <div style={styles.wrapper}>
+      <style>{`
+        @media (max-width: 900px) {
+          .calendar-admin-layout {
+            grid-template-columns: 1fr !important;
+          }
+
+          .calendar-admin-side-panel {
+            order: 2;
+            position: static !important;
+            max-height: none !important;
+          }
+
+          .calendar-admin-calendar-scroll {
+            order: 1;
+            overflow-x: auto;
+            padding-bottom: 10px;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .calendar-admin-calendar {
+            min-width: 760px;
+          }
+
+          .calendar-admin-calendar .fc {
+            font-size: 0.92rem;
+          }
+
+          .calendar-admin-calendar .fc-daygrid-day-frame {
+            min-height: 82px;
+          }
+        }
+      `}</style>
       <div style={styles.legend}>
         <Legend color={COLORS.airbnb} label="Airbnb" />
         <Legend color={COLORS.booking} label="Booking" />
@@ -561,8 +639,8 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
 
       {loading && <p>Chargement du calendrier...</p>}
 
-      <div style={styles.layout}>
-        <div style={styles.calendar}>
+      <div className="calendar-admin-layout" style={styles.layout}>
+        <div className="calendar-admin-calendar-scroll" style={styles.calendarScroll}><div className="calendar-admin-calendar" style={styles.calendar}>
           <FullCalendar
             key={calendarRenderKey}
             plugins={[dayGridPlugin, interactionPlugin]}
@@ -573,24 +651,34 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
             selectable={true}
             selectMirror={true}
             select={handleDateSelect}
+            dateClick={handleDateClick}
             eventClick={openEvent}
             dayCellContent={(arg) => {
               const key = formatLocalDate(arg.date);
+              const isPendingStart = pendingRangeStart === key;
               return (
-                <div style={styles.dayCellContent}>
+                <div style={isPendingStart ? { ...styles.dayCellContent, ...styles.pendingStartCell } : styles.dayCellContent}>
                   <div>{arg.dayNumberText}</div>
-                  <div style={styles.dayPricePill}>{getPriceForDate(key)}€</div>
+                  <div style={isPendingStart ? styles.pendingStartPill : styles.dayPricePill}>
+                    {isPendingStart ? "Début" : `${getPriceForDate(key)}€`}
+                  </div>
                 </div>
               );
             }}
           />
+          </div>
         </div>
 
-        <aside style={styles.sidePanel}>
+        <aside className="calendar-admin-side-panel" style={styles.sidePanel}>
           {!selectedExternalEvent && !selectedPeriod ? (
             <div>
               <h3>Fiche calendrier</h3>
-              <p style={styles.muted}>Sélectionne une période pour bloquer, créer une résa perso ou changer les tarifs.</p>
+              {pendingRangeStart ? (
+                <p style={styles.selectionHint}>Début sélectionné : {formatDate(pendingRangeStart)}. Clique maintenant sur la date de fin.</p>
+              ) : (
+                <p style={styles.muted}>Clique une première date de début, puis une date de fin pour sélectionner une période.</p>
+              )}
+              <p style={styles.muted}>Tu peux ensuite bloquer, créer une résa perso ou changer les tarifs.</p>
               <p style={styles.muted}>Les prix affichés ici utilisent exactement les mêmes données que le calendrier du site public.</p>
               <p style={styles.muted}>Clique sur une réservation directe pour ouvrir la fiche résa centrale.</p>
               <p style={styles.muted}>Clique sur Airbnb/Booking pour renseigner les infos client.</p>
@@ -601,7 +689,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
               form={selectionForm}
               setForm={setSelectionForm}
               total={selectedPeriodTotal}
-              onClose={() => setSelectedPeriod(null)}
+              onClose={() => { setPendingRangeStart(null); setSelectedPeriod(null); }}
               onSubmit={saveSelectionAction}
             />
           ) : (
@@ -793,6 +881,35 @@ function Legend({ color, label }) {
 }
 
 const styles = {
+  calendarScroll: {
+    width: "100%",
+  },
+  pendingStartCell: {
+    background: "#fff7ed",
+    border: "2px solid #f97316",
+    borderRadius: "14px",
+    padding: "4px",
+  },
+  pendingStartPill: {
+    marginTop: "4px",
+    display: "inline-block",
+    padding: "3px 8px",
+    borderRadius: "999px",
+    background: "#f97316",
+    color: "white",
+    fontSize: "0.75rem",
+    fontWeight: 800,
+  },
+  selectionHint: {
+    background: "#fff7ed",
+    border: "1px solid #fdba74",
+    color: "#9a3412",
+    padding: "12px",
+    borderRadius: "14px",
+    lineHeight: 1.5,
+    fontWeight: 700,
+  },
+
   wrapper: { background: "white", borderRadius: "24px", padding: "20px" },
   legend: { display: "flex", gap: "18px", marginBottom: "20px", flexWrap: "wrap" },
   legendItem: { display: "flex", alignItems: "center", gap: "8px" },
