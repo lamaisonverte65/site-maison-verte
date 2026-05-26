@@ -26,6 +26,13 @@ export async function handler(event) {
 
   const data = JSON.parse(event.body || "{}");
 
+  const travelersSummary = [
+    data.adultsCount ? `${data.adultsCount} adulte${Number(data.adultsCount) > 1 ? "s" : ""}` : null,
+    Number(data.childrenCount || 0) > 0 ? `${data.childrenCount} enfant${Number(data.childrenCount) > 1 ? "s" : ""}` : null,
+    data.childrenAges ? `âges : ${data.childrenAges}` : null,
+    data.babyBedNeeded ? "lit bébé / bébé à prévoir" : null,
+  ].filter(Boolean).join(" · ") || "Non renseigné";
+
   const ownerEmailHtml = `
     
 <div style="font-family:Arial,sans-serif;line-height:1.7;color:#1e293b;">
@@ -42,6 +49,7 @@ export async function handler(event) {
     <p><strong>Nom :</strong> ${data.guestFirstName} ${data.guestLastName}</p>
     <p><strong>Email :</strong> ${data.guestEmail}</p>
     <p><strong>Téléphone :</strong> ${data.guestPhone}</p>
+    <p><strong>Voyageurs :</strong> ${travelersSummary}</p>
     <p><strong>Arrivée :</strong> ${data.startDate}</p>
     <p><strong>Départ :</strong> ${data.endDate}</p>
     <p><strong>Nuits :</strong> ${data.nights}</p>
@@ -74,6 +82,7 @@ export async function handler(event) {
     <p>
       <strong>Arrivée :</strong> ${data.startDate}<br />
       <strong>Départ :</strong> ${data.endDate}<br />
+      <strong>Voyageurs :</strong> ${travelersSummary}<br />
       <strong>Nombre de nuits :</strong> ${data.nights}<br />
       <strong>Total estimatif :</strong> ${data.total}€
     </p>

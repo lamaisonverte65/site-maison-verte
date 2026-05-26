@@ -181,6 +181,10 @@ export async function handler(event) {
       ownerPrice,
       ownerMessage,
       arrivalTime,
+      adultsCount,
+      childrenCount,
+      childrenAges,
+      babyBedNeeded,
       acceptanceExpiresAt,
       paymentLink,
       paymentType,
@@ -193,6 +197,12 @@ export async function handler(event) {
     let content = "";
 
     const displayedPrice = ownerPrice || estimatedTotal;
+    const travelersSummary = [
+      adultsCount ? `${adultsCount} adulte${Number(adultsCount) > 1 ? "s" : ""}` : null,
+      Number(childrenCount || 0) > 0 ? `${childrenCount} enfant${Number(childrenCount) > 1 ? "s" : ""}` : null,
+      childrenAges ? `âges : ${childrenAges}` : null,
+      babyBedNeeded ? "lit bébé / bébé à prévoir" : null,
+    ].filter(Boolean).join(" · ") || "Non renseigné";
     const acceptanceDeadline = formatDateTime(acceptanceExpiresAt);
     const paymentContext = getPaymentContext({
       paymentType,
@@ -217,6 +227,7 @@ export async function handler(event) {
           <strong>Arrivée :</strong> ${startDate}<br />
           <strong>Départ :</strong> ${endDate}<br />
           <strong>Nombre de nuits :</strong> ${nights}<br />
+          <strong>Voyageurs :</strong> ${travelersSummary}<br />
           <strong>Tarif du séjour :</strong> ${formatMoney(displayedPrice)}<br />
           <strong>${paymentContext.amountLabel} :</strong> ${formatMoney(paymentContext.amountToPay)}
         </p>
@@ -268,6 +279,11 @@ export async function handler(event) {
         `
             : ""
         }
+
+        <p style="margin-top:22px;color:#475569;">
+          Si vous ne souhaitez finalement pas confirmer cette réservation,
+          répondez simplement à cet email afin que nous puissions libérer les dates.
+        </p>
 
         <p>
           Merci de nous communiquer votre heure d’arrivée estimée
@@ -322,6 +338,7 @@ export async function handler(event) {
           <strong>Arrivée :</strong> ${startDate}<br />
           <strong>Départ :</strong> ${endDate}<br />
           <strong>Nombre de nuits :</strong> ${nights}<br />
+          <strong>Voyageurs :</strong> ${travelersSummary}<br />
           <strong>Montant :</strong> ${formatMoney(displayedPrice)}
         </p>
 

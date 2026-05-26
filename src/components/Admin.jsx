@@ -269,6 +269,10 @@ export default function Admin() {
         ownerPrice,
         ownerMessage,
         arrivalTime: request.arrival_time,
+        adultsCount: request.adults_count,
+        childrenCount: request.children_count,
+        childrenAges: request.children_ages,
+        babyBedNeeded: request.baby_bed_needed,
         ...extras,
       }),
     });
@@ -629,7 +633,7 @@ export default function Admin() {
   const filteredRequests = useMemo(() => bookingRequests.filter((request) => {
     const status = request.status || "pending";
     const matchesStatus = statusFilter === "all" || status === statusFilter || (statusFilter === "paid_group" && ["deposit_paid", "paid", "fully_paid", "confirmed"].includes(status));
-    const text = [request.id, request.guest_first_name, request.guest_last_name, request.guest_email, request.guest_phone, request.start_date, request.end_date, request.message, request.owner_message, request.payment_status, request.deposit_status, request.balance_status].filter(Boolean).join(" ").toLowerCase();
+    const text = [request.id, request.guest_first_name, request.guest_last_name, request.guest_email, request.guest_phone, request.start_date, request.end_date, request.message, request.owner_message, request.payment_status, request.deposit_status, request.balance_status, request.adults_count, request.children_count, request.children_ages, request.baby_bed_needed ? "bébé lit bébé" : ""].filter(Boolean).join(" ").toLowerCase();
     return matchesStatus && text.includes(search.trim().toLowerCase());
   }), [bookingRequests, search, statusFilter]);
 
@@ -648,6 +652,10 @@ export default function Admin() {
           request.start_date,
           request.end_date,
           request.message,
+          request.adults_count,
+          request.children_count,
+          request.children_ages,
+          request.baby_bed_needed ? "bébé lit bébé" : "",
         ].filter(Boolean).join(" ").toLowerCase();
         return text.includes(search.trim().toLowerCase());
       })
@@ -994,6 +1002,14 @@ function ReservationPanel({ request, onAccept, onRefuse, onConfirm, onCancel, on
         <Info label="Nom" value={request.guest_last_name} />
         <Info label="Email" value={request.guest_email} />
         <Info label="Téléphone" value={request.guest_phone} />
+      </div>
+
+      <h3 style={styles.subTitle}>Voyageurs</h3>
+      <div style={styles.detailGrid}>
+        <Info label="Adultes" value={request.adults_count ?? "-"} />
+        <Info label="Enfants" value={request.children_count ?? "0"} />
+        <Info label="Âge des enfants" value={request.children_ages || "-"} />
+        <Info label="Lit bébé / bébé" value={request.baby_bed_needed ? "Oui" : "Non"} />
       </div>
 
       <h3 style={styles.subTitle}>Séjour</h3>

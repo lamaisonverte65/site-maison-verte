@@ -16,6 +16,10 @@ export default function MaisonVerte() {
   const [guestLastName, setGuestLastName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
+  const [guestAdults, setGuestAdults] = useState("2");
+  const [guestChildren, setGuestChildren] = useState("0");
+  const [childrenAges, setChildrenAges] = useState("");
+  const [babyBedNeeded, setBabyBedNeeded] = useState(false);
   const [guestMessage, setGuestMessage] = useState(""); 
   const [contractAccepted, setContractAccepted] = useState(false);
   const galleryPhotos = [
@@ -354,11 +358,25 @@ const isEmailValid =
 const isPhoneValid =
   /^[0-9+\s().-]{8,}$/.test(guestPhone);
 
+const adultsCount = Number(guestAdults || 0);
+const childrenCount = Number(guestChildren || 0);
+const totalGuests = adultsCount + childrenCount;
+
+const isGuestCompositionValid =
+  Number.isInteger(adultsCount) &&
+  Number.isInteger(childrenCount) &&
+  adultsCount >= 1 &&
+  childrenCount >= 0 &&
+  totalGuests >= 1 &&
+  totalGuests <= 4 &&
+  (childrenCount === 0 || childrenAges.trim() !== "");
+
 const isFormValid =
   guestFirstName.trim() !== "" &&
   guestLastName.trim() !== "" &&
   isEmailValid &&
-  isPhoneValid;
+  isPhoneValid &&
+  isGuestCompositionValid;
 
 const canSubmitRequest =
   canRequestBooking &&
@@ -402,6 +420,10 @@ async function submitBookingRequest() {
 
           guest_email: guestEmail,
           guest_phone: guestPhone,
+          adults_count: adultsCount,
+          children_count: childrenCount,
+          children_ages: childrenAges.trim() || null,
+          baby_bed_needed: babyBedNeeded,
 
           start_date: selectedDates[0],
           end_date: selectedDates[1],
@@ -438,6 +460,10 @@ async function submitBookingRequest() {
 
         guestEmail,
         guestPhone,
+        adultsCount,
+        childrenCount,
+        childrenAges: childrenAges.trim(),
+        babyBedNeeded,
         guestMessage,
 
         startDate: selectedDates[0],
@@ -456,6 +482,10 @@ async function submitBookingRequest() {
 
     setGuestEmail("");
     setGuestPhone("");
+    setGuestAdults("2");
+    setGuestChildren("0");
+    setChildrenAges("");
+    setBabyBedNeeded(false);
     setGuestMessage("");
 
     setSelectedDates([]);
@@ -1609,6 +1639,116 @@ return (
               marginBottom: "8px"
             }}
           />
+
+          <div
+            style={{
+              marginTop: "14px",
+              marginBottom: "14px",
+              padding: "16px",
+              borderRadius: "16px",
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0"
+            }}
+          >
+            <div
+              style={{
+                fontWeight: "700",
+                color: "#1f6f3d",
+                marginBottom: "10px"
+              }}
+            >
+              Voyageurs
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "12px",
+                marginBottom: "12px"
+              }}
+            >
+              <label style={{ display: "grid", gap: "6px", color: "#334155", fontSize: "0.9rem" }}>
+                Adultes
+                <input
+                  type="number"
+                  min="1"
+                  max="4"
+                  value={guestAdults}
+                  onChange={(event) => setGuestAdults(event.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "14px",
+                    borderRadius: "14px",
+                    border: "1px solid #d1d5db"
+                  }}
+                />
+              </label>
+
+              <label style={{ display: "grid", gap: "6px", color: "#334155", fontSize: "0.9rem" }}>
+                Enfants
+                <input
+                  type="number"
+                  min="0"
+                  max="4"
+                  value={guestChildren}
+                  onChange={(event) => setGuestChildren(event.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "14px",
+                    borderRadius: "14px",
+                    border: "1px solid #d1d5db"
+                  }}
+                />
+              </label>
+            </div>
+
+            {childrenCount > 0 && (
+              <input
+                type="text"
+                placeholder="Âge des enfants : ex. 4 ans, 8 ans"
+                value={childrenAges}
+                onChange={(event) => setChildrenAges(event.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "14px",
+                  borderRadius: "14px",
+                  border: childrenAges.trim() ? "1px solid #d1d5db" : "1px solid #d33",
+                  marginBottom: "12px"
+                }}
+              />
+            )}
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                color: "#334155",
+                lineHeight: "1.5"
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={babyBedNeeded}
+                onChange={(event) => setBabyBedNeeded(event.target.checked)}
+              />
+              Lit bébé / bébé à prévoir
+            </label>
+
+            {!isGuestCompositionValid && (
+              <div
+                style={{
+                  color: "#d33",
+                  fontSize: "0.85rem",
+                  marginTop: "10px"
+                }}
+              >
+                Indiquez entre 1 et 4 voyageurs. Si des enfants sont présents, précisez leurs âges.
+              </div>
+            )}
+          </div>
+
           <textarea
             value={guestMessage}
             onChange={(event) => setGuestMessage(event.target.value)}
