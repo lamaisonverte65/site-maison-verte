@@ -104,6 +104,7 @@ export default function Admin() {
   const [payments, setPayments] = useState([]);
   const [bookingEvents, setBookingEvents] = useState([]);
   const [emailLogs, setEmailLogs] = useState([]);
+  const [guestReviews, setGuestReviews] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [activeTab, setActiveTab] = useState("requests");
   const [search, setSearch] = useState("");
@@ -179,12 +180,18 @@ export default function Admin() {
       .select("*")
       .order("created_at", { ascending: false });
 
+    const { data: guestReviewsData } = await supabase
+      .from("guest_reviews")
+      .select("*")
+      .order("created_at", { ascending: false });
+
     const nextRequests = requestsData || [];
     setBookingRequests(nextRequests);
     setCustomers(customersData || []);
     setPayments(paymentsData || []);
     setBookingEvents(eventsData || []);
     setEmailLogs(emailLogsData || []);
+    setGuestReviews(guestReviewsData || []);
     setSelectedRequest((current) => current ? nextRequests.find((request) => request.id === current.id) || current : current);
     setLoading(false);
   }
@@ -602,6 +609,24 @@ export default function Admin() {
     await loadAdminData();
   }
 
+  async function updateReviewStatus(review, status) {
+    const updates = {
+      status,
+      published_at: status === "published" ? new Date().toISOString() : null,
+    };
+
+    const { error } = await supabase.from("guest_reviews").update(updates).eq("id", review.id);
+    if (error) return alert("Erreur avis : " + error.message);
+    await loadAdminData();
+  }
+
+  async function deleteGuestReview(review) {
+    if (!window.confirm("Supprimer définitivement cet avis ?")) return;
+    const { error } = await supabase.from("guest_reviews").delete().eq("id", review.id);
+    if (error) return alert("Erreur suppression avis : " + error.message);
+    await loadAdminData();
+  }
+
   function handleCustomerSort(key) {
     setCustomerSort((previous) => previous.key === key ? { key, direction: previous.direction === "asc" ? "desc" : "asc" } : { key, direction: "asc" });
   }
@@ -703,7 +728,8 @@ export default function Admin() {
     confirmed: bookingRequests.filter((r) => r.status === "confirmed" || r.status === "fully_paid").length,
     customers: customers.length,
     loyal: customers.filter((c) => Number(c.booking_count || 0) > 1).length,
-  }), [bookingRequests, customers]);
+    reviewsPending: guestReviews.filter((review) => review.status === "pending").length,
+  }), [bookingRequests, customers, guestReviews]);
 
   const paymentRows = useMemo(() => bookingRequests.filter((r) => ["accepted", "deposit_paid", "paid", "fully_paid", "confirmed"].includes(r.status)).map((r) => ({
     id: r.id,
@@ -748,6 +774,7 @@ export default function Admin() {
         <StatCard label="Confirmées" value={stats.confirmed} onClick={() => applyDashboardFilter("confirmed")} />
         <StatCard label="Clients" value={stats.customers} onClick={() => { setCustomerFilter("all"); setActiveTab("customers"); }} />
         <StatCard label="Clients fidèles" value={stats.loyal} onClick={openLoyalCustomers} />
+        <StatCard label="Avis à valider" value={stats.reviewsPending} onClick={() => setActiveTab("reviews")} />
       </section>
 
       <section style={styles.toolbar}>
@@ -772,6 +799,7 @@ export default function Admin() {
         <button style={activeTab === "pricing" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("pricing")}>Tarifs</button>
         <button style={activeTab === "customers" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("customers")}>Clients</button>
         <button style={activeTab === "payments" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("payments")}>Paiements</button>
+        <button style={activeTab === "reviews" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("reviews")}>Avis</button>
       </nav>
 
       {loading && <p style={styles.info}>Chargement des données...</p>}
@@ -935,6 +963,56 @@ export default function Admin() {
               </tbody>
             </table>
           </div>}
+        </section>
+      )}
+
+      {!loading && !error && activeTab === "reviews" && (
+        <section style={styles.panel}>
+          <div style={styles.panelHeader}>
+            <h2 style={styles.panelTitle}>Avis clients</h2>
+            <p style={styles.muted}>Les avis sont publiés sur le site uniquement après validation.</p>
+          </div>
+
+          {guestReviews.length === 0 ? (
+            <p style={styles.empty}>Aucun avis reçu pour le moment.</p>
+          ) : (
+            <div style={styles.tableWrapper}>
+              <table style={styles.table}>
+                <thead style={styles.stickyHead}>
+                  <tr>
+                    <th style={styles.th}>Date</th>
+                    <th style={styles.th}>Client</th>
+                    <th style={styles.th}>Note</th>
+                    <th style={styles.th}>Commentaire</th>
+                    <th style={styles.th}>Séjour</th>
+                    <th style={styles.th}>Statut</th>
+                    <th style={styles.th}>Contact</th>
+                    <th style={styles.th}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {guestReviews.map((review) => (
+                    <tr key={review.id}>
+                      <td style={styles.td}>{formatDateTime(review.created_at)}</td>
+                      <td style={styles.td}>{review.display_name || [review.guest_first_name, review.guest_last_name].filter(Boolean).join(" ") || "Voyageur"}</td>
+                      <td style={styles.td}>{"★".repeat(Number(review.rating || 0))}</td>
+                      <td style={{...styles.td, maxWidth: "420px", whiteSpace: "normal", lineHeight: 1.5}}>{review.comment}</td>
+                      <td style={styles.td}>{review.stay_period || "-"}</td>
+                      <td style={styles.td}>{review.status || "pending"}</td>
+                      <td style={styles.td}>{review.guest_email || review.guest_phone || "-"}</td>
+                      <td style={styles.td}>
+                        <div style={styles.contactButtons}>
+                          {review.status !== "published" && <button style={styles.acceptButton} onClick={() => updateReviewStatus(review, "published")}>Publier</button>}
+                          {review.status === "published" && <button style={styles.cancelButton} onClick={() => updateReviewStatus(review, "hidden")}>Masquer</button>}
+                          <button style={styles.deleteButton} onClick={() => deleteGuestReview(review)}>Supprimer</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       )}
 

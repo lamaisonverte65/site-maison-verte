@@ -22,6 +22,16 @@ export default function MaisonVerte() {
   const [babyBedNeeded, setBabyBedNeeded] = useState(false);
   const [guestMessage, setGuestMessage] = useState(""); 
   const [contractAccepted, setContractAccepted] = useState(false);
+  const [publishedReviews, setPublishedReviews] = useState([]);
+  const [reviewFirstName, setReviewFirstName] = useState("");
+  const [reviewLastName, setReviewLastName] = useState("");
+  const [reviewEmail, setReviewEmail] = useState("");
+  const [reviewPhone, setReviewPhone] = useState("");
+  const [reviewRating, setReviewRating] = useState("5");
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewStayPeriod, setReviewStayPeriod] = useState("");
+  const [reviewConsent, setReviewConsent] = useState(false);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const galleryPhotos = [
 
   {
@@ -170,6 +180,24 @@ function parseLocalDate(value) {
 
     fetchCalendar();
 
+  }, []);
+
+  useEffect(() => {
+    async function fetchPublishedReviews() {
+      const { data, error } = await supabase
+        .from("guest_reviews")
+        .select("*")
+        .eq("status", "published")
+        .eq("consent_to_publish", true)
+        .order("published_at", { ascending: false })
+        .limit(6);
+
+      if (!error) {
+        setPublishedReviews(data || []);
+      }
+    }
+
+    fetchPublishedReviews();
   }, []);
 
   const year = currentMonth.getFullYear();
@@ -502,6 +530,78 @@ async function submitBookingRequest() {
   }
 
 }
+
+function getPublishedReviewAverage() {
+  if (!publishedReviews.length) return null;
+  const total = publishedReviews.reduce((sum, review) => sum + Number(review.rating || 0), 0);
+  return (total / publishedReviews.length).toFixed(1).replace(".", ",");
+}
+
+async function submitGuestReview(event) {
+  event.preventDefault();
+
+  const rating = Number(reviewRating);
+
+  if (!reviewFirstName.trim()) {
+    alert("Merci d’indiquer votre prénom.");
+    return;
+  }
+
+  if (!rating || rating < 1 || rating > 5) {
+    alert("Merci de sélectionner une note entre 1 et 5.");
+    return;
+  }
+
+  if (!reviewComment.trim()) {
+    alert("Merci d’écrire un petit commentaire.");
+    return;
+  }
+
+  if (!reviewConsent) {
+    alert("Merci de cocher l’autorisation de publication.");
+    return;
+  }
+
+  setReviewSubmitting(true);
+
+  const displayName = reviewFirstName.trim();
+
+  const { error } = await supabase.from("guest_reviews").insert([
+    {
+      guest_first_name: reviewFirstName.trim(),
+      guest_last_name: reviewLastName.trim() || null,
+      guest_email: reviewEmail.trim() || null,
+      guest_phone: reviewPhone.trim() || null,
+      rating,
+      comment: reviewComment.trim(),
+      stay_period: reviewStayPeriod.trim() || null,
+      display_name: displayName,
+      consent_to_publish: reviewConsent,
+      source: "website",
+      status: "pending",
+    },
+  ]);
+
+  setReviewSubmitting(false);
+
+  if (error) {
+    console.error(error);
+    alert("Erreur lors de l’envoi de l’avis. Vous pouvez aussi nous l’envoyer par email.");
+    return;
+  }
+
+  alert("Merci beaucoup pour votre avis. Il sera relu avant publication sur le site.");
+  setReviewFirstName("");
+  setReviewLastName("");
+  setReviewEmail("");
+  setReviewPhone("");
+  setReviewRating("5");
+  setReviewComment("");
+  setReviewStayPeriod("");
+  setReviewConsent(false);
+}
+
+
 return (
 
     <>
@@ -1107,6 +1207,108 @@ return (
         <h2>
           Avis voyageurs
         </h2>
+
+  {/* AVIS DIRECTS SITE */}
+
+  <div
+    style={{
+      background: "white",
+      padding: "34px",
+      borderRadius: "34px",
+      boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
+      marginBottom: "34px"
+    }}
+  >
+    <h3 style={{ marginBottom: "18px" }}>
+      Avis clients La Maison Verte
+    </h3>
+
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))",
+        gap: "22px",
+        alignItems: "center"
+      }}
+    >
+      <div>
+        <div
+          style={{
+            fontSize: "3rem",
+            fontWeight: "700",
+            color: "#1f6f3d"
+          }}
+        >
+          {publishedReviews.length > 0 ? `${getPublishedReviewAverage()}/5` : "Vos avis"}
+        </div>
+        <p style={{ color: "#555", lineHeight: "1.7" }}>
+          {publishedReviews.length > 0
+            ? `Basé sur ${publishedReviews.length} avis publiés sur le site.`
+            : "Les premiers avis directs seront bientôt affichés ici."}
+        </p>
+        <a href="#laisser-un-avis" style={{ color: "#1f6f3d", fontWeight: "700", textDecoration: "none" }}>
+          Laisser un avis →
+        </a>
+      </div>
+
+      <div style={{ display: "grid", gap: "14px" }}>
+        {publishedReviews.length === 0 ? (
+          <p style={{ color: "#666", lineHeight: "1.7" }}>
+            Vous avez déjà séjourné à La Maison Verte ? Votre retour nous aide beaucoup et rassure les futurs voyageurs.
+          </p>
+        ) : (
+          publishedReviews.slice(0, 3).map((review) => (
+            <div key={review.id} style={{ background: "#f8fafc", borderRadius: "20px", padding: "18px" }}>
+              <div style={{ color: "#f59e0b", fontSize: "1.1rem", marginBottom: "6px" }}>
+                {"★".repeat(Number(review.rating || 5))}
+              </div>
+              <p style={{ margin: 0, color: "#334155", lineHeight: "1.6" }}>
+                “{String(review.comment || "").slice(0, 180)}{String(review.comment || "").length > 180 ? "…" : ""}”
+              </p>
+              <p style={{ marginTop: "8px", color: "#64748b", fontSize: "0.9rem" }}>
+                {review.display_name || review.guest_first_name || "Voyageur"}{review.stay_period ? ` · ${review.stay_period}` : ""}
+              </p>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  </div>
+
+  <div id="laisser-un-avis" style={{ background: "white", padding: "34px", borderRadius: "34px", boxShadow: "0 14px 40px rgba(0,0,0,0.08)", marginBottom: "44px" }}>
+    <h3>Laisser un avis</h3>
+    <p style={{ color: "#555", lineHeight: "1.7", marginBottom: "22px" }}>
+      Vous avez déjà séjourné à La Maison Verte ? Vous pouvez laisser un commentaire. Il sera publié uniquement après validation.
+    </p>
+
+    <form onSubmit={submitGuestReview}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: "14px" }}>
+        <input value={reviewFirstName} onChange={(event) => setReviewFirstName(event.target.value)} placeholder="Prénom *" style={{ padding: "15px", borderRadius: "16px", border: "1px solid #ddd" }} />
+        <input value={reviewLastName} onChange={(event) => setReviewLastName(event.target.value)} placeholder="Nom (facultatif)" style={{ padding: "15px", borderRadius: "16px", border: "1px solid #ddd" }} />
+        <input type="email" value={reviewEmail} onChange={(event) => setReviewEmail(event.target.value)} placeholder="Email (non publié)" style={{ padding: "15px", borderRadius: "16px", border: "1px solid #ddd" }} />
+        <input value={reviewPhone} onChange={(event) => setReviewPhone(event.target.value)} placeholder="Téléphone (non publié)" style={{ padding: "15px", borderRadius: "16px", border: "1px solid #ddd" }} />
+        <select value={reviewRating} onChange={(event) => setReviewRating(event.target.value)} style={{ padding: "15px", borderRadius: "16px", border: "1px solid #ddd" }}>
+          <option value="5">5 étoiles</option>
+          <option value="4">4 étoiles</option>
+          <option value="3">3 étoiles</option>
+          <option value="2">2 étoiles</option>
+          <option value="1">1 étoile</option>
+        </select>
+        <input value={reviewStayPeriod} onChange={(event) => setReviewStayPeriod(event.target.value)} placeholder="Période du séjour (ex : février 2026)" style={{ padding: "15px", borderRadius: "16px", border: "1px solid #ddd" }} />
+      </div>
+
+      <textarea value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} placeholder="Votre commentaire *" style={{ width: "100%", minHeight: "130px", marginTop: "14px", padding: "15px", borderRadius: "16px", border: "1px solid #ddd", resize: "vertical", fontSize: "15px" }} />
+
+      <label style={{ display: "flex", gap: "12px", alignItems: "flex-start", marginTop: "16px", color: "#334155", lineHeight: "1.6" }}>
+        <input type="checkbox" checked={reviewConsent} onChange={(event) => setReviewConsent(event.target.checked)} style={{ marginTop: "5px", transform: "scale(1.2)" }} />
+        <span>J’autorise La Maison Verte à publier mon prénom, ma note et mon commentaire sur le site. Mon email et mon téléphone ne seront pas affichés.</span>
+      </label>
+
+      <button className="button" type="submit" disabled={reviewSubmitting} style={{ marginTop: "22px", opacity: reviewSubmitting ? 0.6 : 1 }}>
+        {reviewSubmitting ? "Envoi en cours..." : "Envoyer mon avis"}
+      </button>
+    </form>
+  </div>
 
   {/* NOTES PLATEFORMES */}
 
