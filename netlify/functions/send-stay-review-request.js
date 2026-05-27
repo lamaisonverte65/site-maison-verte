@@ -7,6 +7,7 @@ const supabase = createClient(
 );
 
 const SITE_URL = process.env.URL || "https://lamaisonverte65.fr";
+const GOOGLE_REVIEW_URL = process.env.GOOGLE_REVIEW_URL || "https://g.page/r/CasA-_8IxkGjEBM/review";
 
 function nowIso() {
   return new Date().toISOString();
@@ -84,7 +85,7 @@ async function sendReviewRequestEmail(booking) {
   if (!booking.guest_email) return { sent: false, reason: "missing_guest_email" };
 
   const subject = "Merci pour votre séjour à La Maison Verte";
-  const reviewUrl = `${SITE_URL}/avis?booking=${encodeURIComponent(booking.id)}#laisser-un-avis`;
+  const reviewUrl = `${SITE_URL}/avis?review=1&booking=${encodeURIComponent(booking.id)}#laisser-un-avis`;
 
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color:#1f2933;">
@@ -102,13 +103,16 @@ async function sendReviewRequestEmail(booking) {
       </p>
 
       <p>
-        Si vous le souhaitez, vous pouvez laisser un avis directement sur notre site.
-        Votre retour nous aide beaucoup et rassure les futurs voyageurs.
+        Si vous le souhaitez, votre avis nous aide énormément à faire connaître la maison
+        et à rassurer les futurs voyageurs.
       </p>
 
       <p style="margin-top:30px;">
-        <a href="${reviewUrl}" style="background:#16a34a;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;">
-          Laisser un avis
+        <a href="${GOOGLE_REVIEW_URL}" style="background:#1f6f3d;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;margin-right:10px;margin-bottom:10px;">
+          Donner un avis Google
+        </a>
+        <a href="${reviewUrl}" style="background:#16a34a;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;margin-bottom:10px;">
+          Laisser un avis sur le site
         </a>
       </p>
 
@@ -123,7 +127,8 @@ async function sendReviewRequestEmail(booking) {
     </div>
   `;
 
-  const text = `Bonjour ${booking.guest_first_name || ""},\n\nNous espérons que vous avez passé un excellent séjour à La Maison Verte à Arreau.\n\nVous pouvez laisser un avis ici : ${reviewUrl}\n\nMerci encore pour votre confiance,\nRaphaël - La Maison Verte`;
+  const text = `Bonjour ${booking.guest_first_name || ""},\n\nNous espérons que vous avez passé un excellent séjour à La Maison Verte à Arreau.\n\nVous pouvez laisser un avis Google ici : ${GOOGLE_REVIEW_URL}
+Ou laisser un avis sur notre site ici : ${reviewUrl}\n\nMerci encore pour votre confiance,\nRaphaël - La Maison Verte`;
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -143,14 +148,14 @@ async function sendReviewRequestEmail(booking) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    await logEmail({ bookingId: booking.id, emailType: "review_request", toEmail: booking.guest_email, subject, status: "error", errorMessage: errorText, metadata: { reviewUrl } });
+    await logEmail({ bookingId: booking.id, emailType: "review_request", toEmail: booking.guest_email, subject, status: "error", errorMessage: errorText, metadata: { reviewUrl, googleReviewUrl: GOOGLE_REVIEW_URL } });
     return { sent: false, reason: errorText };
   }
 
   let responseData = null;
   try { responseData = await response.json(); } catch (_) {}
 
-  await logEmail({ bookingId: booking.id, emailType: "review_request", toEmail: booking.guest_email, subject, status: "sent", providerId: responseData?.id || null, metadata: { reviewUrl } });
+  await logEmail({ bookingId: booking.id, emailType: "review_request", toEmail: booking.guest_email, subject, status: "sent", providerId: responseData?.id || null, metadata: { reviewUrl, googleReviewUrl: GOOGLE_REVIEW_URL } });
   return { sent: true };
 }
 

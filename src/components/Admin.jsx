@@ -105,6 +105,7 @@ export default function Admin() {
   const [bookingEvents, setBookingEvents] = useState([]);
   const [emailLogs, setEmailLogs] = useState([]);
   const [guestReviews, setGuestReviews] = useState([]);
+  const [siteVisits, setSiteVisits] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [activeTab, setActiveTab] = useState("requests");
   const [search, setSearch] = useState("");
@@ -185,6 +186,14 @@ export default function Admin() {
       .select("*")
       .order("created_at", { ascending: false });
 
+    const sinceVisits = new Date();
+    sinceVisits.setDate(sinceVisits.getDate() - 31);
+    const { data: siteVisitsData } = await supabase
+      .from("site_visits")
+      .select("*")
+      .gte("created_at", sinceVisits.toISOString())
+      .order("created_at", { ascending: false });
+
     const nextRequests = requestsData || [];
     setBookingRequests(nextRequests);
     setCustomers(customersData || []);
@@ -192,6 +201,7 @@ export default function Admin() {
     setBookingEvents(eventsData || []);
     setEmailLogs(emailLogsData || []);
     setGuestReviews(guestReviewsData || []);
+    setSiteVisits(siteVisitsData || []);
     setSelectedRequest((current) => current ? nextRequests.find((request) => request.id === current.id) || current : current);
     setLoading(false);
   }
@@ -720,6 +730,12 @@ export default function Admin() {
     });
   }, [customers, search, customerSort, customerFilter]);
 
+  function visitsSince(days) {
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+    return siteVisits.filter((visit) => new Date(visit.created_at) >= since).length;
+  }
+
   const stats = useMemo(() => ({
     requests: bookingRequests.length,
     pending: bookingRequests.filter((r) => (r.status || "pending") === "pending").length,
@@ -729,7 +745,11 @@ export default function Admin() {
     customers: customers.length,
     loyal: customers.filter((c) => Number(c.booking_count || 0) > 1).length,
     reviewsPending: guestReviews.filter((review) => review.status === "pending").length,
-  }), [bookingRequests, customers, guestReviews]);
+    visitsToday: visitsSince(1),
+    visitsWeek: visitsSince(7),
+    visitsMonth: visitsSince(30),
+    marketingConsent: bookingRequests.filter((request) => request.marketing_consent).length,
+  }), [bookingRequests, customers, guestReviews, siteVisits]);
 
   const paymentRows = useMemo(() => bookingRequests.filter((r) => ["accepted", "deposit_paid", "paid", "fully_paid", "confirmed"].includes(r.status)).map((r) => ({
     id: r.id,
@@ -775,6 +795,9 @@ export default function Admin() {
         <StatCard label="Clients" value={stats.customers} onClick={() => { setCustomerFilter("all"); setActiveTab("customers"); }} />
         <StatCard label="Clients fidèles" value={stats.loyal} onClick={openLoyalCustomers} />
         <StatCard label="Avis à valider" value={stats.reviewsPending} onClick={() => setActiveTab("reviews")} />
+        <StatCard label="Visites aujourd’hui" value={stats.visitsToday} onClick={() => setActiveTab("visits")} />
+        <StatCard label="Visites 7 jours" value={stats.visitsWeek} onClick={() => setActiveTab("visits")} />
+        <StatCard label="Opt-in marketing" value={stats.marketingConsent} onClick={() => setActiveTab("reservations")} />
       </section>
 
       <section style={styles.toolbar}>
@@ -800,6 +823,7 @@ export default function Admin() {
         <button style={activeTab === "customers" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("customers")}>Clients</button>
         <button style={activeTab === "payments" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("payments")}>Paiements</button>
         <button style={activeTab === "reviews" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("reviews")}>Avis</button>
+        <button style={activeTab === "visits" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("visits")}>Visites</button>
       </nav>
 
       {loading && <p style={styles.info}>Chargement des données...</p>}
@@ -1010,6 +1034,28 @@ export default function Admin() {
                     </tr>
                   ))}
                 </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {!loading && !error && activeTab === "visits" && (
+        <section style={styles.panel}>
+          <div style={styles.panelHeader}>
+            <h2 style={styles.panelTitle}>Compteur de visites</h2>
+            <p style={styles.muted}>Comptage simple : une visite par navigateur et par jour, basé sur localStorage + Supabase.</p>
+          </div>
+          <section style={styles.statsGrid}>
+            <StatCard label="Aujourd’hui" value={stats.visitsToday} />
+            <StatCard label="7 derniers jours" value={stats.visitsWeek} />
+            <StatCard label="30 derniers jours" value={stats.visitsMonth} />
+          </section>
+          {siteVisits.length === 0 ? <p style={styles.empty}>Aucune visite enregistrée pour le moment.</p> : (
+            <div style={styles.tableWrapper}>
+              <table style={styles.table}>
+                <thead style={styles.stickyHead}><tr><th style={styles.th}>Date</th><th style={styles.th}>Page</th><th style={styles.th}>Visiteur</th></tr></thead>
+                <tbody>{siteVisits.slice(0, 80).map((visit) => <tr key={visit.id}><td style={styles.td}>{formatDateTime(visit.created_at)}</td><td style={styles.td}>{visit.page || "/"}</td><td style={styles.td}>{String(visit.visitor_id || "-").slice(0, 18)}</td></tr>)}</tbody>
               </table>
             </div>
           )}

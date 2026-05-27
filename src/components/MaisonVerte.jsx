@@ -32,6 +32,10 @@ export default function MaisonVerte() {
   const [reviewStayPeriod, setReviewStayPeriod] = useState("");
   const [reviewConsent, setReviewConsent] = useState(false);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
+  const googleReviewUrl = "https://g.page/r/CasA-_8IxkGjEBM/review";
+  const googleProfileUrl = "https://g.page/r/CasA-_8IxkGjEBM";
   const galleryPhotos = [
 
   {
@@ -198,6 +202,41 @@ function parseLocalDate(value) {
     }
 
     fetchPublishedReviews();
+  }, []);
+
+  useEffect(() => {
+    async function trackSiteVisit() {
+      try {
+        const todayKey = formatLocalDate(new Date());
+        const storageKey = `lmv_visit_${todayKey}`;
+        if (window.localStorage.getItem(storageKey)) return;
+
+        let visitorId = window.localStorage.getItem("lmv_visitor_id");
+        if (!visitorId) {
+          visitorId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+          window.localStorage.setItem("lmv_visitor_id", visitorId);
+        }
+
+        window.localStorage.setItem(storageKey, "1");
+        await supabase.from("site_visits").insert([
+          {
+            page: window.location.pathname || "/",
+            visitor_id: visitorId,
+          },
+        ]);
+      } catch (error) {
+        console.error("Erreur compteur visites :", error);
+      }
+    }
+
+    trackSiteVisit();
+  }, []);
+
+  useEffect(() => {
+    if (window.location.hash === "#laisser-un-avis" || window.location.search.includes("review=1") || window.location.search.includes("booking=")) {
+      setShowReviewForm(true);
+      setTimeout(() => document.getElementById("laisser-un-avis")?.scrollIntoView({ behavior: "smooth", block: "start" }), 250);
+    }
   }, []);
 
   const year = currentMonth.getFullYear();
@@ -452,6 +491,8 @@ async function submitBookingRequest() {
           children_count: childrenCount,
           children_ages: childrenAges.trim() || null,
           baby_bed_needed: babyBedNeeded,
+          marketing_consent: marketingConsent,
+          marketing_consent_at: marketingConsent ? new Date().toISOString() : null,
 
           start_date: selectedDates[0],
           end_date: selectedDates[1],
@@ -514,6 +555,7 @@ async function submitBookingRequest() {
     setGuestChildren("0");
     setChildrenAges("");
     setBabyBedNeeded(false);
+    setMarketingConsent(false);
     setGuestMessage("");
 
     setSelectedDates([]);
@@ -1246,9 +1288,9 @@ return (
             ? `Basé sur ${publishedReviews.length} avis publiés sur le site.`
             : "Les premiers avis directs seront bientôt affichés ici."}
         </p>
-        <a href="#laisser-un-avis" style={{ color: "#1f6f3d", fontWeight: "700", textDecoration: "none" }}>
+        <button type="button" onClick={() => setShowReviewForm(true)} style={{ border: "none", background: "transparent", color: "#1f6f3d", fontWeight: "700", textDecoration: "none", cursor: "pointer", padding: 0, fontSize: "1rem" }}>
           Laisser un avis →
-        </a>
+        </button>
       </div>
 
       <div style={{ display: "grid", gap: "14px" }}>
@@ -1275,8 +1317,9 @@ return (
     </div>
   </div>
 
+  {showReviewForm && (
   <div id="laisser-un-avis" style={{ background: "white", padding: "34px", borderRadius: "34px", boxShadow: "0 14px 40px rgba(0,0,0,0.08)", marginBottom: "44px" }}>
-    <h3>Laisser un avis</h3>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "center" }}><h3>Laisser un avis</h3><button type="button" onClick={() => setShowReviewForm(false)} style={{ border: "none", background: "#f1f5f9", borderRadius: "999px", padding: "9px 14px", cursor: "pointer", fontWeight: 700 }}>Fermer</button></div>
     <p style={{ color: "#555", lineHeight: "1.7", marginBottom: "22px" }}>
       Vous avez déjà séjourné à La Maison Verte ? Vous pouvez laisser un commentaire. Il sera publié uniquement après validation.
     </p>
@@ -1309,6 +1352,7 @@ return (
       </button>
     </form>
   </div>
+  )}
 
   {/* NOTES PLATEFORMES */}
 
@@ -1326,6 +1370,44 @@ return (
         gap: "24px"
       }}
       >
+
+      <div
+        style={{
+          background: "white",
+          padding: "32px",
+          borderRadius: "30px",
+          boxShadow:
+            "0 10px 30px rgba(0,0,0,0.08)",
+          transition: "0.3s"
+        }}
+      >
+        <h3>
+          Google
+        </h3>
+
+        <div
+          style={{
+            fontSize: "3rem",
+            fontWeight: "700",
+            color: "#1f6f3d"
+          }}
+        >
+          À venir
+        </div>
+
+        <p>
+          Les avis Google seront affichés dès les premiers retours voyageurs.
+        </p>
+
+        <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "16px" }}>
+          <a href={googleProfileUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#1f6f3d", fontWeight: "600", textDecoration: "none" }}>
+            Voir la fiche →
+          </a>
+          <a href={googleReviewUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#1f6f3d", fontWeight: "600", textDecoration: "none" }}>
+            Donner un avis →
+          </a>
+        </div>
+      </div>
 
       <a
         href="https://www.booking.com/hotel/fr/la-maison-verte-arreau.fr.html#tab-reviews"
@@ -1985,6 +2067,42 @@ return (
 
         </div>
 
+
+        <div
+          style={{
+            marginTop: "18px",
+            marginBottom: "14px",
+            padding: "16px",
+            borderRadius: "16px",
+            background: "#f8fafc",
+            border: "1px solid #e2e8f0"
+          }}
+        >
+          <label
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "12px",
+              cursor: "pointer",
+              lineHeight: "1.6",
+              color: "#334155"
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={marketingConsent}
+              onChange={(e) => setMarketingConsent(e.target.checked)}
+              style={{
+                marginTop: "4px",
+                transform: "scale(1.2)"
+              }}
+            />
+            <span>
+              J’accepte de recevoir occasionnellement des nouvelles, offres et informations de La Maison Verte.
+              Je pourrai demander à ne plus les recevoir à tout moment.
+            </span>
+          </label>
+        </div>
 
         <div
           style={{
