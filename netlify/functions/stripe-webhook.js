@@ -77,14 +77,16 @@ function getCheckoutAmount(session, fallback = 0) {
 async function getStripeFinancialDetails(session) {
   const fallbackAmount = getCheckoutAmount(session, 0);
 
-  if (!session?.payment_intent) {
-    return {
-      stripeFeeAmount: 0,
-      stripeNetAmount: null,
-      stripeGrossAmount: fallbackAmount,
-      stripeBalanceTransactionId: null,
-    };
-  }
+  const emptyResult = {
+    stripeFeeAmount: 0,
+    stripeNetAmount: null,
+    stripeGrossAmount: fallbackAmount,
+    stripeBalanceTransactionId: null,
+    stripeChargeId: null,
+    stripePaymentIntentId: session?.payment_intent || null,
+  };
+
+  if (!session?.payment_intent) return emptyResult;
 
   try {
     const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent, {
@@ -96,10 +98,9 @@ async function getStripeFinancialDetails(session) {
 
     if (!balanceTransaction || typeof balanceTransaction !== "object") {
       return {
-        stripeFeeAmount: 0,
-        stripeNetAmount: null,
-        stripeGrossAmount: fallbackAmount,
-        stripeBalanceTransactionId: null,
+        ...emptyResult,
+        stripeChargeId: typeof charge === "string" ? charge : charge?.id || null,
+        stripePaymentIntentId: paymentIntent.id || session.payment_intent,
       };
     }
 
@@ -108,16 +109,81 @@ async function getStripeFinancialDetails(session) {
       stripeNetAmount: Number(balanceTransaction.net || 0) / 100,
       stripeGrossAmount: Number(balanceTransaction.amount || 0) / 100,
       stripeBalanceTransactionId: balanceTransaction.id || null,
+      stripeChargeId: typeof charge === "string" ? charge : charge?.id || null,
+      stripePaymentIntentId: paymentIntent.id || session.payment_intent,
     };
   } catch (error) {
     console.error("Erreur récupération frais/net Stripe:", error.message);
-    return {
-      stripeFeeAmount: 0,
-      stripeNetAmount: null,
-      stripeGrossAmount: fallbackAmount,
-      stripeBalanceTransactionId: null,
-    };
+    return emptyResult;
   }
+}
+
+function stripeTimestampToIso(timestamp) {
+  if (!timestamp) return null;
+  return new Date(Number(timestamp) * 1000).toISOString();
+}
+
+async function reconcilePayout(payout) {
+  if (!payout?.id) return { updated: 0, skipped: 0 };
+
+  let updated = 0;
+  let skipped = 0;
+  const arrivalDate = stripeTimestampToIso(payout.arrival_date || payout.created);
+
+  try {
+    const balanceTransactions = await stripe.balanceTransactions.list({
+      payout: payout.id,
+      limit: 100,
+      expand: ["data.source"],
+    });
+
+    for (const transaction of balanceTransactions.data || []) {
+      if (transaction.type !== "charge") continue;
+
+      const source = transaction.source;
+      const paymentIntentId = typeof source === "object" ? source.payment_intent : null;
+
+      if (!paymentIntentId) {
+        skipped += 1;
+        continue;
+      }
+
+      const updatePayload = {
+        stripe_payout_id: payout.id,
+        stripe_payout_status: payout.status || "paid",
+        stripe_payout_arrival_date: arrivalDate,
+        transfer_date: arrivalDate,
+        stripe_fee_amount: Number(transaction.fee || 0) / 100,
+        stripe_net_amount: Number(transaction.net || 0) / 100,
+        commission_amount: Number(transaction.fee || 0) / 100,
+        owner_net_amount: Number(transaction.net || 0) / 100,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from("booking_requests")
+        .update(updatePayload)
+        .eq("stripe_payment_intent_id", paymentIntentId);
+
+      if (error) {
+        console.error("Erreur rapprochement payout réservation:", paymentIntentId, error.message);
+        skipped += 1;
+      } else {
+        updated += 1;
+        await logBookingEvent({
+          bookingId: null,
+          eventType: "stripe_payout_reconciled",
+          label: "Payout Stripe rapproché",
+          message: `Payout ${payout.id} rapproché avec ${paymentIntentId}`,
+          metadata: { payoutId: payout.id, paymentIntentId, transactionId: transaction.id, net: updatePayload.stripe_net_amount, fee: updatePayload.stripe_fee_amount },
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Erreur rapprochement payout Stripe:", error.message);
+  }
+
+  return { updated, skipped };
 }
 
 function getTotalDueAfterPayment(booking, paymentType, manualReason, paidAmount) {
@@ -411,6 +477,7 @@ export async function handler(event) {
         stripe_fee_amount: stripeFeeAmount,
         stripe_net_amount: stripeNetAmount,
         commission_amount: stripeFeeAmount,
+        owner_net_amount: stripeNetAmount ?? updatePayload.owner_net_amount ?? null,
       };
 
       const { error: updateError } = await supabase.from("booking_requests").update(updatePayload).eq("id", bookingId);
@@ -438,6 +505,7 @@ export async function handler(event) {
           stripeFeeAmount,
           stripeNetAmount,
           stripeBalanceTransactionId: stripeFinancialDetails.stripeBalanceTransactionId,
+          stripeChargeId: stripeFinancialDetails.stripeChargeId,
         },
       });
 
@@ -462,9 +530,8 @@ export async function handler(event) {
       const payout = stripeEvent.data.object;
       console.log("Payout Stripe reçu :", payout.id, payout.status, payout.amount);
 
-      // Le rattachement exact payout → réservation nécessite la réconciliation des balance transactions.
-      // Les colonnes Supabase sont prêtes, mais on évite d'attribuer un virement à une réservation au hasard.
-      // Cette étape sera complétée quand plusieurs paiements/payouts devront être rapprochés automatiquement.
+      const result = await reconcilePayout(payout);
+      console.log("Rapprochement payout terminé :", result);
     }
 
     return { statusCode: 200, body: JSON.stringify({ received: true }) };

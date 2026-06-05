@@ -36,7 +36,7 @@ function emptyOverride() {
 }
 
 export default function PricingAdmin() {
-  const [defaultNightPrice, setDefaultNightPrice] = useState(80);
+  const [defaultNightPrice, setDefaultNightPrice] = useState(null);
   const [seasonPrices, setSeasonPrices] = useState([]);
   const [priceOverrides, setPriceOverrides] = useState([]);
   const [seasonForm, setSeasonForm] = useState(emptySeason());
@@ -274,7 +274,11 @@ export default function PricingAdmin() {
           </div>
           <button style={styles.primaryButton} onClick={openDefaultPriceModal}>Modifier</button>
         </div>
-        <strong style={styles.bigPrice}>{formatMoney(defaultNightPrice)} / nuit</strong>
+        <strong style={styles.bigPrice}>
+          {defaultNightPrice === null
+            ? "Chargement..."
+            : `${formatMoney(defaultNightPrice)} / nuit`}
+        </strong>
         <p style={styles.muted}>Priorité appliquée partout : tarif spécifique → tarif saisonnier → tarif par défaut.</p>
       </section>
 
