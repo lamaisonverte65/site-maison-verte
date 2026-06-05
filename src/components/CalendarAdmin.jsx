@@ -35,6 +35,19 @@ function emptyClientForm() {
   return { firstName: "", lastName: "", phone: "", email: "", notes: "" };
 }
 
+
+function isBeforeToday(dateStr) {
+  const value = parseLocalDate(dateStr);
+  if (!value) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  value.setHours(0, 0, 0, 0);
+  return value < today;
+}
+
+function selectionStartsBeforeToday(selectionInfo) {
+  return isBeforeToday(selectionInfo?.startStr);
+}
 function emptySelectionForm(selection = null) {
   return {
     action: "block",
@@ -81,12 +94,18 @@ function nightsBetween(startDate, endDate) {
   return nights;
 }
 
+function isDateInSelectedPeriod(key, selectedPeriod) {
+  if (!selectedPeriod?.startStr || !selectedPeriod?.endStr) return false;
+  return key >= selectedPeriod.startStr && key < selectedPeriod.endStr;
+}
+
 export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }) {
   const [events, setEvents] = useState([]);
   const [blocks, setBlocks] = useState([]);
   const [seasonPrices, setSeasonPrices] = useState([]);
   const [priceOverrides, setPriceOverrides] = useState([]);
-  const [defaultNightPrice, setDefaultNightPrice] = useState(80);
+  const [defaultNightPrice, setDefaultNightPrice] = useState(null);
+  const [pricingVersion, setPricingVersion] = useState(0);
   const [calendarRenderKey, setCalendarRenderKey] = useState(0);
   const [selectedExternalEvent, setSelectedExternalEvent] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
@@ -108,50 +127,30 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   }
 
 
-  async function loadPricing(calendarData = null) {
-    if (calendarData) {
-      const seasons = calendarData.seasonPrices || [];
-      const overrides = calendarData.priceOverrides || [];
-      const defaultPrice = Number(calendarData.defaultNightPrice || 80);
+  async function loadPricing() {
+    // L'admin utilise la même source fiable que le calendrier public : la fonction Netlify get-pricing.
+    // Cela évite les problèmes de RLS en local et supprime le retour au prix codé en dur.
+    const response = await fetch("/.netlify/functions/get-pricing");
 
-      setDefaultNightPrice(defaultPrice);
-      setSeasonPrices(seasons);
-      setPriceOverrides(overrides);
-
-      return {
-        seasons,
-        overrides,
-        defaultNightPrice: defaultPrice,
-      };
+    if (!response.ok) {
+      throw new Error(await response.text());
     }
 
-    const { data: settings, error: settingsError } = await supabase
-      .from("pricing_settings")
-      .select("*")
-      .eq("id", "default")
-      .maybeSingle();
+    const data = await response.json();
+    const defaultPrice = Number(data.defaultNightPrice ?? 80);
+    const seasons = data.seasonPrices || [];
+    const overrides = data.priceOverrides || [];
 
-    if (settingsError) throw settingsError;
-    setDefaultNightPrice(Number(settings?.default_night_price || 80));
+    setDefaultNightPrice(defaultPrice);
+    setSeasonPrices(seasons);
+    setPriceOverrides(overrides);
+    setPricingVersion((previous) => previous + 1);
 
-    const { data: seasons, error: seasonsError } = await supabase
-      .from("season_prices")
-      .select("*")
-      .order("start_date", { ascending: true });
-
-    if (seasonsError) throw seasonsError;
-
-    const { data: overrides, error: overridesError } = await supabase
-      .from("price_overrides")
-      .select("*")
-      .order("start_date", { ascending: true });
-
-    if (overridesError) throw overridesError;
-
-    setSeasonPrices(seasons || []);
-    setPriceOverrides(overrides || []);
-
-    return { seasons: seasons || [], overrides: overrides || [], defaultNightPrice: Number(settings?.default_night_price || 80) };
+    return {
+      seasons,
+      overrides,
+      defaultNightPrice: defaultPrice,
+    };
   }
 
   async function loadCalendar() {
@@ -161,7 +160,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
       const calendarResponse = await fetch("/.netlify/functions/calendar");
       const calendarData = await calendarResponse.json();
 
-      const pricing = await loadPricing(calendarData);
+      const pricing = await loadPricing();
 
       const { data: externalClientLinks } = await supabase
         .from("external_reservation_clients")
@@ -247,25 +246,19 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   function getPriceForDate(key) {
     const cleanKey = String(key || "").slice(0, 10);
 
-    const override = priceOverrides.find(
-      (item) =>
-        item.is_active !== false &&
-        cleanKey >= item.start_date &&
-        cleanKey < item.end_date
+    const override = priceOverridePeriods.find(
+      (item) => cleanKey >= item.start && cleanKey < item.end
     );
 
-    if (override) return Number(override.night_price || defaultNightPrice || 80);
+    if (override) return override.price;
 
-    const season = seasonPrices.find(
-      (item) =>
-        item.is_active !== false &&
-        cleanKey >= item.start_date &&
-        cleanKey < item.end_date
+    const season = seasonPeriods.find(
+      (item) => cleanKey >= item.start && cleanKey < item.end
     );
 
-    if (season) return Number(season.night_price || defaultNightPrice || 80);
+    if (season) return season.price;
 
-    return Number(defaultNightPrice || 80);
+    return defaultNightPrice === null ? null : Number(defaultNightPrice);
   }
 
   function computeTotal(startDate, endDate) {
@@ -326,10 +319,20 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   }
 
   function handleDateSelect(selectionInfo) {
+    if (selectionStartsBeforeToday(selectionInfo)) {
+      setPendingRangeStart(null);
+      setSelectedPeriod(null);
+      return;
+    }
     openSelectedPeriod(selectionInfo);
   }
 
   function handleDateClick(info) {
+    if (isBeforeToday(info.dateStr)) {
+      setPendingRangeStart(null);
+      setSelectedPeriod(null);
+      return;
+    }
     const clickedDate = parseLocalDate(info.dateStr);
     if (!clickedDate) return;
 
@@ -571,6 +574,35 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
     }
   }
 
+
+  const seasonPeriods = useMemo(() => {
+    const fallbackPrice = defaultNightPrice === null ? 0 : Number(defaultNightPrice);
+    return (seasonPrices || [])
+      .filter((period) => period?.is_active !== false)
+      .map((period) => ({
+        id: period.id,
+        label: period.label,
+        start: String(period.start_date || "").slice(0, 10),
+        end: String(period.end_date || "").slice(0, 10),
+        price: Number(period.night_price || fallbackPrice),
+      }))
+      .filter((period) => period.start && period.end);
+  }, [seasonPrices, defaultNightPrice]);
+
+  const priceOverridePeriods = useMemo(() => {
+    const fallbackPrice = defaultNightPrice === null ? 0 : Number(defaultNightPrice);
+    return (priceOverrides || [])
+      .filter((override) => override?.is_active !== false)
+      .map((override) => ({
+        id: override.id,
+        label: override.label,
+        start: String(override.start_date || "").slice(0, 10),
+        end: String(override.end_date || "").slice(0, 10),
+        price: Number(override.night_price || fallbackPrice),
+      }))
+      .filter((override) => override.start && override.end);
+  }, [priceOverrides, defaultNightPrice]);
+
   const selectedPeriodTotal = useMemo(() => {
     if (!selectedPeriod) return 0;
     return computeTotal(selectedPeriod.startStr, selectedPeriod.endStr);
@@ -647,13 +679,14 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
       <div className="calendar-admin-layout" style={styles.layout}>
         <div className="calendar-admin-calendar-scroll" style={styles.calendarScroll}><div className="calendar-admin-calendar" style={styles.calendar}>
           <FullCalendar
-            key={calendarRenderKey}
+            key={`${calendarRenderKey}-${pricingVersion}`}
             plugins={[dayGridPlugin, interactionPlugin]}
             initialView="dayGridMonth"
             locale="fr"
             height="auto"
             events={calendarEvents}
             selectable={true}
+            selectAllow={(selectInfo) => !selectionStartsBeforeToday(selectInfo)}
             selectMirror={true}
             select={handleDateSelect}
             dateClick={handleDateClick}
@@ -661,11 +694,28 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
             dayCellContent={(arg) => {
               const key = formatLocalDate(arg.date);
               const isPendingStart = pendingRangeStart === key;
+              const isPastDay = isBeforeToday(key);
+              const isSelectedRangeDay = isDateInSelectedPeriod(key, selectedPeriod);
+
+              const cellStyle = isPastDay
+                ? { ...styles.dayCellContent, ...styles.pastDayCell }
+                : isPendingStart
+                  ? { ...styles.dayCellContent, ...styles.pendingStartCell }
+                  : isSelectedRangeDay
+                    ? { ...styles.dayCellContent, ...styles.selectedRangeCell }
+                    : styles.dayCellContent;
+
+              const pillStyle = isPendingStart
+                ? styles.pendingStartPill
+                : isSelectedRangeDay
+                  ? styles.selectedRangePill
+                  : styles.dayPricePill;
+
               return (
-                <div style={isPendingStart ? { ...styles.dayCellContent, ...styles.pendingStartCell } : styles.dayCellContent}>
+                <div style={cellStyle}>
                   <div>{arg.dayNumberText}</div>
-                  <div style={isPendingStart ? styles.pendingStartPill : styles.dayPricePill}>
-                    {isPendingStart ? "Début" : `${getPriceForDate(key)}€`}
+                  <div style={pillStyle}>
+                    {isPastDay ? "Passé" : (isPendingStart ? "Début" : (isSelectedRangeDay ? "Sélection" : (getPriceForDate(key) === null ? "..." : `${getPriceForDate(key)}€`)))}
                   </div>
                 </div>
               );
@@ -722,7 +772,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
           <button style={styles.primaryButton} onClick={editDefaultNightPrice}>Modifier dans Tarifs</button>
         </div>
         <div style={styles.priceItem}>
-          <strong>{formatMoney(defaultNightPrice)} / nuit</strong>
+          <strong>{defaultNightPrice === null ? "Chargement..." : `${formatMoney(defaultNightPrice)} / nuit`}</strong>
           <p style={styles.muted}>Priorité appliquée : tarif spécifique → tarif saisonnier → tarif par défaut.</p>
         </div>
       </section>
@@ -905,6 +955,22 @@ const styles = {
     fontSize: "0.75rem",
     fontWeight: 800,
   },
+  selectedRangeCell: {
+    background: "#ffedd5",
+    border: "2px solid #fb923c",
+    borderRadius: "14px",
+    padding: "4px",
+  },
+  selectedRangePill: {
+    marginTop: "4px",
+    display: "inline-block",
+    padding: "3px 8px",
+    borderRadius: "999px",
+    background: "#ea580c",
+    color: "white",
+    fontSize: "0.75rem",
+    fontWeight: 800,
+  },
   selectionHint: {
     background: "#fff7ed",
     border: "1px solid #fdba74",
@@ -937,5 +1003,16 @@ const styles = {
   priceItem: { border: "1px solid #e5e7eb", borderRadius: "16px", padding: "14px", background: "#f8fafc" },
   actionsRow: { display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "10px" },
   dayCellContent: { display: "grid", gap: "2px", justifyItems: "center" },
+  pastDayCell: { opacity: 0.45, filter: "grayscale(1)", cursor: "not-allowed" },
   dayPrice: { fontSize: "11px", color: "#0f766e", fontWeight: 800 },
+  dayPricePill: {
+    marginTop: "4px",
+    display: "inline-block",
+    padding: "3px 8px",
+    borderRadius: "999px",
+    background: "#ecfdf5",
+    color: "#0f766e",
+    fontSize: "0.75rem",
+    fontWeight: 800,
+  },
 };

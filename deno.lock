@@ -11,14 +11,20 @@
   "workspace": {
     "packageJson": {
       "dependencies": [
+        "npm:@fullcalendar/daygrid@^6.1.20",
+        "npm:@fullcalendar/interaction@^6.1.20",
+        "npm:@fullcalendar/react@^6.1.20",
+        "npm:@netlify/functions@^5.2.2",
         "npm:@supabase/supabase-js@^2.105.4",
         "npm:@vitejs/plugin-react@^4.2.1",
         "npm:autoprefixer@^10.5.0",
+        "npm:node-ical@~0.26.1",
         "npm:postcss@^8.5.14",
         "npm:react-dom@^18.2.0",
         "npm:react-helmet@^6.1.0",
         "npm:react-image-gallery@^2.1.2",
         "npm:react@^18.2.0",
+        "npm:stripe@^22.1.1",
         "npm:tailwindcss@^3.4.19",
         "npm:vite@^5.2.0"
       ]

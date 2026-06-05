@@ -74,6 +74,52 @@ function getCheckoutAmount(session, fallback = 0) {
   return Number(fallback || 0);
 }
 
+async function getStripeFinancialDetails(session) {
+  const fallbackAmount = getCheckoutAmount(session, 0);
+
+  if (!session?.payment_intent) {
+    return {
+      stripeFeeAmount: 0,
+      stripeNetAmount: null,
+      stripeGrossAmount: fallbackAmount,
+      stripeBalanceTransactionId: null,
+    };
+  }
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent, {
+      expand: ["latest_charge.balance_transaction"],
+    });
+
+    const charge = paymentIntent.latest_charge;
+    const balanceTransaction = charge?.balance_transaction;
+
+    if (!balanceTransaction || typeof balanceTransaction !== "object") {
+      return {
+        stripeFeeAmount: 0,
+        stripeNetAmount: null,
+        stripeGrossAmount: fallbackAmount,
+        stripeBalanceTransactionId: null,
+      };
+    }
+
+    return {
+      stripeFeeAmount: Number(balanceTransaction.fee || 0) / 100,
+      stripeNetAmount: Number(balanceTransaction.net || 0) / 100,
+      stripeGrossAmount: Number(balanceTransaction.amount || 0) / 100,
+      stripeBalanceTransactionId: balanceTransaction.id || null,
+    };
+  } catch (error) {
+    console.error("Erreur récupération frais/net Stripe:", error.message);
+    return {
+      stripeFeeAmount: 0,
+      stripeNetAmount: null,
+      stripeGrossAmount: fallbackAmount,
+      stripeBalanceTransactionId: null,
+    };
+  }
+}
+
 function getTotalDueAfterPayment(booking, paymentType, manualReason, paidAmount) {
   const currentTotal = Number(booking.owner_price || booking.estimated_total || 0);
 
@@ -222,6 +268,9 @@ export async function handler(event) {
       const manualReason = session.metadata?.manual_reason || booking.manual_payment_reason || "complement";
       const manualAmountFromMetadata = Number(session.metadata?.manual_amount || booking.manual_payment_amount || 0);
       const paidAmount = getCheckoutAmount(session, manualAmountFromMetadata);
+      const stripeFinancialDetails = await getStripeFinancialDetails(session);
+      const stripeFeeAmount = stripeFinancialDetails.stripeFeeAmount;
+      const stripeNetAmount = stripeFinancialDetails.stripeNetAmount;
 
       const currentTotal = Number(booking.owner_price || booking.estimated_total || session.metadata?.total_price || 0);
       const totalDue = getTotalDueAfterPayment(booking, paymentType, manualReason, paidAmount);
@@ -357,6 +406,13 @@ export async function handler(event) {
         }
       }
 
+      updatePayload = {
+        ...updatePayload,
+        stripe_fee_amount: stripeFeeAmount,
+        stripe_net_amount: stripeNetAmount,
+        commission_amount: stripeFeeAmount,
+      };
+
       const { error: updateError } = await supabase.from("booking_requests").update(updatePayload).eq("id", bookingId);
       if (updateError) return { statusCode: 500, body: updateError.message };
 
@@ -373,7 +429,16 @@ export async function handler(event) {
         eventType: "payment_received",
         label: paymentType === "manual" ? `Paiement manuel reçu : ${getReasonLabel(manualReason)}` : `Paiement reçu : ${paymentType}`,
         message: `Montant reçu : ${formatCurrency(updatePayload.last_payment_amount || paidAmount)}`,
-        metadata: { paymentType, manualReason, sessionId: session.id, paymentIntentId: session.payment_intent, amount: updatePayload.last_payment_amount || paidAmount },
+        metadata: {
+          paymentType,
+          manualReason,
+          sessionId: session.id,
+          paymentIntentId: session.payment_intent,
+          amount: updatePayload.last_payment_amount || paidAmount,
+          stripeFeeAmount,
+          stripeNetAmount,
+          stripeBalanceTransactionId: stripeFinancialDetails.stripeBalanceTransactionId,
+        },
       });
 
       if (["deposit", "full", "balance", "manual"].includes(paymentType)) {
@@ -389,7 +454,17 @@ export async function handler(event) {
         manualAmount: paidAmount,
       });
 
-      console.log("Paiement Stripe validé :", bookingId, paymentType, manualReason, paidAmount);
+      console.log("Paiement Stripe validé :", bookingId, paymentType, manualReason, paidAmount, { stripeFeeAmount, stripeNetAmount });
+    }
+
+
+    if (stripeEvent.type === "payout.paid" || stripeEvent.type === "payout.reconciliation_completed") {
+      const payout = stripeEvent.data.object;
+      console.log("Payout Stripe reçu :", payout.id, payout.status, payout.amount);
+
+      // Le rattachement exact payout → réservation nécessite la réconciliation des balance transactions.
+      // Les colonnes Supabase sont prêtes, mais on évite d'attribuer un virement à une réservation au hasard.
+      // Cette étape sera complétée quand plusieurs paiements/payouts devront être rapprochés automatiquement.
     }
 
     return { statusCode: 200, body: JSON.stringify({ received: true }) };

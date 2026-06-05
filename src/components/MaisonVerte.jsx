@@ -7,7 +7,7 @@ export default function MaisonVerte() {
 
   const [selectedDates, setSelectedDates] = useState([]);
   const [unavailableDates, setUnavailableDates] = useState([]);
-  const [pricingRules, setPricingRules] = useState({ defaultNightPrice: 80, seasonPrices: [], priceOverrides: [] });
+  const [pricingRules, setPricingRules] = useState({ defaultNightPrice: null, seasonPrices: [], priceOverrides: [] });
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [scrolled, setScrolled] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -166,7 +166,7 @@ function parseLocalDate(value) {
         );
 
         setPricingRules({
-          defaultNightPrice: data.defaultNightPrice || 80,
+          defaultNightPrice: Number(data.defaultNightPrice ?? 80),
           seasonPrices: data.seasonPrices || [],
           priceOverrides: data.priceOverrides || [],
         });
@@ -217,11 +217,32 @@ function parseLocalDate(value) {
           window.localStorage.setItem("lmv_visitor_id", visitorId);
         }
 
+        const referrer = document.referrer || "";
+        let referrerDomain = "";
+        try {
+          referrerDomain = referrer ? new URL(referrer).hostname.replace(/^www\./, "") : "";
+        } catch {
+          referrerDomain = "";
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        const utmSource = params.get("utm_source");
+        const detectedSource = utmSource
+          || (referrerDomain.includes("google") ? "google"
+          : referrerDomain.includes("booking") ? "booking"
+          : referrerDomain.includes("airbnb") ? "airbnb"
+          : referrerDomain.includes("facebook") ? "facebook"
+          : referrerDomain ? "referral"
+          : "direct");
+
         window.localStorage.setItem(storageKey, "1");
         await supabase.from("site_visits").insert([
           {
             page: window.location.pathname || "/",
             visitor_id: visitorId,
+            referrer,
+            referrer_domain: referrerDomain || null,
+            source: detectedSource,
           },
         ]);
       } catch (error) {
@@ -319,7 +340,8 @@ function toggleDay(day) {
   setSelectedDates([realStart, end]);
 }
 
-  const defaultPrice = pricingRules.defaultNightPrice || 80;
+  const pricingLoaded = pricingRules.defaultNightPrice !== null;
+  const defaultPrice = pricingLoaded ? Number(pricingRules.defaultNightPrice) : 0;
 
 const pricePeriods = (pricingRules.seasonPrices || []).map((period) => ({
   name: period.label,
@@ -1703,7 +1725,7 @@ return (
                           opacity: 0.7
                         }}
                       >
-                        {getPriceForDate(key)}€
+                        {pricingLoaded ? `${getPriceForDate(key)}€` : "..."}
                       </div>
 
                     )
