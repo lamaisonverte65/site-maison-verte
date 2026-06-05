@@ -673,21 +673,33 @@ return (
       <Helmet>
 
         <title>
-          La Maison Verte - Arreau
+        Location vacances Arreau – Gîte 4 personnes – Vallée d’Aure | La Maison Verte
         </title>
-
-        <meta property="og:title" content="La Maison Verte - Arreau" />
-
+            <meta
+              name="description"
+              content="Location de vacances à Arreau pour 4 personnes, au cœur de la vallée d’Aure. Maison rénovée proche Saint-Lary, Peyragudes, Loudenvielle et des randonnées."
+            />
+            <link
+              rel="canonical"
+              href="https://lamaisonverte65.fr/"
+            />
+            <meta
+              property="og:title"
+              content="Location vacances Arreau – Gîte 4 personnes | La Maison Verte"
+            />
             <meta
               property="og:description"
-              content="Ravissante maison rénovée en location pour 4 personnes à Arreau. Un gîte proche de Saint-Lary, de Loudenvielle, du Néouvielle et de l'Espagne, dans un cadre naturel et reposant."
+              content="Ravissante maison rénovée en location pour 4 personnes à Arreau, dans les Hautes Pyrénées (Occitanie). Un gîte proche de Saint-Lary, de Loudenvielle, du Néouvielle et de l'Espagne, dans un cadre naturel et reposant."
             />  
 
             <meta
               property="og:image"
-              content="https://tonsite.fr/hero.jpg"
+              content="https://lamaisonverte65.fr/hero.jpg"
             />
-
+            <meta
+              property="og:url"
+              content="https://lamaisonverte65.fr/"
+            />
             <meta
               property="og:type"
               content="website"
@@ -734,13 +746,19 @@ return (
           {JSON.stringify({
             "@context": "https://schema.org",
             "@type": "VacationRental",
+            "identifier": "lamaisonverte65-arreau",
             "name": "La Maison Verte - Arreau",
             "description": "Ravissante maison rénovée à Arreau, proche de Saint-Lary, Loudenvielle et de la réserve du Néouvielle. Une location chaleureuse pour 4 personnes au cœur des Pyrénées.",
-            "url": "https://www.lamaisonverte-arreau.fr/",
+            "url": "https://lamaisonverte65.fr/",
             "image": [
-              "https://www.lamaisonverte-arreau.fr/hero.jpg",
-              "https://www.lamaisonverte-arreau.fr/cuisine-equipee-maison-verte.jpg",
-              "https://www.lamaisonverte-arreau.fr/chambre-parentale-grand-lit.jpg"
+              "https://lamaisonverte65.fr/hero.jpg",
+              "https://lamaisonverte65.fr/cuisine-equipee-maison-verte.jpg",
+              "https://lamaisonverte65.fr/chambre-parentale-grand-lit.jpg",
+              "https://lamaisonverte65.fr/chambre-parentale-balcon.jpg",
+              "https://lamaisonverte65.fr/chambre-sous-combles-lits-jumeaux.jpg",
+              "https://lamaisonverte65.fr/salle-de-bain-maison-verte.jpg",
+              "https://lamaisonverte65.fr/balcon-plein-sud-ouest.jpg",
+              "https://lamaisonverte65.fr/halle-et-mairie-arreau.jpg"
             ],
             "telephone": "+33663076314",
             "email": "lamaisonverte65@gmail.com",
@@ -748,6 +766,7 @@ return (
               "@type": "PostalAddress",
               "streetAddress": "3 Impasse Trassens",
               "addressLocality": "Arreau",
+              "addressRegion": "Occitanie",
               "postalCode": "65240",
               "addressCountry": "FR"
             },
@@ -759,14 +778,27 @@ return (
             "maximumAttendeeCapacity": 4,
             "numberOfRooms": 2,
             "containsPlace": {
-              "@type": "Accommodation",
-              "name": "La Maison Verte",
-              "occupancy": {
-                "@type": "QuantitativeValue",
-                "maxValue": 4
-              },
-              "numberOfBedrooms": 2
-            },
+                "@type": "Accommodation",
+                "name": "La Maison Verte",
+                "occupancy": {
+                  "@type": "QuantitativeValue",
+                  "value": 4,
+                  "maxValue": 4
+                },
+                "numberOfBedrooms": 2,
+                "numberOfBathroomsTotal": 1,
+                "bed": [
+                  {
+                    "@type": "BedDetails",
+                    "typeOfBed": "Double bed",
+                    "numberOfBeds": 1
+                  },
+                  {
+                    "@type": "BedDetails",
+                    "typeOfBed": "Single bed",
+                    "numberOfBeds": 2
+                  }
+                ]              },
             "amenityFeature": [
               {
                 "@type": "LocationFeatureSpecification",
@@ -801,11 +833,12 @@ return (
             ],
             "aggregateRating": {
               "@type": "AggregateRating",
-              "ratingValue": "9.5",
-              "bestRating": "10",
-              "ratingCount": "42"
+              "ratingValue": "4.8",
+              "reviewCount": "51",
+              "bestRating": "5",
+              "worstRating": "1"
             },
-            "priceRange": "À partir de 80€ par nuit"
+            "priceRange": "À partir de 75€ par nuit"
           })}
         </script>
 

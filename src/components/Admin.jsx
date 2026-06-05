@@ -139,13 +139,20 @@ function getRealPaidAmount(request) {
 }
 
 function getStripeFeeAmount(request) {
-  if (isCancelledFinancialStatus(request?.status)) return 0;
+  // Les frais Stripe sont des mouvements bancaires réels :
+  // ils doivent être comptabilisés même si la réservation est annulée ou remboursée.
   return Number(request?.stripe_fee_amount || 0);
 }
 
 function getStripeNetAmount(request) {
-  if (isCancelledFinancialStatus(request?.status)) return 0;
+  // Le net Stripe correspond à la transaction bancaire avant éventuel remboursement.
+  // On ne le neutralise pas selon le statut de réservation, pour que la synthèse
+  // bancaire reste raccord avec les payouts Stripe et le compte bancaire.
   return Number(request?.stripe_net_amount || 0);
+}
+
+function getRefundedAmount(request) {
+  return Number(request?.refunded_amount || 0);
 }
 
 function getConfirmedStayAmount(request) {
@@ -165,6 +172,8 @@ export default function Admin() {
   const [siteVisits, setSiteVisits] = useState([]);
   const [siteVisitsTotal, setSiteVisitsTotal] = useState(0);
   const [confirmedReservations, setConfirmedReservations] = useState([]);
+  const [stripePayouts, setStripePayouts] = useState([]);
+  const [stripeBalanceTransactions, setStripeBalanceTransactions] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [activeTab, setActiveTab] = useState("requests");
   const [search, setSearch] = useState("");
@@ -262,6 +271,16 @@ export default function Admin() {
       .select("*")
       .order("created_at", { ascending: false });
 
+    const { data: stripePayoutsData } = await supabase
+      .from("stripe_payouts")
+      .select("*")
+      .order("arrival_date", { ascending: false });
+
+    const { data: stripeBalanceTransactionsData } = await supabase
+      .from("stripe_balance_transactions")
+      .select("*")
+      .order("created_at_stripe", { ascending: false });
+
     const nextRequests = requestsData || [];
     setBookingRequests(nextRequests);
     setCustomers(customersData || []);
@@ -272,6 +291,8 @@ export default function Admin() {
     setSiteVisits(siteVisitsData || []);
     setSiteVisitsTotal(siteVisitsTotalCount || (siteVisitsData || []).length);
     setConfirmedReservations(reservationsData || []);
+    setStripePayouts(stripePayoutsData || []);
+    setStripeBalanceTransactions(stripeBalanceTransactionsData || []);
     setSelectedRequest((current) => current ? nextRequests.find((request) => request.id === current.id) || current : current);
     setLoading(false);
   }
@@ -852,8 +873,19 @@ export default function Admin() {
     }, 0);
     const totalCollected = activeRequests.reduce((sum, r) => sum + getRealPaidAmount(r), 0);
     const balanceCollected = Math.max(totalCollected - depositCollected, 0);
-    const stripeFeeTotal = activeRequests.reduce((sum, r) => sum + getStripeFeeAmount(r), 0);
-    const stripeNetTotal = activeRequests.reduce((sum, r) => sum + getStripeNetAmount(r), 0);
+
+    // Synthèse bancaire Stripe : toutes les transactions réelles comptent,
+    // y compris les réservations annulées/remboursées, car elles génèrent
+    // des frais et doivent expliquer le montant réellement viré par Stripe.
+    const stripeGrossPaymentTotal = bookingRequests.reduce((sum, r) => sum + Number(r.amount_paid || 0), 0);
+    const stripeRefundTotal = bookingRequests.reduce((sum, r) => sum + getRefundedAmount(r), 0);
+    const stripeFeeTotal = bookingRequests.reduce((sum, r) => sum + getStripeFeeAmount(r), 0);
+    const stripeNetTotal = bookingRequests.reduce((sum, r) => sum + getStripeNetAmount(r), 0);
+    const stripeBankExpectedNetTotal = stripeNetTotal - stripeRefundTotal;
+    const stripePayoutTotal = (stripePayouts || []).reduce((sum, payout) => sum + Number(payout.amount || 0), 0);
+    const stripeReconciledNetTotal = (stripeBalanceTransactions || [])
+      .filter((transaction) => transaction.reconciliation_status === "viré" && transaction.booking_request_id)
+      .reduce((sum, transaction) => sum + Number(transaction.net || 0), 0);
     const caConfirmed = confirmedRequests.reduce((sum, r) => sum + getConfirmedStayAmount(r), 0);
     const remainingToCollect = Math.max(caConfirmed - totalCollected, 0);
 
@@ -878,12 +910,18 @@ export default function Admin() {
       depositCollected,
       balanceCollected,
       totalCollected,
+      stripeGrossPaymentTotal,
+      stripeRefundTotal,
       stripeFeeTotal,
       stripeNetTotal,
+      stripeBankExpectedNetTotal,
+      stripePayoutTotal,
+      stripeReconciledNetTotal,
+      stripePayoutDifference: stripePayoutTotal - stripeBankExpectedNetTotal,
       caConfirmed,
       remainingToCollect,
     };
-  }, [bookingRequests, confirmedReservations, customers, guestReviews, siteVisits, siteVisitsTotal]);
+  }, [bookingRequests, confirmedReservations, customers, guestReviews, siteVisits, siteVisitsTotal, stripePayouts, stripeBalanceTransactions]);
 
   const sourceStats = useMemo(() => groupCount([
     ...bookingRequests.filter((request) => !isCancelledFinancialStatus(request.status)).map((request) => ({ source: normalizeSource(request.source) })),
@@ -893,30 +931,48 @@ export default function Admin() {
   const visitSourceStats = useMemo(() => groupCount(siteVisits, (visit) => normalizeSource(visit.source || visit.referrer_domain || "Direct")), [siteVisits]);
   const visitCountryStats = useMemo(() => groupCount(siteVisits, (visit) => visit.country || "Non renseigné"), [siteVisits]);
 
-  const paymentRows = useMemo(() => bookingRequests.filter((r) => ["accepted", "deposit_paid", "paid", "fully_paid", "confirmed"].includes(r.status)).map((r) => ({
-    id: r.id,
-    name: getRequestName(r),
-    status: r.status,
-    amounts: getAmounts(r),
-    paymentStatus: r.payment_status || "non configuré",
-    depositStatus: getDepositStatus(r),
-    balanceStatus: getBalanceStatus(r),
-    startDate: r.start_date,
-    endDate: r.end_date,
-    paymentLink: r.payment_link,
-    expiresAt: r.acceptance_expires_at,
-    confirmedAmount: getConfirmedStayAmount(r),
-    paidClientAmount: getRealPaidAmount(r),
-    stripeFeeAmount: getStripeFeeAmount(r),
-    stripeNetAmount: getStripeNetAmount(r),
-    payoutStatus: r.stripe_payout_status,
-    payoutArrivalDate: r.stripe_payout_arrival_date,
-    depositPaidAt: r.deposit_paid_at,
-    depositDueAt: r.deposit_due_at || r.acceptance_expires_at,
-    balancePaidAt: r.balance_paid_at,
-    balanceDueAt: r.balance_due_at,
-    transferDate: r.transfer_date,
-  })), [bookingRequests]);
+  const paymentRows = useMemo(() => bookingRequests
+    .filter((r) => ["accepted", "deposit_paid", "paid", "fully_paid", "confirmed", "cancelled"].includes(r.status) || Number(r.stripe_fee_amount || 0) > 0 || Number(r.stripe_net_amount || 0) > 0)
+    .map((r) => {
+      const relatedTransactions = (stripeBalanceTransactions || []).filter((transaction) => transaction.booking_request_id === r.id);
+      const reconciledTransactions = relatedTransactions.filter((transaction) => transaction.reconciliation_status === "viré" || transaction.payout_id);
+      const payoutIds = [...new Set(reconciledTransactions.map((transaction) => transaction.payout_id).filter(Boolean))];
+      const payoutDates = reconciledTransactions.map((transaction) => transaction.available_on || transaction.created_at_stripe).filter(Boolean);
+      const stripeNetAmount = getStripeNetAmount(r);
+      const stripeTransferStatus = reconciledTransactions.length > 0
+        ? "réellement viré"
+        : stripeNetAmount > 0
+          ? "net théorique / en attente payout"
+          : "en attente paiement";
+
+      return {
+        id: r.id,
+        name: getRequestName(r),
+        status: r.status,
+        amounts: getAmounts(r),
+        paymentStatus: r.payment_status || "non configuré",
+        depositStatus: getDepositStatus(r),
+        balanceStatus: getBalanceStatus(r),
+        startDate: r.start_date,
+        endDate: r.end_date,
+        paymentLink: r.payment_link,
+        expiresAt: r.acceptance_expires_at,
+        confirmedAmount: getConfirmedStayAmount(r),
+        paidClientAmount: getRealPaidAmount(r),
+        stripeFeeAmount: getStripeFeeAmount(r),
+        stripeNetAmount,
+        stripeTransferStatus,
+        payoutStatus: r.stripe_payout_status,
+        payoutArrivalDate: r.stripe_payout_arrival_date || payoutDates[0] || null,
+        payoutIds,
+        relatedTransactions,
+        depositPaidAt: r.deposit_paid_at,
+        depositDueAt: r.deposit_due_at || r.acceptance_expires_at,
+        balancePaidAt: r.balance_paid_at,
+        balanceDueAt: r.balance_due_at,
+        transferDate: r.transfer_date,
+      };
+    }), [bookingRequests, stripeBalanceTransactions]);
 
   const selectedPayments = useMemo(() => selectedRequest ? payments.filter((payment) => payment.booking_request_id === selectedRequest.id) : [], [payments, selectedRequest]);
   const selectedEvents = useMemo(() => selectedRequest ? bookingEvents.filter((item) => item.booking_request_id === selectedRequest.id) : [], [bookingEvents, selectedRequest]);
@@ -989,6 +1045,7 @@ export default function Admin() {
         <button style={activeTab === "pricing" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("pricing")}>Tarifs</button>
         <button style={activeTab === "customers" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("customers")}>Clients</button>
         <button style={activeTab === "payments" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("payments")}>Paiements</button>
+        <button style={activeTab === "stripe_payouts" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("stripe_payouts")}>Virements Stripe</button>
         <button style={activeTab === "reviews" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("reviews")}>Avis</button>
         <button style={activeTab === "visits" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("visits")}>Visites</button>
         <button style={activeTab === "summary" ? styles.activeTab : styles.tab} onClick={() => setActiveTab("summary")}>Synthèse</button>
@@ -1005,9 +1062,15 @@ export default function Admin() {
           <section style={styles.statsGrid}>
             <StatCard label="Acomptes encaissés" value={formatMoney(stats.depositCollected)} onClick={() => setActiveTab("payments")} />
             <StatCard label="Soldes encaissés" value={formatMoney(stats.balanceCollected)} onClick={() => setActiveTab("payments")} />
-            <StatCard label="Total encaissé client" value={formatMoney(stats.totalCollected)} onClick={() => setActiveTab("payments")} />
-            <StatCard label="Frais Stripe récupérés" value={formatMoney(stats.stripeFeeTotal)} onClick={() => setActiveTab("payments")} />
-            <StatCard label="Net Stripe récupéré" value={formatMoney(stats.stripeNetTotal)} onClick={() => setActiveTab("payments")} />
+            <StatCard label="Total encaissé réservations" value={formatMoney(stats.totalCollected)} onClick={() => setActiveTab("payments")} />
+            <StatCard label="Paiements Stripe bruts" value={formatMoney(stats.stripeGrossPaymentTotal)} onClick={() => setActiveTab("payments")} />
+            <StatCard label="Remboursements Stripe" value={formatMoney(stats.stripeRefundTotal)} onClick={() => setActiveTab("payments")} />
+            <StatCard label="Frais Stripe réels" value={formatMoney(stats.stripeFeeTotal)} onClick={() => setActiveTab("payments")} />
+            <StatCard label="Net Stripe avant remboursements" value={formatMoney(stats.stripeNetTotal)} onClick={() => setActiveTab("payments")} />
+            <StatCard label="Net bancaire attendu" value={formatMoney(stats.stripeBankExpectedNetTotal)} onClick={() => setActiveTab("stripe_payouts")} />
+            <StatCard label="Net réellement viré" value={formatMoney(stats.stripeReconciledNetTotal)} onClick={() => setActiveTab("stripe_payouts")} />
+            <StatCard label="Payouts Stripe rapprochés" value={formatMoney(stats.stripePayoutTotal)} onClick={() => setActiveTab("stripe_payouts")} />
+            <StatCard label="Écart bancaire Stripe" value={formatMoney(stats.stripePayoutDifference)} onClick={() => setActiveTab("stripe_payouts")} />
           </section>
 
           <h3 style={styles.subTitle}>Réservations confirmées</h3>
@@ -1298,10 +1361,42 @@ export default function Admin() {
           <h2 style={styles.panelTitle}>Paiements</h2>
           <div style={styles.tableWrapper}>
             <table style={styles.table}>
-              <thead style={styles.stickyHead}><tr><th style={styles.th}>Client</th><th style={styles.th}>Dates</th><th style={styles.th}>Statut réservation</th><th style={styles.th}>CA confirmé</th><th style={styles.th}>Payé client</th><th style={styles.th}>Frais Stripe</th><th style={styles.th}>Net Stripe</th><th style={styles.th}>Acompte</th><th style={styles.th}>Solde</th><th style={styles.th}>Payout Stripe</th><th style={styles.th}>Lien</th></tr></thead>
-              <tbody>{paymentRows.map((row) => <tr key={row.id}><td style={styles.td}>{row.name}</td><td style={styles.td}>{formatDate(row.startDate)} → {formatDate(row.endDate)}</td><td style={styles.td}><StatusBadge status={row.status} /></td><td style={styles.td}>{formatMoney(row.confirmedAmount)}</td><td style={styles.td}>{formatMoney(row.paidClientAmount)}</td><td style={styles.td}>{formatMoney(row.stripeFeeAmount)}</td><td style={styles.td}>{row.stripeNetAmount ? formatMoney(row.stripeNetAmount) : <span style={styles.muted}>À récupérer Stripe</span>}</td><td style={styles.td}>{row.depositStatus}<br />{formatMoney(row.amounts.deposit)}<br /><span style={styles.muted}>payé : {formatDateTime(row.depositPaidAt)}<br />prévu : {formatDateTime(row.depositDueAt)}</span></td><td style={styles.td}>{row.balanceStatus}<br />{formatMoney(row.amounts.balance)}<br /><span style={styles.muted}>payé : {formatDateTime(row.balancePaidAt)}<br />prévu : {formatDateTime(row.balanceDueAt)}</span></td><td style={styles.td}>{row.payoutStatus || "-"}<br /><span style={styles.muted}>{formatDateTime(row.payoutArrivalDate || row.transferDate)}</span></td><td style={styles.td}>{row.paymentLink ? <a href={row.paymentLink} target="_blank" rel="noreferrer">Stripe</a> : "-"}</td></tr>)}</tbody>
+              <thead style={styles.stickyHead}><tr><th style={styles.th}>Client</th><th style={styles.th}>Dates</th><th style={styles.th}>Statut réservation</th><th style={styles.th}>CA confirmé</th><th style={styles.th}>Payé client</th><th style={styles.th}>Frais Stripe</th><th style={styles.th}>Net Stripe théorique</th><th style={styles.th}>Acompte</th><th style={styles.th}>Solde</th><th style={styles.th}>Statut virement</th><th style={styles.th}>Lien</th></tr></thead>
+              <tbody>{paymentRows.map((row) => <tr key={row.id}><td style={styles.td}>{row.name}</td><td style={styles.td}>{formatDate(row.startDate)} → {formatDate(row.endDate)}</td><td style={styles.td}><StatusBadge status={row.status} /></td><td style={styles.td}>{formatMoney(row.confirmedAmount)}</td><td style={styles.td}>{formatMoney(row.paidClientAmount)}</td><td style={styles.td}>{formatMoney(row.stripeFeeAmount)}</td><td style={styles.td}>{row.stripeNetAmount ? formatMoney(row.stripeNetAmount) : <span style={styles.muted}>À récupérer Stripe</span>}</td><td style={styles.td}>{row.depositStatus}<br />{formatMoney(row.amounts.deposit)}<br /><span style={styles.muted}>payé : {formatDateTime(row.depositPaidAt)}<br />prévu : {formatDateTime(row.depositDueAt)}</span></td><td style={styles.td}>{row.balanceStatus}<br />{formatMoney(row.amounts.balance)}<br /><span style={styles.muted}>payé : {formatDateTime(row.balancePaidAt)}<br />prévu : {formatDateTime(row.balanceDueAt)}</span></td><td style={styles.td}><strong>{row.stripeTransferStatus}</strong><br /><span style={styles.muted}>{row.payoutIds.length ? `Payout : ${row.payoutIds.join(", ")}` : "Payout : -"}<br />Date : {formatDateTime(row.payoutArrivalDate || row.transferDate)}</span></td><td style={styles.td}>{row.paymentLink ? <a href={row.paymentLink} target="_blank" rel="noreferrer">Stripe</a> : "-"}</td></tr>)}</tbody>
             </table>
           </div>
+        </section>
+      )}
+
+      {!loading && !error && activeTab === "stripe_payouts" && (
+        <section style={styles.panel}>
+          <div style={styles.panelHeader}>
+            <div>
+              <h2 style={styles.panelTitle}>Virements Stripe</h2>
+              <p style={styles.muted}>Rapprochement automatique entre les virements bancaires Stripe et les transactions nettes calculées par réservation.</p>
+            </div>
+            <button style={styles.refreshButton} onClick={loadAdminData}>Actualiser</button>
+          </div>
+
+          <h3 style={styles.subTitle}>Payouts bancaires</h3>
+          {stripePayouts.length === 0 ? <p style={styles.empty}>Aucun payout Stripe rapproché pour le moment.</p> : (
+            <div style={styles.tableWrapper}>
+              <table style={styles.table}>
+                <thead style={styles.stickyHead}><tr><th style={styles.th}>Payout</th><th style={styles.th}>Date virement</th><th style={styles.th}>Statut</th><th style={styles.th}>Montant viré</th><th style={styles.th}>Somme transactions</th><th style={styles.th}>Écart</th><th style={styles.th}>Transactions</th></tr></thead>
+                <tbody>{stripePayouts.map((payout) => <tr key={payout.id}><td style={styles.td}>{payout.id}</td><td style={styles.td}>{formatDateTime(payout.arrival_date || payout.created_at_stripe)}</td><td style={styles.td}>{payout.status || "-"}</td><td style={styles.td}>{formatMoney(payout.amount)}</td><td style={styles.td}>{formatMoney(payout.expected_net_total)}</td><td style={styles.td}>{formatMoney(payout.difference_amount)}</td><td style={styles.td}>{payout.transaction_count || 0}</td></tr>)}</tbody>
+              </table>
+            </div>
+          )}
+
+          <h3 style={styles.subTitle}>Transactions incluses</h3>
+          {stripeBalanceTransactions.length === 0 ? <p style={styles.empty}>Aucune transaction Stripe rapprochée.</p> : (
+            <div style={styles.tableWrapper}>
+              <table style={styles.table}>
+                <thead style={styles.stickyHead}><tr><th style={styles.th}>Date</th><th style={styles.th}>Type</th><th style={styles.th}>Réservation</th><th style={styles.th}>Paiement</th><th style={styles.th}>Brut</th><th style={styles.th}>Frais</th><th style={styles.th}>Net</th><th style={styles.th}>Payout</th><th style={styles.th}>Statut</th></tr></thead>
+                <tbody>{stripeBalanceTransactions.slice(0, 200).map((transaction) => <tr key={transaction.id}><td style={styles.td}>{formatDateTime(transaction.created_at_stripe)}</td><td style={styles.td}>{transaction.type || "-"}</td><td style={styles.td}>{transaction.booking_request_id ? shortId(transaction.booking_request_id) : "-"}</td><td style={styles.td}>{transaction.payment_type || transaction.payment_intent_id || "-"}</td><td style={styles.td}>{formatMoney(transaction.amount)}</td><td style={styles.td}>{formatMoney(transaction.fee)}</td><td style={styles.td}>{formatMoney(transaction.net)}</td><td style={styles.td}>{transaction.payout_id || "-"}</td><td style={styles.td}>{transaction.reconciliation_status || "-"}</td></tr>)}</tbody>
+              </table>
+            </div>
+          )}
         </section>
       )}
 

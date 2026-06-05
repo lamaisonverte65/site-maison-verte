@@ -123,12 +123,136 @@ function stripeTimestampToIso(timestamp) {
   return new Date(Number(timestamp) * 1000).toISOString();
 }
 
+
+async function findBookingAndPaymentByPaymentIntent(paymentIntentId) {
+  if (!paymentIntentId) return { booking: null, payment: null };
+
+  const { data: payment } = await supabase
+    .from("payments")
+    .select("*")
+    .eq("stripe_payment_intent_id", paymentIntentId)
+    .maybeSingle();
+
+  if (payment?.booking_request_id) {
+    const { data: booking } = await supabase
+      .from("booking_requests")
+      .select("*")
+      .eq("id", payment.booking_request_id)
+      .maybeSingle();
+    return { booking, payment };
+  }
+
+  const { data: booking } = await supabase
+    .from("booking_requests")
+    .select("*")
+    .eq("stripe_payment_intent_id", paymentIntentId)
+    .maybeSingle();
+
+  return { booking, payment: null };
+}
+
+async function upsertStripePayout(payout, transactions = []) {
+  if (!payout?.id) return null;
+
+  const transactionNetTotal = (transactions || []).reduce((sum, item) => sum + Number(item.net || 0) / 100, 0);
+  const amount = Number(payout.amount || 0) / 100;
+
+  const payload = {
+    id: payout.id,
+    amount,
+    currency: payout.currency || "eur",
+    status: payout.status || null,
+    arrival_date: stripeTimestampToIso(payout.arrival_date || null),
+    created_at_stripe: stripeTimestampToIso(payout.created || null),
+    reconciled_at: new Date().toISOString(),
+    transaction_count: transactions.length,
+    expected_net_total: transactionNetTotal,
+    difference_amount: Number((amount - transactionNetTotal).toFixed(2)),
+    raw: payout,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase.from("stripe_payouts").upsert(payload, { onConflict: "id" });
+  if (error) throw error;
+  return payload;
+}
+
+async function upsertStripeBalanceTransaction(transaction, payout = null) {
+  if (!transaction?.id) return null;
+
+  let paymentIntentId = null;
+  let chargeId = null;
+  const sourceObject = transaction.source;
+
+  if (typeof sourceObject === "object" && sourceObject) {
+    chargeId = sourceObject.id || null;
+    paymentIntentId = sourceObject.payment_intent || null;
+  }
+
+  const { booking, payment } = await findBookingAndPaymentByPaymentIntent(paymentIntentId);
+  const payoutId = payout?.id || (typeof transaction.payout === "string" ? transaction.payout : transaction.payout?.id || null);
+  const payoutStatus = payout?.status || (payoutId ? "paid" : null);
+  const reconciliationStatus = payoutId
+    ? (payoutStatus === "paid" ? "viré" : "payout_en_cours")
+    : "en_attente_payout";
+
+  const payload = {
+    id: transaction.id,
+    booking_request_id: booking?.id || payment?.booking_request_id || null,
+    payment_id: payment?.id || null,
+    payment_type: payment?.payment_type || null,
+    payment_intent_id: paymentIntentId,
+    charge_id: chargeId,
+    payout_id: payoutId,
+    type: transaction.type || null,
+    reporting_category: transaction.reporting_category || null,
+    amount: Number(transaction.amount || 0) / 100,
+    fee: Number(transaction.fee || 0) / 100,
+    net: Number(transaction.net || 0) / 100,
+    currency: transaction.currency || "eur",
+    available_on: stripeTimestampToIso(transaction.available_on || null),
+    created_at_stripe: stripeTimestampToIso(transaction.created || null),
+    description: transaction.description || null,
+    reconciliation_status: reconciliationStatus,
+    raw: transaction,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase.from("stripe_balance_transactions").upsert(payload, { onConflict: "id" });
+  if (error) throw error;
+
+  if (payload.booking_request_id && transaction.type === "charge") {
+    const bookingUpdate = {
+      stripe_fee_amount: payload.fee,
+      stripe_net_amount: payload.net,
+      commission_amount: payload.fee,
+      owner_net_amount: payload.net,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (payload.payout_id) {
+      bookingUpdate.stripe_payout_id = payload.payout_id;
+      bookingUpdate.stripe_payout_status = payoutStatus || "paid";
+      bookingUpdate.stripe_payout_arrival_date = stripeTimestampToIso(payout?.arrival_date || null);
+      bookingUpdate.transfer_date = stripeTimestampToIso(payout?.arrival_date || null);
+    }
+
+    const { error: bookingError } = await supabase
+      .from("booking_requests")
+      .update(bookingUpdate)
+      .eq("id", payload.booking_request_id);
+
+    if (bookingError) throw bookingError;
+  }
+
+  return payload;
+}
+
 async function reconcilePayout(payout) {
   if (!payout?.id) return { updated: 0, skipped: 0 };
 
   let updated = 0;
   let skipped = 0;
-  const arrivalDate = stripeTimestampToIso(payout.arrival_date || payout.created);
 
   try {
     const balanceTransactions = await stripe.balanceTransactions.list({
@@ -137,46 +261,16 @@ async function reconcilePayout(payout) {
       expand: ["data.source"],
     });
 
+    await upsertStripePayout(payout, balanceTransactions.data || []);
+
     for (const transaction of balanceTransactions.data || []) {
-      if (transaction.type !== "charge") continue;
-
-      const source = transaction.source;
-      const paymentIntentId = typeof source === "object" ? source.payment_intent : null;
-
-      if (!paymentIntentId) {
+      try {
+        const row = await upsertStripeBalanceTransaction(transaction, payout);
+        if (row?.booking_request_id) updated += 1;
+        else skipped += 1;
+      } catch (error) {
+        console.error("Erreur transaction payout Stripe:", transaction.id, error.message);
         skipped += 1;
-        continue;
-      }
-
-      const updatePayload = {
-        stripe_payout_id: payout.id,
-        stripe_payout_status: payout.status || "paid",
-        stripe_payout_arrival_date: arrivalDate,
-        transfer_date: arrivalDate,
-        stripe_fee_amount: Number(transaction.fee || 0) / 100,
-        stripe_net_amount: Number(transaction.net || 0) / 100,
-        commission_amount: Number(transaction.fee || 0) / 100,
-        owner_net_amount: Number(transaction.net || 0) / 100,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error } = await supabase
-        .from("booking_requests")
-        .update(updatePayload)
-        .eq("stripe_payment_intent_id", paymentIntentId);
-
-      if (error) {
-        console.error("Erreur rapprochement payout réservation:", paymentIntentId, error.message);
-        skipped += 1;
-      } else {
-        updated += 1;
-        await logBookingEvent({
-          bookingId: null,
-          eventType: "stripe_payout_reconciled",
-          label: "Payout Stripe rapproché",
-          message: `Payout ${payout.id} rapproché avec ${paymentIntentId}`,
-          metadata: { payoutId: payout.id, paymentIntentId, transactionId: transaction.id, net: updatePayload.stripe_net_amount, fee: updatePayload.stripe_fee_amount },
-        });
       }
     }
   } catch (error) {
