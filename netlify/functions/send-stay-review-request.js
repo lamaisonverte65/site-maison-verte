@@ -103,8 +103,15 @@ async function sendReviewRequestEmail(booking) {
       </p>
 
       <p>
-        Si vous le souhaitez, votre avis nous aide énormément à faire connaître la maison
-        et à rassurer les futurs voyageurs.
+        Votre commentaire est précieux : il aide les futurs voyageurs à préparer leur séjour
+        et contribue au développement de La Maison Verte.
+      </p>
+
+      <p>
+        Les anciens voyageurs restent nos meilleurs ambassadeurs. Lors d'un futur séjour,
+        n'hésitez pas à nous rappeler que vous avez déjà séjourné à La Maison Verte.
+        Les clients fidèles bénéficient régulièrement d'attentions particulières et
+        d'avantages lors de leurs réservations en direct.
       </p>
 
       <p style="margin-top:30px;">
