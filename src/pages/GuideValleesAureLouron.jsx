@@ -46,7 +46,7 @@ const guideSections = [
   {
     kicker: "Situation centrale",
     title: "Pourquoi choisir Arreau ?",
-    image: "/guide/arreau-panorama.jpg",
+    image: "/guide/arreau-panorama.webp",
     alt: "Vue panoramique d'Arreau au cœur des Pyrénées",
     caption: "Arreau, à la confluence des vallées d'Aure et du Louron — Crédit photo : Wikimedia Commons.",
     paragraphs: [
@@ -57,7 +57,7 @@ const guideSections = [
   {
     kicker: "Village et patrimoine",
     title: "Arreau : halle, Maison des Lys, marchés et histoire locale",
-    image: "/guide/arreau-halle-mairie.jpg",
+    image: "/guide/arreau-halle-mairie.webp",
     alt: "Halle et mairie d'Arreau",
     caption: "La halle-mairie d'Arreau, repère central du village — Crédit photo : Wikimedia Commons.",
     paragraphs: [
@@ -70,7 +70,7 @@ const guideSections = [
   {
     kicker: "Aure et Louron",
     title: "Deux vallées, une multitude d'excursions",
-    image: "/guide/arreau-pont-neste.jpg",
+    image: "/guide/arreau-pont-neste.webp",
     alt: "Pont sur la Neste à Arreau",
     caption: "Arreau et les ponts sur les Nestes, entre vallée d'Aure et vallée du Louron — Crédit photo : Wikimedia Commons.",
     paragraphs: [
@@ -82,7 +82,7 @@ const guideSections = [
   {
     kicker: "Hiver",
     title: "Ski, neige et stations accessibles depuis Arreau",
-    image: "/guide/saint-lary-pla-adet.jpg",
+    image: "/guide/saint-lary-pla-adet.webp",
     alt: "Saint-Lary Pla d'Adet",
     caption: "Saint-Lary Pla d'Adet, l'une des stations accessibles depuis Arreau — Crédit photo : Wikimedia Commons.",
     paragraphs: [
@@ -95,7 +95,7 @@ const guideSections = [
   {
     kicker: "Vélo",
     title: "Cols mythiques, Tour de France et sorties en étoile",
-    image: "/guide/col-aspin-cyclisme.jpg",
+    image: "/guide/col-aspin-cyclisme.webp",
     alt: "Cyclistes au col d'Aspin",
     caption: "Le col d'Aspin, ascension emblématique des Pyrénées et du Tour de France — Crédit photo : Wikimedia Commons.",
     paragraphs: [
@@ -107,7 +107,7 @@ const guideSections = [
   {
     kicker: "VTT, gravel et trail",
     title: "Loudenvielle, Peyragudes et les grands rendez-vous sportifs",
-    image: "/guide/lac-genos-loudenvielle.jpg",
+    image: "/guide/lac-genos-loudenvielle.webp",
     alt: "Lac de Génos-Loudenvielle dans la vallée du Louron",
     caption: "Le lac de Génos-Loudenvielle, au cœur de la vallée du Louron — Crédit photo : Wikimedia Commons.",
     paragraphs: [
@@ -119,7 +119,7 @@ const guideSections = [
   {
     kicker: "Air, eau, rocher",
     title: "Parapente, canyoning, via ferrata et parcours aventure",
-    image: "/guide/loudenvielle-parapente-lac.jpg",
+    image: "/guide/loudenvielle-parapente-lac.webp",
     alt: "Parapente au-dessus du lac de Génos-Loudenvielle",
     caption: "Parapente au-dessus de Loudenvielle et du lac de Génos — Crédit photo : Wikimedia Commons.",
     paragraphs: [
@@ -133,7 +133,7 @@ const guideSections = [
   {
     kicker: "Randonnée et nature",
     title: "Néouvielle, lacs d'altitude et faune pyrénéenne",
-    image: "/guide/neouvielle-lacs-aumar-aubert.jpg",
+    image: "/guide/neouvielle-lacs-aumar-aubert.webp",
     alt: "Lacs d'Aumar et d'Aubert dans le Néouvielle",
     caption: "Les lacs d'Aumar et d'Aubert, joyaux de la réserve naturelle du Néouvielle — Crédit photo : Wikimedia Commons.",
     paragraphs: [
@@ -145,7 +145,7 @@ const guideSections = [
   {
     kicker: "Bien-être",
     title: "Balnéa, Sensoria et récupération après l'effort",
-    image: "/guide/lac-genos-loudenvielle.jpg",
+    image: "/guide/lac-genos-loudenvielle.webp",
     alt: "Lac de Génos-Loudenvielle près de Balnéa",
     caption: "Loudenvielle et le lac de Génos, à proximité de Balnéa — Crédit photo : Wikimedia Commons.",
     paragraphs: [
@@ -156,7 +156,7 @@ const guideSections = [
   {
     kicker: "Espagne",
     title: "Bielsa, Aínsa, Ordesa et la Sierra de Guara",
-    image: "/guide/ainsa-plaza-mayor.jpg",
+    image: "/guide/ainsa-plaza-mayor.webp",
     alt: "Plaza Mayor d'Aínsa en Espagne",
     caption: "Aínsa, village médiéval espagnol accessible en excursion depuis Arreau — Crédit photo : Wikimedia Commons.",
     paragraphs: [
@@ -169,7 +169,7 @@ const guideSections = [
   {
     kicker: "Piémont",
     title: "Gouffre d'Esparros, Gargas, Petite Amazonie et marbre de Sarrancolin",
-    image: "/guide/gouffre-esparros-artigaleou.jpg",
+    image: "/guide/gouffre-esparros-artigaleou.webp",
     alt: "Gouffre d'Esparros dans les Hautes-Pyrénées",
     caption: "Le Gouffre d'Esparros, site souterrain majeur du piémont pyrénéen — Crédit photo : Wikimedia Commons.",
     paragraphs: [
@@ -181,7 +181,7 @@ const guideSections = [
   {
     kicker: "Culture et jours de pluie",
     title: "Cinémas, médiathèque, animations et sorties calmes",
-    image: "/guide/arreau-eglise-notre-dame.jpg",
+    image: "/guide/arreau-eglise-notre-dame.webp",
     alt: "Église Notre-Dame d'Arreau",
     caption: "L'église Notre-Dame d'Arreau, témoin du patrimoine religieux local — Crédit photo : Wikimedia Commons.",
     paragraphs: [
@@ -192,7 +192,7 @@ const guideSections = [
   {
     kicker: "Gastronomie",
     title: "Goûter les Pyrénées",
-    image: "/guide/arreau-halle-mairie.jpg",
+    image: "/guide/arreau-halle-mairie.webp",
     alt: "Halle d'Arreau, lieu du marché hebdomadaire",
     caption: "La halle d'Arreau, lieu de marché et de vie locale — Crédit photo : Wikimedia Commons.",
     paragraphs: [
@@ -330,7 +330,7 @@ export default function GuideValleesAureLouron() {
         />
         <meta
           property="og:image"
-          content="https://lamaisonverte65.fr/guide/arreau-panorama.jpg"
+          content="https://lamaisonverte65.fr/guide/arreau-panorama.webp"
         />
         <meta
           property="og:url"
@@ -355,7 +355,7 @@ export default function GuideValleesAureLouron() {
             justifyContent: "center",
             padding: "90px 24px 80px",
             background:
-              "linear-gradient(rgba(0,0,0,0.28), rgba(0,0,0,0.40)), url('/guide/vue-calvaire-arreau-nuit.jpg')",
+              "linear-gradient(rgba(0,0,0,0.28), rgba(0,0,0,0.40)), url('/guide/vue-calvaire-arreau-nuit.webp')",
             backgroundSize: "cover",
             backgroundPosition: "center",
             backgroundRepeat: "no-repeat",

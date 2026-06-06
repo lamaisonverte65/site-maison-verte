@@ -42,86 +42,85 @@ export default function MaisonVerte() {
   const googleProfileUrl = "https://g.page/r/CasA-_8IxkGjEBM";
   const galleryPhotos = [
     {
-      src: "/cuisine-equipee-maison-verte.jpg",
+      src: "/salon-salle-a-manger-maison-verte.webp",
+      caption: "Salon et salle à manger",
+    },
+
+    {
+      src: "/cuisine-equipee-maison-verte.webp",
       caption: "Cuisine équipée",
     },
 
     {
-      src: "/chambre-parentale-grand-lit.jpg",
+      src: "/chambre-parentale-grand-lit.webp",
       caption: "Chambre parentale - grand lit et rangements",
     },
 
     {
-      src: "/chambre-parentale-balcon.jpg",
+      src: "/chambre-parentale-balcon.webp",
       caption: "Chambre parentale - bureau et sortie balcon",
     },
 
     {
-      src: "/chambre-sous-combles-lits-jumeaux.jpg",
+      src: "/chambre-sous-combles-lits-jumeaux.webp",
       caption: "Chambre sous combles - les lits jumeaux",
     },
 
     {
-      src: "/chambre-sous-combles-vue-montagne.jpg",
+      src: "/chambre-sous-combles-vue-montagne.webp",
       caption: "Chambre sous combles - la vue sur le clocher et les montagnes",
     },
 
     {
-      src: "/salle-de-bain-maison-verte.jpg",
+      src: "/salle-de-bain-maison-verte.webp",
       caption: "Salle de bain",
     },
 
     {
-      src: "/douche-maison-verte.jpg",
+      src: "/douche-maison-verte.webp",
       caption: "Douche",
     },
 
     {
-      src: "/wc-et-palier.jpg",
+      src: "/wc-et-palier.webp",
       caption: "WC et palier",
     },
 
     {
-      src: "/balcon-plein-sud-ouest.jpg",
+      src: "/balcon-plein-sud-ouest.webp",
       caption: "Balcon plein sud - côté Ouest",
     },
 
     {
-      src: "/balcon-plein-sud-est.jpg",
-      caption: "Balcon plein sud - côté Est",
-    },
-
-    {
-      src: "/smart-tv-salon.jpg",
+      src: "/smart-tv-salon.webp",
       caption: "Smart TV",
     },
 
     {
-      src: "/passage-sous-le-porche-arreau.jpg",
+      src: "/passage-sous-le-porche-arreau.webp",
       caption: "Passage sous le porche",
     },
 
     {
-      src: "/rue-de-la-coutellerie-arreau.jpg",
+      src: "/rue-de-la-coutellerie-arreau.webp",
       caption: "Rue de la coutellerie",
     },
 
     {
-      src: "/impasse-trassens-arreau.jpg",
+      src: "/impasse-trassens-arreau.webp",
       caption: "Impasse Trassens",
     },
 
     {
-      src: "/halle-et-mairie-arreau.jpg",
+      src: "/halle-et-mairie-arreau.webp",
       caption: "La halle et la mairie",
     },
 
     {
-      src: "/vue-calvaire-arreau-nuit.jpg",
+      src: "/vue-calvaire-arreau-nuit.webp",
       caption: "Vue du calvaire d'Arreau de nuit",
     },
   ];
-
   const faqCategories = [
     {
       title: "La maison",
@@ -769,7 +768,7 @@ export default function MaisonVerte() {
 
         <meta
           property="og:image"
-          content="https://lamaisonverte65.fr/hero.jpg"
+          content="https://lamaisonverte65.fr/hero.webp"
         />
         <meta property="og:url" content="https://lamaisonverte65.fr/" />
         <meta property="og:type" content="website" />
@@ -813,14 +812,15 @@ export default function MaisonVerte() {
               "Ravissante maison rénovée à Arreau, proche de Saint-Lary, Loudenvielle, Peyragudes, Val Louron et de la réserve du Néouvielle. Une location chaleureuse de particulier à particulier pour 4 personnes, avec réservation directe auprès du propriétaire, au cœur des Pyrénées.",
             url: "https://lamaisonverte65.fr/",
             image: [
-              "https://lamaisonverte65.fr/hero.jpg",
-              "https://lamaisonverte65.fr/cuisine-equipee-maison-verte.jpg",
-              "https://lamaisonverte65.fr/chambre-parentale-grand-lit.jpg",
-              "https://lamaisonverte65.fr/chambre-parentale-balcon.jpg",
-              "https://lamaisonverte65.fr/chambre-sous-combles-lits-jumeaux.jpg",
-              "https://lamaisonverte65.fr/salle-de-bain-maison-verte.jpg",
-              "https://lamaisonverte65.fr/balcon-plein-sud-ouest.jpg",
-              "https://lamaisonverte65.fr/halle-et-mairie-arreau.jpg",
+              "https://lamaisonverte65.fr/hero.webp",
+              "https://lamaisonverte65.fr/salon-salle-a-manger-maison-verte.webp",
+              "https://lamaisonverte65.fr/cuisine-equipee-maison-verte.webp",
+              "https://lamaisonverte65.fr/chambre-parentale-grand-lit.webp",
+              "https://lamaisonverte65.fr/chambre-parentale-balcon.webp",
+              "https://lamaisonverte65.fr/chambre-sous-combles-lits-jumeaux.webp",
+              "https://lamaisonverte65.fr/salle-de-bain-maison-verte.webp",
+              "https://lamaisonverte65.fr/balcon-plein-sud-ouest.webp",
+              "https://lamaisonverte65.fr/halle-et-mairie-arreau.webp",
             ],
             telephone: "+33663076314",
             email: "lamaisonverte65@gmail.com",
@@ -1428,6 +1428,8 @@ export default function MaisonVerte() {
               <img
                 src={photo.src}
                 alt={photo.caption}
+                loading={index === 0 ? "eager" : "lazy"}
+                decoding="async"
                 style={{
                   width: "100%",
                   height: "210px",
@@ -2709,7 +2711,7 @@ export default function MaisonVerte() {
           </div>
 
           <img
-            src="/activite-ski.jpg"
+            src="/activite-ski.webp"
             alt="Cours de ski dans les Pyrénées"
             style={{
               width: "100%",
@@ -2732,7 +2734,7 @@ export default function MaisonVerte() {
           {[
             {
               title: "Nature & randonnées",
-              image: "/activite-randonnee.jpg",
+              image: "/activite-randonnee.webp",
               alt: "Randonnée dans les Pyrénées et réserve du Néouvielle",
               text: "Lacs d’altitude, panoramas exceptionnels au coeur du massif, depuis un «3000» ou un sommet surplombant le piémont, Parcs Nationaux des Pyrénées et d'Ordessa, réserve du Néouvielle, circuits avec nuités en refuge : une destination idéale pour découvrir les Pyrénées, respirer l'air pur des montagnes, se ressourcer.",
               links: [
@@ -2768,7 +2770,7 @@ export default function MaisonVerte() {
             },
             {
               title: "Vélo & cols mythiques",
-              image: "/activite-velo.jpg",
+              image: "/activite-velo.webp",
               alt: "Cyclisme dans les cols des Hautes-Pyrénées",
               text: "Partez à la découverte des grands cols pyrénéens : Aspin, Peyresourde, Tourmalet, Hourquette d'Ancizan, Portet et Azet : un terrain de jeu rêvé pour les cyclistes. Dévalez en VTT les pistes de la Coupe du Monde Mountain Bike UCI de la vallée du Louron, mais aussi celles en vallée d'Aure et de la Zona Zero en Espagne.",
               links: [
@@ -2796,7 +2798,7 @@ export default function MaisonVerte() {
             },
             {
               title: "Eau vive & sensations",
-              image: "/activite-eauvive.jpg",
+              image: "/activite-eauvive.webp",
               alt: "Rafting canyoning eau vive dans les Pyrénées",
               text: "Descente en rafting de la Neste d'Aure, canyon sportif sur les flancs du Mont Perdu ou ludique dans les eaux turquoises de la Sierra de Guara, via ferrata, activités sportives familiales ou sensationnelles pour ajouter une dose d’aventure à votre séjour.",
               links: [
@@ -2832,7 +2834,7 @@ export default function MaisonVerte() {
             },
             {
               title: "Bien-être & découvertes",
-              image: "/activite-detente.jpg",
+              image: "/activite-detente.webp",
               alt: "Balnéa Loudenvielle détente et patrimoine",
               text: "Après une journée en montagne, profitez d'un moment de détente à Balnéa, découvrez les villages pyrénéens, Saint-Lary, Loudenvielle, le patrimoine architectural, la gastronomie locale ou une escapade vers l’Espagne.",
               links: [
@@ -3163,7 +3165,7 @@ export default function MaisonVerte() {
           {/* BANNIERE CONTACT */}
 
           <img
-            src="/banniere.png"
+            src="/banniere.webp"
             alt="Email et adresse de La Maison Verte à Arreau"
             style={{
               width: "100%",
