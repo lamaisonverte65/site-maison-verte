@@ -53,12 +53,18 @@ function emptySelectionForm(selection = null) {
     action: "block",
     title: "Blocage admin",
     notes: "",
-    firstName: "Réservation",
-    lastName: "personnelle",
+    reservationType: "personal",
+    customerMode: "existing",
+    customerId: "",
+    customerSearch: "",
+    displayName: "",
+    firstName: "",
+    lastName: "",
     phone: "",
     email: "",
     total: "0",
     amountPaid: "0",
+    sendPaymentLink: true,
     priceLabel: "Tarif spécifique",
     nightPrice: "80",
     priceReason: "ajustement",
@@ -102,6 +108,7 @@ function isDateInSelectedPeriod(key, selectedPeriod) {
 export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }) {
   const [events, setEvents] = useState([]);
   const [blocks, setBlocks] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [seasonPrices, setSeasonPrices] = useState([]);
   const [priceOverrides, setPriceOverrides] = useState([]);
   const [defaultNightPrice, setDefaultNightPrice] = useState(null);
@@ -116,6 +123,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
 
   useEffect(() => {
     loadCalendar();
+    loadCustomers();
   }, []);
 
   async function getAdminFetchHeaders() {
@@ -124,6 +132,20 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
       "Content-Type": "application/json",
       ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
     };
+  }
+
+  async function loadCustomers() {
+    const { data, error } = await supabase
+      .from("customers")
+      .select("*")
+      .order("last_name", { ascending: true });
+
+    if (error) {
+      console.error("Erreur chargement clients :", error.message);
+      return;
+    }
+
+    setCustomers(data || []);
   }
 
 
@@ -203,9 +225,13 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
           const status = reservation.status || "pending";
           const color = getColor(status);
           const price = reservation.owner_price || reservation.estimated_total;
+          const isAdminPersonal = reservation.source === "admin_personal" || reservation.contract_version === "admin_personal";
+          const isAdminClient = reservation.source === "admin_client";
+          const prefix = isAdminPersonal ? "Perso" : isAdminClient ? "Admin" : status === "pending" ? "Demande" : "Direct";
+          const name = [reservation.guest_first_name, reservation.guest_last_name].filter(Boolean).join(" ") || "Client";
           return {
             id: reservation.id,
-            title: `${status === "pending" ? "Demande" : "Direct"} - ${reservation.guest_first_name || "Client"}${price ? ` · ${formatMoney(price)}` : ""}`,
+            title: `${prefix} - ${name}${price ? ` · ${formatMoney(price)}` : ""}`,
             start: reservation.start_date,
             end: reservation.end_date,
             backgroundColor: color,
@@ -313,7 +339,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
     setSelectedPeriod(selectionInfo);
     setSelectionForm({
       ...emptySelectionForm(selectionInfo),
-      total: String(computedTotal),
+      total: "0",
       nightPrice: String(getPriceForDate(selectionInfo.startStr)),
     });
   }
@@ -385,25 +411,49 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
       }
 
       if (selectionForm.action === "personal") {
+        const total = Number(String(selectionForm.total || "0").replace(",", "."));
+
+        if (selectionForm.reservationType === "personal" && !selectionForm.displayName.trim()) {
+          return alert("Le nom affiché est obligatoire pour garder une information claire dans le calendrier.");
+        }
+
+        if (selectionForm.reservationType === "client") {
+          if (selectionForm.customerMode === "existing" && !selectionForm.customerId) {
+            return alert("Choisis un client existant ou crée un nouveau client.");
+          }
+          if (selectionForm.customerMode === "new" && (!selectionForm.firstName.trim() || !selectionForm.lastName.trim())) {
+            return alert("Le prénom et le nom du nouveau client sont obligatoires.");
+          }
+        }
+
+        if (total > 0 && selectionForm.sendPaymentLink && !selectionForm.email.trim() && selectionForm.customerMode !== "existing") {
+          return alert("Un email est obligatoire pour envoyer un lien de paiement Stripe.");
+        }
+
         const response = await fetch("/.netlify/functions/create-personal-booking", {
           method: "POST",
           headers: await getAdminFetchHeaders(),
           body: JSON.stringify({
+            bookingKind: selectionForm.reservationType,
+            customerMode: selectionForm.customerMode,
+            customerId: selectionForm.customerId || null,
             startDate: selectedPeriod.startStr,
             endDate: selectedPeriod.endStr,
+            displayName: selectionForm.displayName,
             firstName: selectionForm.firstName,
             lastName: selectionForm.lastName,
             phone: selectionForm.phone,
             email: selectionForm.email,
-            total: Number(selectionForm.total || 0),
-            amountPaid: Number(selectionForm.amountPaid || 0),
+            total,
+            amountPaid: Number(String(selectionForm.amountPaid || "0").replace(",", ".")),
+            sendPaymentLink: Boolean(selectionForm.sendPaymentLink),
             notes: selectionForm.notes,
           }),
         });
 
         if (!response.ok) throw new Error(await response.text());
         const result = await response.json();
-        alert("Réservation personnelle créée.");
+        alert(result.paymentLink ? "Réservation créée et lien de paiement envoyé." : "Réservation créée.");
         onSelectReservation?.(result.booking);
         onCalendarUpdated?.();
       }
@@ -733,7 +783,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
               ) : (
                 <p style={styles.muted}>Clique une première date de début, puis une date de fin pour sélectionner une période.</p>
               )}
-              <p style={styles.muted}>Tu peux ensuite bloquer, créer une résa perso ou changer les tarifs.</p>
+              <p style={styles.muted}>Tu peux ensuite bloquer, créer une réservation ou changer les tarifs.</p>
               <p style={styles.muted}>Les prix affichés ici utilisent exactement les mêmes données que le calendrier du site public.</p>
               <p style={styles.muted}>Clique sur une réservation directe pour ouvrir la fiche résa centrale.</p>
               <p style={styles.muted}>Clique sur Airbnb/Booking pour renseigner les infos client.</p>
@@ -744,6 +794,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
               form={selectionForm}
               setForm={setSelectionForm}
               total={selectedPeriodTotal}
+              customers={customers}
               onClose={() => { setPendingRangeStart(null); setSelectedPeriod(null); }}
               onSubmit={saveSelectionAction}
             />
@@ -842,7 +893,56 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   );
 }
 
-function SelectionPanel({ selection, form, setForm, total, onClose, onSubmit }) {
+function SelectionPanel({ selection, form, setForm, total, customers = [], onClose, onSubmit }) {
+  const selectedCustomer = customers.find((customer) => String(customer.id) === String(form.customerId));
+  const search = String(form.customerSearch || "").toLowerCase().trim();
+  const filteredCustomers = customers
+    .filter((customer) => {
+      if (!search) return true;
+      return [customer.first_name, customer.last_name, customer.email, customer.phone]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(search);
+    })
+    .slice(0, 80);
+
+  function updateReservationType(nextType) {
+    setForm({
+      ...form,
+      reservationType: nextType,
+      total: nextType === "client" ? String(total || 0) : "0",
+      amountPaid: "0",
+    });
+  }
+
+  function updateCustomerMode(nextMode) {
+    setForm({
+      ...form,
+      customerMode: nextMode,
+      customerId: "",
+      firstName: "",
+      lastName: "",
+      phone: "",
+      email: "",
+    });
+  }
+
+  function updateSelectedCustomer(customerId) {
+    const customer = customers.find((item) => String(item.id) === String(customerId));
+    setForm({
+      ...form,
+      customerId,
+      firstName: customer?.first_name || "",
+      lastName: customer?.last_name || "",
+      phone: customer?.phone || "",
+      email: customer?.email || "",
+    });
+  }
+
+  const totalNumber = Number(String(form.total || "0").replace(",", "."));
+  const needsPaymentEmail = totalNumber > 0 && form.sendPaymentLink;
+
   return (
     <form onSubmit={onSubmit}>
       <button type="button" style={styles.closePanelButton} onClick={onClose}>Fermer</button>
@@ -853,7 +953,7 @@ function SelectionPanel({ selection, form, setForm, total, onClose, onSubmit }) 
       <label style={styles.label}>Action
         <select style={styles.input} value={form.action} onChange={(event) => setForm({ ...form, action: event.target.value })}>
           <option value="block">Bloquer les dates</option>
-          <option value="personal">Créer une résa perso</option>
+          <option value="personal">Créer une réservation</option>
           <option value="price">Changer les tarifs de cette période</option>
         </select>
       </label>
@@ -867,13 +967,76 @@ function SelectionPanel({ selection, form, setForm, total, onClose, onSubmit }) 
 
       {form.action === "personal" && (
         <div style={styles.formGrid}>
-          <input style={styles.input} placeholder="Prénom" value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} />
-          <input style={styles.input} placeholder="Nom" value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} />
-          <input style={styles.input} placeholder="Téléphone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
-          <input style={styles.input} placeholder="Email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
-          <input style={styles.input} placeholder="Total séjour (€)" value={form.total} onChange={(event) => setForm({ ...form, total: event.target.value })} />
-          <input style={styles.input} placeholder="Montant déjà payé (€)" value={form.amountPaid} onChange={(event) => setForm({ ...form, amountPaid: event.target.value })} />
-          <textarea style={styles.textarea} placeholder="Notes internes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
+          <label style={styles.label}>Type de réservation
+            <select style={styles.input} value={form.reservationType} onChange={(event) => updateReservationType(event.target.value)}>
+              <option value="personal">Réservation personnelle / famille / amis</option>
+              <option value="client">Réservation client</option>
+            </select>
+          </label>
+
+          {form.reservationType === "personal" && (
+            <>
+              <input style={styles.input} placeholder="Nom affiché dans le calendrier * (ex : Famille Benoit, Amis de Toulouse)" value={form.displayName} onChange={(event) => setForm({ ...form, displayName: event.target.value })} />
+              <input style={styles.input} placeholder="Prix du séjour (€) — 0 par défaut" value={form.total} onChange={(event) => setForm({ ...form, total: event.target.value })} />
+              {totalNumber > 0 && (
+                <>
+                  <label style={styles.checkboxLine}>
+                    <input type="checkbox" checked={form.sendPaymentLink} onChange={(event) => setForm({ ...form, sendPaymentLink: event.target.checked })} />
+                    Envoyer un lien de paiement Stripe
+                  </label>
+                  {form.sendPaymentLink && <input style={styles.input} placeholder="Email pour envoyer le lien de paiement *" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />}
+                  <input style={styles.input} placeholder="Téléphone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+                </>
+              )}
+              <textarea style={styles.textarea} placeholder="Notes internes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
+            </>
+          )}
+
+          {form.reservationType === "client" && (
+            <>
+              <label style={styles.label}>Client
+                <select style={styles.input} value={form.customerMode} onChange={(event) => updateCustomerMode(event.target.value)}>
+                  <option value="existing">Choisir un client existant</option>
+                  <option value="new">Créer un nouveau client</option>
+                </select>
+              </label>
+
+              {form.customerMode === "existing" && (
+                <>
+                  <input style={styles.input} placeholder="Rechercher un client..." value={form.customerSearch} onChange={(event) => setForm({ ...form, customerSearch: event.target.value })} />
+                  <select style={styles.input} value={form.customerId} onChange={(event) => updateSelectedCustomer(event.target.value)}>
+                    <option value="">Sélectionner un client</option>
+                    {filteredCustomers.map((customer) => (
+                      <option key={customer.id} value={customer.id}>
+                        {[customer.last_name, customer.first_name].filter(Boolean).join(" ") || "Client sans nom"} {customer.email ? `— ${customer.email}` : customer.phone ? `— ${customer.phone}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedCustomer && (
+                    <p style={styles.muted}>
+                      Client sélectionné : {[selectedCustomer.first_name, selectedCustomer.last_name].filter(Boolean).join(" ")} {selectedCustomer.email ? `· ${selectedCustomer.email}` : ""}
+                    </p>
+                  )}
+                </>
+              )}
+
+              {form.customerMode === "new" && (
+                <>
+                  <input style={styles.input} placeholder="Prénom *" value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} />
+                  <input style={styles.input} placeholder="Nom *" value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} />
+                  <input style={styles.input} placeholder="Téléphone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+                  <input style={styles.input} placeholder={needsPaymentEmail ? "Email *" : "Email"} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+                </>
+              )}
+
+              <input style={styles.input} placeholder="Prix du séjour (€)" value={form.total} onChange={(event) => setForm({ ...form, total: event.target.value })} />
+              <label style={styles.checkboxLine}>
+                <input type="checkbox" checked={form.sendPaymentLink} onChange={(event) => setForm({ ...form, sendPaymentLink: event.target.checked })} />
+                Envoyer le lien de paiement immédiatement si prix &gt; 0
+              </label>
+              <textarea style={styles.textarea} placeholder="Notes internes / message" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
+            </>
+          )}
         </div>
       )}
 
@@ -993,6 +1156,7 @@ const styles = {
   formGrid: { display: "grid", gap: "10px", margin: "16px 0" },
   input: { padding: "12px 14px", borderRadius: "14px", border: "1px solid #d1d5db", fontSize: "14px", width: "100%", boxSizing: "border-box" },
   textarea: { padding: "12px 14px", borderRadius: "14px", border: "1px solid #d1d5db", fontSize: "14px", minHeight: "100px", resize: "vertical", width: "100%", boxSizing: "border-box" },
+  checkboxLine: { display: "flex", alignItems: "center", gap: "8px", color: "#334155", fontWeight: 700, lineHeight: 1.4 },
   primaryButton: { border: "none", borderRadius: "999px", padding: "10px 14px", background: "#2f4f35", color: "white", cursor: "pointer", fontWeight: 700 },
   smallButton: { border: "none", borderRadius: "999px", padding: "8px 12px", background: "#e2e8f0", cursor: "pointer", fontWeight: 700 },
   deleteButton: { border: "none", borderRadius: "999px", background: "#dc2626", color: "white", padding: "10px 14px", cursor: "pointer" },
