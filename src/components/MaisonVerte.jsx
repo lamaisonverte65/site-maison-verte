@@ -142,6 +142,11 @@ export default function MaisonVerte() {
             "Le linge de lit est fourni pour votre séjour. Les serviettes de toilette ne sont en revanche pas incluses dans la location.",
         },
         {
+          question: "Les animaux sont-ils acceptés ?",
+          answer:
+            "Non. Les animaux ne sont pas acceptés à La Maison Verte afin de préserver le confort de tous les voyageurs et la qualité du logement.",
+        },
+        {
           question: "La maison est-elle adaptée aux familles avec enfants ?",
           answer:
             "Oui. La Maison Verte est adaptée à une famille de 4 personnes. Un lit parapluie peut être mis à disposition sur demande. La chambre sous combles dispose également d'une barrière de sécurité amovible pouvant être installée en haut de l'escalier.",
@@ -750,7 +755,7 @@ export default function MaisonVerte() {
         </title>
         <meta
           name="description"
-          content="Location de vacances à Arreau pour 4 personnes, au cœur de la vallée d’Aure. Maison rénovée proche Saint-Lary, Peyragudes, Loudenvielle et des randonnées."
+          content="Location de vacances de particulier à particulier à Arreau pour 4 personnes. Réservation directe auprès du propriétaire, sans intermédiaire, proche Saint-Lary, Peyragudes, Loudenvielle, Val Louron et du Néouvielle."
         />
         <link rel="canonical" href="https://lamaisonverte65.fr/" />
         <meta
@@ -759,7 +764,7 @@ export default function MaisonVerte() {
         />
         <meta
           property="og:description"
-          content="Ravissante maison rénovée en location pour 4 personnes à Arreau, dans les Hautes Pyrénées (Occitanie). Un gîte proche de Saint-Lary, de Loudenvielle, du Néouvielle et de l'Espagne, dans un cadre naturel et reposant."
+          content="Ravissante maison rénovée en location de particulier à particulier pour 4 personnes à Arreau. Réservation directe propriétaire, sans intermédiaire, proche de Saint-Lary, Loudenvielle, Peyragudes, Val Louron, du Néouvielle et de l'Espagne."
         />
 
         <meta
@@ -805,7 +810,7 @@ export default function MaisonVerte() {
             identifier: "lamaisonverte65-arreau",
             name: "La Maison Verte - Arreau",
             description:
-              "Ravissante maison rénovée à Arreau, proche de Saint-Lary, Loudenvielle et de la réserve du Néouvielle. Une location chaleureuse pour 4 personnes au cœur des Pyrénées.",
+              "Ravissante maison rénovée à Arreau, proche de Saint-Lary, Loudenvielle, Peyragudes, Val Louron et de la réserve du Néouvielle. Une location chaleureuse de particulier à particulier pour 4 personnes, avec réservation directe auprès du propriétaire, au cœur des Pyrénées.",
             url: "https://lamaisonverte65.fr/",
             image: [
               "https://lamaisonverte65.fr/hero.jpg",
@@ -1100,7 +1105,7 @@ export default function MaisonVerte() {
       <h1
         style={{
           fontFamily: "'Cormorant Garamond', serif",
-          fontSize: "clamp(3.4rem, 9vw, 7rem)",
+          fontSize: "clamp(4.2rem, 11vw, 7rem)",
           marginBottom: "24px",
           fontWeight: "600",
           letterSpacing: "-2px",
@@ -1269,6 +1274,21 @@ export default function MaisonVerte() {
               stations de ski, de nombreux cols mythiques et de multiples
               possibilités de randonnées.
             </p>
+
+            <p
+              style={{
+                lineHeight: "1.9",
+                color: "#555",
+              }}
+            >
+              La Maison Verte est une location de vacances de particulier à
+              particulier située au cœur d'Arreau. Réservez directement auprès
+              du propriétaire, sans intermédiaire ni frais de plateforme, pour
+              préparer votre séjour dans les Pyrénées en toute simplicité. Une
+              solution idéale pour les voyageurs recherchant un hébergement
+              authentique proche de Saint-Lary, Loudenvielle, Peyragudes, Val
+              Louron, du Néouvielle et du Mont-Perdu.
+            </p>
             <br></br>
             <p
               style={{
@@ -1324,6 +1344,10 @@ export default function MaisonVerte() {
               <div>☀️ Balcon exposé sud</div>
               <div>🚶 Commerces à pied</div>
               <div>⛷️ Situation centrale stratégique </div>
+              <div>🚴 Hébergement idéal pour cyclistes</div>
+              <div>🏍️ Accueil pratique pour motards</div>
+              <div>🤝 Réservation directe propriétaire</div>
+              <div>🐕 Animaux non acceptés</div>
             </div>
           </div>
         </div>
@@ -1351,6 +1375,8 @@ export default function MaisonVerte() {
             "58 m²",
             "Balcon avec table et chaises",
             "Linge de lit fourni",
+            "Animaux non acceptés",
+            "Réservation directe propriétaire",
             "Parking gratuit proche",
             "Impasse piétonne",
           ].map((item) => (
@@ -2009,7 +2035,13 @@ export default function MaisonVerte() {
             marginBottom: "45px",
           }}
         >
-          Sélectionnez vos dates d’arrivée et de départ.
+         <>
+            Sélectionnez vos dates d'arrivée et de départ.
+            <br />
+            Après acceptation de votre demande, un lien de paiement sécurisé, valable 24h, vous sera envoyé par email.
+            <br />
+            Votre réservation sera confirmée après règlement de l'acompte.
+          </>
         </p>
 
         <div
@@ -2444,7 +2476,7 @@ export default function MaisonVerte() {
                 <textarea
                   value={guestMessage}
                   onChange={(event) => setGuestMessage(event.target.value)}
-                  placeholder="Message optionnel : arrivée tardive, question particulière, ancien client..."
+                  placeholder="Message optionnel : arrivée tardive, question particulière, ancien client, promo..."
                   style={{
                     width: "100%",
                     minHeight: "110px",

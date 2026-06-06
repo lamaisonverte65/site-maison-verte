@@ -7,7 +7,9 @@ const travelTimes = [
   ["Peyragudes", "20 min"],
   ["Val Louron", "25 min"],
   ["Piau-Engaly", "35 min"],
+  ["Nistos Cap Nestès", "45 min"],
   ["Néouvielle / lac d'Orédon", "45 min"],
+  ["Vallée de Pineta / Mont-Perdu", "1h15"],
 ];
 
 const stayIdeas = [
@@ -35,7 +37,7 @@ const stayIdeas = [
       "Enchaîner les cols mythiques : Aspin, Azet, Peyresourde, Portet, Hourquette d'Ancizan",
       "Rouler en VTT, gravel ou enduro entre vallée d'Aure et vallée du Louron",
       "Randonner vers le Néouvielle et les grands lacs d'altitude",
-      "Découvrir parapente, trail, canyoning ou triathlon selon la saison",
+      "Découvrir parapente, trail, canyoning, rafting, pêche ou triathlon selon la saison",
     ],
   },
 ];
@@ -86,6 +88,7 @@ const guideSections = [
     paragraphs: [
       "En hiver, Arreau offre une situation très pratique pour varier les domaines skiables. Le téléphérique de Saint-Lary est à environ 15 minutes, le Pla d'Adet à environ 30 minutes, Peyragudes à environ 20 minutes, Val Louron à 25 minutes et Piau-Engaly à 35 minutes.",
       "Saint-Lary séduit par son village animé et son domaine skiable, Peyragudes par son exposition et ses équipements modernes, Val Louron par son ambiance familiale, et Piau-Engaly par son altitude et son environnement de haute montagne.",
+      "Les amateurs de ski nordique et de raquettes peuvent également découvrir deux secteurs remarquables. Côté français, Nistos Cap Nestès propose un domaine dédié au ski de fond, aux itinéraires nordiques et aux panoramas sur les Pyrénées. Côté espagnol, l'Espace Nordique Piau-Pineta permet de pratiquer ski de fond, raquettes et ski de randonnée dans un environnement préservé, au cœur du Parc National d'Ordesa et du Mont-Perdu.",
       "Selon la météo, l'enneigement ou le niveau des skieurs, il est donc facile d'adapter son programme sans être enfermé dans une seule station.",
     ],
   },
@@ -121,6 +124,8 @@ const guideSections = [
     caption: "Parapente au-dessus de Loudenvielle et du lac de Génos — Crédit photo : Wikimedia Commons.",
     paragraphs: [
       "Les vallées d'Aure et du Louron ne se limitent pas au ski et à la randonnée. Le parapente est l'une des activités phares du secteur, notamment autour de Loudenvielle, Peyragudes et du PLAF, le Pyrénées Louron Air Festival.",
+      "Les eaux vives permettent aussi de varier les plaisirs : rafting, canyoning et activités de rivière se pratiquent dans les vallées pyrénéennes et sur les secteurs adaptés selon la saison, l'encadrement et les niveaux d'eau.",
+      "Les vallées d'Aure et du Louron sont également appréciées des pêcheurs. La Neste d'Aure, la Neste du Louron, les torrents de montagne et les lacs d'altitude comme Orédon, Aubert ou Aumar offrent de nombreuses possibilités de pêche dans un environnement naturel préservé.",
       "La via ferrata de Camous permet de découvrir la verticalité pyrénéenne avec un parcours équipé accessible à différents niveaux. Le Parcours Aventure du Moudang, dans les gorges du Moudang à Aragnouet, combine accrobranche, via ferrata, ponts de singe et tyroliennes dans un cadre de montagne spectaculaire.",
       "Pour les familles ou les groupes, N'Co Park à Lannemezan propose aussi des parcours aventure, tyroliennes et activités en forêt. Côté canyoning, les vallées pyrénéennes offrent plusieurs possibilités, tandis que la Sierra de Guara, en Espagne, reste une référence européenne accessible pour une grande excursion à la journée.",
     ],
@@ -157,6 +162,8 @@ const guideSections = [
     paragraphs: [
       "Depuis Arreau, l'Espagne est une vraie possibilité d'excursion. Le tunnel de Bielsa permet de rejoindre le versant espagnol des Pyrénées, avec des ambiances très différentes en quelques kilomètres.",
       "Aínsa, le parc national d'Ordesa et du Mont-Perdu, Torla ou la Sierra de Guara offrent des idées de sorties remarquables pour les séjours d'une semaine. La Sierra de Guara est particulièrement réputée pour le canyoning, avec des parcours connus dans toute l'Europe.",
+      "La vallée de Pineta constitue l'une des plus belles excursions accessibles depuis Arreau. Dominée par les impressionnantes falaises du massif du Mont-Perdu, classé au patrimoine mondial de l'UNESCO, elle offre des paysages spectaculaires, des cascades, des randonnées accessibles et une ambiance de haute montagne unique dans les Pyrénées.",
+      "En hiver, l'Espace Nordique Piau-Pineta permet également la pratique du ski de fond, des raquettes, du ski de randonnée et des activités nordiques dans un cadre exceptionnel, entre Piau-Engaly, Bielsa, Pineta et le Parc National d'Ordesa et du Mont-Perdu.",
     ],
   },
   {
@@ -244,6 +251,8 @@ const usefulLinks = [
       ["Peyragudes", "https://www.peyragudes.com/"],
       ["Piau-Engaly", "https://www.piau-engaly.com/"],
       ["Val Louron", "https://www.val-louron-ski.com/"],
+      ["Espace Nordique Piau-Pineta", "https://piau-engaly.com/espace-nordique-piau-pineta/"],
+      ["Nistos Cap Nestès", "https://nistos-ski.fr/"],
     ],
   },
   {
@@ -263,6 +272,7 @@ const usefulLinks = [
       ["Via ferrata de Camous", "https://www.pyrenees2vallees.com/via-ferrata-vallees-aure-louron"],
       ["Parcours Aventure du Moudang", "https://parcoursaventuremoudang.com/"],
       ["N'Co Park Aventure", "https://ncopark.com/"],
+      ["Pêche Hautes-Pyrénées", "https://www.peche65.fr/"],
     ],
   },
   {
@@ -304,7 +314,7 @@ export default function GuideValleesAureLouron() {
         </title>
         <meta
           name="description"
-          content="Guide complet de la vallée d'Aure et du Louron depuis Arreau : ski, randonnée, vélo, VTT, parapente, canyoning, Néouvielle, patrimoine, événements, piémont et liens utiles."
+          content="Guide complet de la vallée d'Aure et du Louron depuis Arreau : ski, ski de fond à Nistos et Piau-Pineta, randonnée, pêche, vélo, VTT, parapente, canyoning, Néouvielle, Pineta, Mont-Perdu, patrimoine et liens utiles."
         />
         <link
           rel="canonical"
@@ -316,7 +326,7 @@ export default function GuideValleesAureLouron() {
         />
         <meta
           property="og:description"
-          content="Que faire autour d'Arreau ? Stations de ski, cols, VTT, parapente, Néouvielle, patrimoine, événements, grottes, bien-être et idées de séjour."
+          content="Que faire autour d'Arreau ? Stations de ski, ski nordique à Nistos et Piau-Pineta, pêche, cols, VTT, parapente, Néouvielle, vallée de Pineta, Mont-Perdu, patrimoine et idées de séjour."
         />
         <meta
           property="og:image"
