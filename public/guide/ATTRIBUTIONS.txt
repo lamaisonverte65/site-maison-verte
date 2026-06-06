@@ -1,0 +1,81 @@
+Crédits photos provisoires pour le guide "Vallée d'Aure et du Louron"
+
+Ces images proviennent de Wikimedia Commons et sont utilisables sous licence Creative Commons, à condition de respecter l'attribution indiquée et la licence de chaque fichier. Si vous les conservez en production, ajoutez idéalement une petite section "Crédits photos" sur le site ou une page dédiée.
+
+1. arreau-panorama.jpg
+   Sujet : Arreau (Hautes-Pyrénées)
+   Auteur : Sotos
+   Licence : Wikimedia Commons / Creative Commons
+   Source : https://commons.wikimedia.org/wiki/File:Arreau_(Hautes-Pyr%C3%A9n%C3%A9es)_2.jpg
+
+2. arreau-halle-mairie.jpg
+   Sujet : Place de la mairie / halle d'Arreau
+   Auteur : Père Igor
+   Licence : Wikimedia Commons / Creative Commons
+   Source : https://commons.wikimedia.org/wiki/File:Arreau_place_Mairie.JPG
+
+3. arreau-eglise-notre-dame.jpg
+   Sujet : Église Notre-Dame d'Arreau
+   Auteur : Père Igor
+   Licence : Wikimedia Commons / Creative Commons
+   Source : https://commons.wikimedia.org/wiki/File:Arreau_%C3%A9glise_(1).JPG
+
+4. arreau-pont-neste.jpg
+   Sujet : Pont d'Arreau sur la Neste
+   Auteur : Wikimedia Commons contributor
+   Licence : CC BY-SA 4.0
+   Source : https://commons.wikimedia.org/wiki/File:Pont_d%27Arreau_(Hautes-Pyr%C3%A9n%C3%A9es)_sur_la_Neste_1.jpg
+
+5. col-aspin-cyclisme.jpg
+   Sujet : Col d'Aspin
+   Auteur : Anthospace
+   Licence : CC BY-SA 4.0
+   Source : https://commons.wikimedia.org/wiki/File:Col_d%27Aspin_65-_ACVE.jpg
+
+6. peyragudes-station-ski.jpg
+   Sujet : Station de Peyragudes
+   Auteur : Sotos
+   Licence : CC BY-SA 4.0
+   Source : https://commons.wikimedia.org/wiki/File:Station_de_Peyragudes_(Hautes-Pyr%C3%A9n%C3%A9es)_3.jpg
+
+7. saint-lary-pla-adet.jpg
+   Sujet : Station du Pla d'Adet à Saint-Lary-Soulan
+   Auteur : Pierre André Leclercq
+   Licence : CC BY-SA / GFDL selon la page source
+   Source : https://commons.wikimedia.org/wiki/File:Saint_Lary_Soulan.-_Station_du_Pla_d%27Adet.jpg
+
+8. lac-genos-loudenvielle.jpg
+   Sujet : Lac de Génos-Loudenvielle
+   Auteur : Sotos
+   Licence : CC BY-SA 4.0
+   Source : https://commons.wikimedia.org/wiki/File:Lac_de_G%C3%A9nos-Loudenvielle_(Hautes-Pyr%C3%A9n%C3%A9es)_1.jpg
+
+9. loudenvielle-parapente-lac.jpg
+   Sujet : Activités au sud du lac de Génos-Loudenvielle
+   Auteur : Patrice Bon
+   Licence : Wikimedia Commons / Creative Commons
+   Source : https://commons.wikimedia.org/wiki/File:Lac_de_G%C3%A9nos-Loudenvielle_9.jpg
+
+10. neouvielle-lacs-aumar-aubert.jpg
+    Sujet : Lacs d'Aumar et d'Aubert, réserve naturelle du Néouvielle
+    Auteur : Romaric Juvanon
+    Licence : CC BY-SA 4.0
+    Source : https://commons.wikimedia.org/wiki/File:Lac_d%27Aumar_et_Lac_d%27Aubert_-_R%C3%A9serve_naturelle_nationale_du_N%C3%A9ouvielle.jpg
+
+11. gouffre-esparros-artigaleou.jpg
+    Sujet : Gouffre d'Artigaléou, Esparros
+    Auteur : JYB Devot
+    Licence : Wikimedia Commons / Creative Commons
+    Source : https://commons.wikimedia.org/wiki/File:Artigaleou_P1010229mod.jpg
+
+12. ainsa-plaza-mayor.jpg
+    Sujet : Plaza Mayor d'Aínsa-Sobrarbe
+    Auteur : Morburre
+    Licence : CC BY-SA 3.0
+    Source : https://commons.wikimedia.org/wiki/File:Ainsa-Sobrarbe-PlazaMayor.jpg
+
+13. ordesa-monte-perdido.jpg
+    Sujet : Parc national d'Ordesa et du Mont-Perdu
+    Auteur : Moahim
+    Licence : CC BY-SA 4.0
+    Source : https://commons.wikimedia.org/wiki/File:WLE_-_2020_-_Parque_nacional_de_Ordesa_y_Monte_Perdido_-_02.jpg

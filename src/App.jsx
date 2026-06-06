@@ -1,6 +1,7 @@
 import MaisonVerte from "./components/MaisonVerte";
 import { useState } from "react";
 import Admin from "./components/Admin";
+import GuideValleesAureLouron from "./pages/GuideValleesAureLouron";
 
 function PaymentSuccess() {
   return (
@@ -268,6 +269,9 @@ export default function App() {
 
   if (path === "/arrival") {
     return <ArrivalTimePage />;
+  }
+  if (path === "/guide-vallees-aure-louron") {
+    return <GuideValleesAureLouron />;
   }
 
   return <MaisonVerte />;
