@@ -678,6 +678,86 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   return (
     <div style={styles.wrapper}>
       <style>{`
+        .calendar-admin-calendar .fc {
+          font-size: 1.05rem;
+          --fc-border-color: #dbe3ea;
+          --fc-page-bg-color: #ffffff;
+          --fc-neutral-bg-color: #f8fafc;
+          --fc-today-bg-color: #ecfdf5;
+        }
+
+        .calendar-admin-calendar .fc-toolbar {
+          gap: 14px;
+          margin-bottom: 22px;
+          flex-wrap: wrap;
+        }
+
+        .calendar-admin-calendar .fc-toolbar-title {
+          color: #1f6f3d;
+          font-size: clamp(1.55rem, 2.5vw, 2.15rem);
+          font-weight: 800;
+          text-transform: capitalize;
+        }
+
+        .calendar-admin-calendar .fc-button {
+          background: #2f4f35 !important;
+          border: none !important;
+          border-radius: 999px !important;
+          padding: 10px 16px !important;
+          font-weight: 800 !important;
+          box-shadow: 0 8px 18px rgba(47,79,53,0.18);
+        }
+
+        .calendar-admin-calendar .fc-button:hover {
+          filter: brightness(1.08);
+        }
+
+        .calendar-admin-calendar .fc-col-header-cell {
+          background: #eef7f0;
+          padding: 12px 6px;
+          color: #1f6f3d;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          font-size: 0.9rem;
+        }
+
+        .calendar-admin-calendar .fc-daygrid-day {
+          background: #ffffff;
+          transition: background 0.2s ease, transform 0.2s ease;
+        }
+
+        .calendar-admin-calendar .fc-daygrid-day:hover {
+          background: #f8fafc;
+        }
+
+        .calendar-admin-calendar .fc-daygrid-day-frame {
+          min-height: 128px;
+          padding: 6px;
+        }
+
+        .calendar-admin-calendar .fc-daygrid-day-top {
+          justify-content: center;
+        }
+
+        .calendar-admin-calendar .fc-event {
+          border: none !important;
+          border-radius: 10px !important;
+          padding: 3px 6px !important;
+          font-size: 0.82rem !important;
+          font-weight: 800 !important;
+          box-shadow: 0 4px 10px rgba(15,23,42,0.14);
+        }
+
+        .calendar-admin-calendar .fc-bg-event {
+          opacity: 1 !important;
+          border-radius: 14px;
+        }
+
+        .calendar-admin-calendar .fc-day-today {
+          box-shadow: inset 0 0 0 3px rgba(31,111,61,0.22);
+        }
+
         @media (max-width: 900px) {
           .calendar-admin-layout {
             grid-template-columns: 1fr !important;
@@ -705,7 +785,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
           }
 
           .calendar-admin-calendar .fc-daygrid-day-frame {
-            min-height: 82px;
+            min-height: 104px;
           }
 
           .calendar-admin-calendar .fc-bg-event {
@@ -733,7 +813,12 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
             plugins={[dayGridPlugin, interactionPlugin]}
             initialView="dayGridMonth"
             locale="fr"
+            firstDay={1}
             height="auto"
+            fixedWeekCount={false}
+            expandRows={true}
+            dayMaxEventRows={3}
+            buttonText={{ today: "Aujourd’hui", month: "Mois" }}
             events={calendarEvents}
             selectable={true}
             selectAllow={(selectInfo) => !selectionStartsBeforeToday(selectInfo)}
@@ -1144,11 +1229,11 @@ const styles = {
     fontWeight: 700,
   },
 
-  wrapper: { background: "white", borderRadius: "24px", padding: "20px" },
+  wrapper: { background: "white", borderRadius: "28px", padding: "28px", boxShadow: "0 18px 45px rgba(15,23,42,0.08)" },
   legend: { display: "flex", gap: "18px", marginBottom: "20px", flexWrap: "wrap" },
   legendItem: { display: "flex", alignItems: "center", gap: "8px" },
-  layout: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(300px, 400px)", gap: "20px", alignItems: "start" },
-  calendar: { minWidth: 0 },
+  layout: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(300px, 380px)", gap: "24px", alignItems: "start" },
+  calendar: { minWidth: 0, background: "#ffffff", borderRadius: "24px", padding: "18px", border: "1px solid #e2e8f0", boxShadow: "0 14px 36px rgba(15,23,42,0.07)" },
   sidePanel: { background: "#f8fafc", borderRadius: "20px", padding: "18px", position: "sticky", top: "20px" },
   closePanelButton: { border: "none", borderRadius: "999px", padding: "8px 12px", background: "#e2e8f0", cursor: "pointer", marginBottom: "12px" },
   muted: { color: "#64748b", margin: "4px 0" },
@@ -1166,17 +1251,17 @@ const styles = {
   priceGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "12px" },
   priceItem: { border: "1px solid #e5e7eb", borderRadius: "16px", padding: "14px", background: "#f8fafc" },
   actionsRow: { display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "10px" },
-  dayCellContent: { display: "grid", gap: "2px", justifyItems: "center" },
+  dayCellContent: { display: "grid", gap: "6px", justifyItems: "center", alignContent: "start", minHeight: "64px", fontWeight: 900, color: "#1f2937" },
   pastDayCell: { opacity: 0.45, filter: "grayscale(1)", cursor: "not-allowed" },
   dayPrice: { fontSize: "11px", color: "#0f766e", fontWeight: 800 },
   dayPricePill: {
     marginTop: "4px",
     display: "inline-block",
-    padding: "3px 8px",
+    padding: "4px 10px",
     borderRadius: "999px",
     background: "#ecfdf5",
     color: "#0f766e",
-    fontSize: "0.75rem",
+    fontSize: "0.82rem",
     fontWeight: 800,
   },
 };

@@ -290,3 +290,99 @@ footer {
 .gallery-item:hover img {
   transform: scale(1.04);
 }
+
+/* Correctifs réservation mobile : portrait + paysage */
+@media (max-width: 950px) {
+  #reservation > div {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  #reservation .calendar-wrapper {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  #reservation .calendar {
+    width: 100% !important;
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+
+  #reservation .day {
+    min-height: 52px !important;
+    border-radius: 14px !important;
+    font-size: 0.95rem !important;
+  }
+}
+
+@media (max-width: 420px) {
+  #reservation .day {
+    min-height: 46px !important;
+    border-radius: 12px !important;
+    font-size: 0.85rem !important;
+  }
+}
+
+
+/* Visibilité du lien contrat dans la carte de réservation */
+.contract-acceptance-box {
+  margin-top: 18px;
+  margin-bottom: 22px;
+  padding: 16px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.contract-acceptance-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  line-height: 1.6;
+  color: #334155;
+}
+
+.contract-acceptance-checkbox {
+  margin-top: 4px;
+  transform: scale(1.2);
+  flex: 0 0 auto;
+}
+
+.contract-acceptance-text {
+  min-width: 0;
+}
+
+.contract-link {
+  color: #1f6f3d;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .contract-acceptance-box {
+    padding: 14px;
+  }
+
+  .contract-acceptance-label {
+    gap: 10px;
+    line-height: 1.5;
+  }
+
+  .contract-link {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 0;
+    white-space: normal;
+  }
+}
+
+/* Conditions générales de réservation : lien PDF lisible sur mobile */
+.contract-acceptance-text .contract-link {
+  overflow-wrap: anywhere;
+}

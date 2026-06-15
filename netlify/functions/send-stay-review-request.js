@@ -85,7 +85,8 @@ async function sendReviewRequestEmail(booking) {
   if (!booking.guest_email) return { sent: false, reason: "missing_guest_email" };
 
   const subject = "Merci pour votre séjour à La Maison Verte";
-  const reviewUrl = `${SITE_URL}/avis?review=1&booking=${encodeURIComponent(booking.id)}#laisser-un-avis`;
+
+  const reviewUrl = `${SITE_URL}/?review=1&booking=${encodeURIComponent(booking.id)}#laisser-un-avis`;
 
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color:#1f2933;">
@@ -108,19 +109,33 @@ async function sendReviewRequestEmail(booking) {
       </p>
 
       <p>
+        Vous pouvez laisser un avis directement sur notre site en cliquant sur le bouton ci-dessous.
+        L'avis ne sera publié qu'après validation.
+      </p>
+
+      <p style="margin-top:30px;">
+        <a href="${reviewUrl}" style="background:#1f6f3d;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;margin-right:10px;margin-bottom:10px;">
+          Laisser un avis sur La Maison Verte
+        </a>
+      </p>
+
+      <p>
+        Si vous disposez d'un compte Google, vous pouvez aussi partager votre expérience
+        sur notre fiche Google. Cela nous aide énormément à faire connaître La Maison Verte
+        auprès des futurs voyageurs.
+      </p>
+
+      <p>
+        <a href="${GOOGLE_REVIEW_URL}" style="background:#ffffff;color:#1f6f3d;border:1px solid #1f6f3d;padding:12px 20px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;margin-bottom:10px;">
+          Donner aussi un avis Google
+        </a>
+      </p>
+
+      <p>
         Les anciens voyageurs restent nos meilleurs ambassadeurs. Lors d'un futur séjour,
         n'hésitez pas à nous rappeler que vous avez déjà séjourné à La Maison Verte.
         Les clients fidèles bénéficient régulièrement d'attentions particulières et
         d'avantages lors de leurs réservations en direct.
-      </p>
-
-      <p style="margin-top:30px;">
-        <a href="${GOOGLE_REVIEW_URL}" style="background:#1f6f3d;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;margin-right:10px;margin-bottom:10px;">
-          Donner un avis Google
-        </a>
-        <a href="${reviewUrl}" style="background:#16a34a;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;margin-bottom:10px;">
-          Laisser un avis sur le site
-        </a>
       </p>
 
       <p>
@@ -134,8 +149,24 @@ async function sendReviewRequestEmail(booking) {
     </div>
   `;
 
-  const text = `Bonjour ${booking.guest_first_name || ""},\n\nNous espérons que vous avez passé un excellent séjour à La Maison Verte à Arreau.\n\nVous pouvez laisser un avis Google ici : ${GOOGLE_REVIEW_URL}
-Ou laisser un avis sur notre site ici : ${reviewUrl}\n\nMerci encore pour votre confiance,\nRaphaël - La Maison Verte`;
+  const text = `Bonjour ${booking.guest_first_name || ""},
+
+Nous espérons que vous avez passé un excellent séjour à La Maison Verte à Arreau.
+
+Séjour : ${formatDate(booking.start_date)} → ${formatDate(booking.end_date)}
+
+Votre commentaire est précieux : il aide les futurs voyageurs à préparer leur séjour et contribue au développement de La Maison Verte.
+
+Vous pouvez laisser un avis directement sur notre site ici :
+${reviewUrl}
+
+Si vous disposez d'un compte Google, vous pouvez aussi partager votre expérience sur notre fiche Google :
+${GOOGLE_REVIEW_URL}
+
+Merci encore pour votre confiance et à bientôt dans les Pyrénées.
+
+Raphaël
+La Maison Verte – Arreau`;
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",

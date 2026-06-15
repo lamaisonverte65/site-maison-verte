@@ -25,6 +25,7 @@ export async function handler(event) {
   }
 
   const data = JSON.parse(event.body || "{}");
+  const bookingId = data.bookingId || null;
 
   const travelersSummary = [
     data.adultsCount ? `${data.adultsCount} adulte${Number(data.adultsCount) > 1 ? "s" : ""}` : null,
@@ -125,7 +126,7 @@ export async function handler(event) {
     const error = await ownerResponse.text();
 
     console.error("Erreur Resend propriétaire :", error);
-    await logEmail({ emailType: "booking_request:owner", toEmail: "lamaisonverte65@gmail.com", subject: "Nouvelle demande de réservation", status: "error", errorMessage: error });
+    await logEmail({ bookingId, emailType: "booking_request:owner", toEmail: "lamaisonverte65@gmail.com", subject: "Nouvelle demande de réservation", status: "error", errorMessage: error });
 
     return {
       statusCode: 500,
@@ -135,7 +136,7 @@ export async function handler(event) {
 
   let ownerResponseData = null;
   try { ownerResponseData = await ownerResponse.json(); } catch (_) {}
-  await logEmail({ emailType: "booking_request:owner", toEmail: "lamaisonverte65@gmail.com", subject: "Nouvelle demande de réservation", status: "sent", providerId: ownerResponseData?.id || null });
+  await logEmail({ bookingId, emailType: "booking_request:owner", toEmail: "lamaisonverte65@gmail.com", subject: "Nouvelle demande de réservation", status: "sent", providerId: ownerResponseData?.id || null });
 
   const guestResponse = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -156,7 +157,7 @@ export async function handler(event) {
     const error = await guestResponse.text();
 
     console.error("Erreur Resend client :", error);
-    await logEmail({ emailType: "booking_request:guest", toEmail: data.guestEmail, subject: "Votre demande de réservation - La Maison Verte", status: "error", errorMessage: error });
+    await logEmail({ bookingId, emailType: "booking_request:guest", toEmail: data.guestEmail, subject: "Votre demande de réservation - La Maison Verte", status: "error", errorMessage: error });
 
     return {
       statusCode: 500,
@@ -166,7 +167,7 @@ export async function handler(event) {
 
   let guestResponseData = null;
   try { guestResponseData = await guestResponse.json(); } catch (_) {}
-  await logEmail({ emailType: "booking_request:guest", toEmail: data.guestEmail, subject: "Votre demande de réservation - La Maison Verte", status: "sent", providerId: guestResponseData?.id || null });
+  await logEmail({ bookingId, emailType: "booking_request:guest", toEmail: data.guestEmail, subject: "Votre demande de réservation - La Maison Verte", status: "sent", providerId: guestResponseData?.id || null });
 
   return {
     statusCode: 200,

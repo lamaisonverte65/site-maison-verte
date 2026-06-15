@@ -34,12 +34,15 @@ export default function MaisonVerte() {
   const [reviewStayPeriod, setReviewStayPeriod] = useState("");
   const [reviewConsent, setReviewConsent] = useState(false);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewSubmitted, setReviewSubmitted] = useState(false);
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
+  const [bookingSubmitting, setBookingSubmitting] = useState(false);
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
   const [openFaqCategory, setOpenFaqCategory] = useState(null);
   const googleReviewUrl = "https://g.page/r/CasA-_8IxkGjEBM/review";
   const googleProfileUrl = "https://g.page/r/CasA-_8IxkGjEBM";
+  const ENABLE_SITE_REVIEWS = false;
   const galleryPhotos = [
     {
       src: "/salon-salle-a-manger-maison-verte.webp",
@@ -560,7 +563,7 @@ export default function MaisonVerte() {
     isPhoneValid &&
     isGuestCompositionValid;
 
-  const canSubmitRequest = canRequestBooking && isFormValid && contractAccepted;
+  const canSubmitRequest = canRequestBooking && isFormValid && contractAccepted && !bookingSubmitting;
 
   const total = accommodationTotal;
 
@@ -577,14 +580,17 @@ export default function MaisonVerte() {
       return;
     }
 
-    try {
-      const { error } = await supabase.from("booking_requests").insert([
-        {
-          guest_first_name: guestFirstName,
-          guest_last_name: guestLastName,
+    setBookingSubmitting(true);
 
-          guest_email: guestEmail,
-          guest_phone: guestPhone,
+    try {
+      const { data: insertedBookings, error } = await supabase.from("booking_requests").insert([
+        {
+          status: "pending",
+          guest_first_name: guestFirstName.trim(),
+          guest_last_name: guestLastName.trim(),
+
+          guest_email: guestEmail.trim(),
+          guest_phone: guestPhone.trim(),
           adults_count: adultsCount,
           children_count: childrenCount,
           children_ages: childrenAges.trim() || null,
@@ -599,14 +605,14 @@ export default function MaisonVerte() {
 
           nights: numberOfNights,
           estimated_total: total,
-          message: guestMessage,
+          message: guestMessage.trim() || null,
           contract_accepted: contractAccepted,
           contract_accepted_at: new Date().toISOString(),
-          contract_version: "v1",
+          contract_version: "v1.1",
           contract_url:
             "https://lamaisonverte65.fr/documents/contrat-location.pdf",
         },
-      ]);
+      ]).select("id");
 
       if (error) {
         console.error(error);
@@ -616,17 +622,20 @@ export default function MaisonVerte() {
         return;
       }
 
-      await fetch("/.netlify/functions/send-booking-request", {
+      const bookingRequestId = insertedBookings?.[0]?.id || null;
+
+      const emailResponse = await fetch("/.netlify/functions/send-booking-request", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          guestFirstName,
-          guestLastName,
+          bookingId: bookingRequestId,
+          guestFirstName: guestFirstName.trim(),
+          guestLastName: guestLastName.trim(),
 
-          guestEmail,
-          guestPhone,
+          guestEmail: guestEmail.trim(),
+          guestPhone: guestPhone.trim(),
           adultsCount,
           childrenCount,
           childrenAges: childrenAges.trim(),
@@ -641,9 +650,21 @@ export default function MaisonVerte() {
         }),
       });
 
-      alert(
+      if (!emailResponse.ok) {
+        let errorMessage = "Erreur lors de l’envoi de l’email de confirmation.";
+        try {
+          const errorData = await emailResponse.json();
+          errorMessage = errorData?.error || errorMessage;
+        } catch (_) {}
+
+        alert(
+          `Votre demande a bien été enregistrée, mais l’email de confirmation n’a pas pu être envoyé automatiquement. Merci de nous contacter si vous ne recevez rien rapidement. Détail technique : ${errorMessage}`
+        );
+      } else {
+        alert(
         "Votre demande de réservation a bien été envoyée. Un email de confirmation vient de vous être adressé. Pensez à vérifier vos courriers indésirables / spams si vous ne le recevez pas rapidement. Le calendrier va maintenant se mettre à jour.",
-      );
+        );
+      }
 
       setGuestFirstName("");
       setGuestLastName("");
@@ -665,6 +686,8 @@ export default function MaisonVerte() {
       console.error(err);
 
       alert("Une erreur est survenue.");
+    } finally {
+      setBookingSubmitting(false);
     }
   }
 
@@ -679,6 +702,7 @@ export default function MaisonVerte() {
 
   async function submitGuestReview(event) {
     event.preventDefault();
+    setReviewSubmitted(false);
 
     const rating = Number(reviewRating);
 
@@ -732,9 +756,7 @@ export default function MaisonVerte() {
       return;
     }
 
-    alert(
-      "Merci beaucoup pour votre avis. Il sera relu avant publication sur le site.",
-    );
+    setReviewSubmitted(true);
     setReviewFirstName("");
     setReviewLastName("");
     setReviewEmail("");
@@ -805,7 +827,7 @@ export default function MaisonVerte() {
           {JSON.stringify({
             "@context": "https://schema.org",
             "@type": "VacationRental",
-            additionalType: "https://schema.org/LodgingBusiness",
+            additionalType: "House",
             identifier: "lamaisonverte65-arreau",
             name: "La Maison Verte - Arreau",
             description:
@@ -841,9 +863,9 @@ export default function MaisonVerte() {
             numberOfRooms: 2,
             containsPlace: {
               "@type": "Accommodation",
-              additionalType: "https://schema.org/SingleFamilyResidence",
-              name: "La Maison Verte",
-              occupancy: {
+              identifier: "lamaisonverte65-arreau-accommodation",
+              additionalType: "EntirePlace",
+              name: "La Maison Verte",              occupancy: {
                 "@type": "QuantitativeValue",
                 value: 4,
                 maxValue: 4,
@@ -1469,8 +1491,9 @@ export default function MaisonVerte() {
       <section id="avis" className="section">
         <h2>Avis voyageurs</h2>
 
-        {/* AVIS DIRECTS SITE */}
+        {/* AVIS DIRECTS SITE - désactivés temporairement, mais conservés dans le code */}
 
+        {ENABLE_SITE_REVIEWS && (
         <div
           style={{
             background: "white",
@@ -1574,6 +1597,7 @@ export default function MaisonVerte() {
             </div>
           </div>
         </div>
+        )}
 
         {showReviewForm && (
           <div
@@ -1616,6 +1640,35 @@ export default function MaisonVerte() {
               Vous avez déjà séjourné à La Maison Verte ? Vous pouvez laisser un
               commentaire. Il sera publié uniquement après validation.
             </p>
+
+            {reviewSubmitted && (
+              <div
+                style={{
+                  background: "#eef7f0",
+                  border: "1px solid #cde8d2",
+                  borderRadius: "22px",
+                  padding: "22px",
+                  marginBottom: "24px",
+                }}
+              >
+                <h4 style={{ marginTop: 0, color: "#1f6f3d" }}>Merci beaucoup pour votre retour.</h4>
+                <p style={{ color: "#334155", lineHeight: "1.7" }}>
+                  Votre avis a bien été enregistré et sera relu avant publication.
+                  Si vous disposez d'un compte Google, vous pouvez également partager
+                  votre expérience sur Google. Cela nous aide énormément à faire
+                  connaître La Maison Verte.
+                </p>
+                <a
+                  href={googleReviewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="button"
+                  style={{ textDecoration: "none", display: "inline-block" }}
+                >
+                  Donner aussi un avis Google
+                </a>
+              </div>
+            )}
 
             <form onSubmit={submitGuestReview}>
               <div
@@ -1782,12 +1835,12 @@ export default function MaisonVerte() {
                   color: "#1f6f3d",
                 }}
               >
-                À venir
+                ★★★★★
               </div>
 
               <p>
-                Les avis Google seront affichés dès les premiers retours
-                voyageurs.
+                Votre avis Google nous aide énormément. Les premiers avis Google
+                apparaîtront prochainement.
               </p>
 
               <div
@@ -1856,7 +1909,7 @@ export default function MaisonVerte() {
                   9,5/10
                 </div>
 
-                <p>Basé sur 42 expériences vécues</p>
+                <p>Basé sur 44 expériences vécues</p>
 
                 <div
                   style={{
@@ -2540,68 +2593,44 @@ export default function MaisonVerte() {
                 </label>
               </div>
 
-              <div
-                style={{
-                  marginTop: "18px",
-                  marginBottom: "22px",
-                  padding: "16px",
-                  borderRadius: "16px",
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                }}
-              >
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: "12px",
-                    cursor: "pointer",
-                    lineHeight: "1.6",
-                    color: "#334155",
-                  }}
-                >
+              <div className="contract-acceptance-box">
+                <label className="contract-acceptance-label">
                   <input
                     type="checkbox"
                     checked={contractAccepted}
                     onChange={(e) => setContractAccepted(e.target.checked)}
-                    style={{
-                      marginTop: "4px",
-                      transform: "scale(1.2)",
-                    }}
+                    className="contract-acceptance-checkbox"
                   />
 
-                  <span>
+                  <span className="contract-acceptance-text">
                     J’ai lu et j’accepte le{" "}
                     <a
                       href="/documents/contrat-location.pdf"
                       target="_blank"
                       rel="noopener noreferrer"
-                      style={{
-                        color: "#1f6f3d",
-                        fontWeight: "700",
-                      }}
+                      className="contract-link"
                     >
-                      contrat de location
+                      contrat de location saisonnière
                     </a>{" "}
-                    ainsi que les conditions de réservation.
+                    ainsi que les conditions générales de réservation.
                   </span>
                 </label>
               </div>
 
               <button
                 className="button"
-                disabled={!canSubmitRequest}
+                disabled={!canSubmitRequest || bookingSubmitting}
                 onClick={submitBookingRequest}
                 style={{
                   width: "100%",
                   padding: "18px",
                   fontSize: "1rem",
                   fontWeight: "700",
-                  opacity: canSubmitRequest ? 1 : 0.55,
-                  cursor: canSubmitRequest ? "pointer" : "not-allowed",
+                  opacity: canSubmitRequest && !bookingSubmitting ? 1 : 0.55,
+                  cursor: canSubmitRequest && !bookingSubmitting ? "pointer" : "not-allowed",
                 }}
               >
-                Faire une demande de réservation
+                {bookingSubmitting ? "Envoi en cours..." : "Faire une demande de réservation"}
               </button>
 
               <div

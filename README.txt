@@ -1,1 +1,0 @@
-1. Installer Node.js : https://nodejs.org\n2. Dézipper le projet\n3. Ouvrir le dossier dans VS Code\n4. Ouvrir Terminal > New Terminal\n5. npm install\n6. npm run dev\n7. Ouvrir http://localhost:5173\nMettre vos photos dans /public : hero.jpg photo2.jpg photo3.jpg
