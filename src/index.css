@@ -382,6 +382,8 @@ footer {
   }
 }
 
+
+
 /* Conditions générales de réservation : lien PDF lisible sur mobile */
 .contract-acceptance-text .contract-link {
   overflow-wrap: anywhere;
@@ -405,4 +407,33 @@ footer {
     -1.2px  1.2px 0 rgba(0,0,0,0.52),
      1.2px  1.2px 0 rgba(0,0,0,0.52),
      0 6px 22px rgba(0,0,0,0.78);
+}
+
+
+/* Carte réservation : consentement / contrat / livret */
+.booking-consent-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
+  margin-bottom: 18px;
+}
+
+.booking-consent-grid > * {
+  min-width: 0;
+}
+
+.booking-consent-grid .contract-acceptance-box {
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .booking-consent-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .booking-consent-grid > * {
+    width: 100%;
+    box-sizing: border-box;
+  }
 }

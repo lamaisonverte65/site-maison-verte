@@ -2618,13 +2618,7 @@ export default function MaisonVerte() {
               />
 
               <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                  gap: "14px",
-                  alignItems: "stretch",
-                  marginBottom: "18px",
-                }}
+                className="booking-consent-grid"
               >
                 <div
                   style={{
