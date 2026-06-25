@@ -53,7 +53,7 @@ h3 {
 .overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0,0,0,0.08); /* overlay très léger */
+  background: rgba(0,0,0,0.12); /* overlay léger, garde la photo lumineuse mais améliore la lisibilité */
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -385,4 +385,24 @@ footer {
 /* Conditions générales de réservation : lien PDF lisible sur mobile */
 .contract-acceptance-text .contract-link {
   overflow-wrap: anywhere;
+}
+
+
+/* Lisibilité du texte sur photo claire */
+.hero-text-outline {
+  text-shadow:
+    -1px -1px 0 rgba(0,0,0,0.48),
+     1px -1px 0 rgba(0,0,0,0.48),
+    -1px  1px 0 rgba(0,0,0,0.48),
+     1px  1px 0 rgba(0,0,0,0.48),
+     0 4px 16px rgba(0,0,0,0.70);
+}
+
+.hero-title-outline {
+  text-shadow:
+    -1.2px -1.2px 0 rgba(0,0,0,0.52),
+     1.2px -1.2px 0 rgba(0,0,0,0.52),
+    -1.2px  1.2px 0 rgba(0,0,0,0.52),
+     1.2px  1.2px 0 rgba(0,0,0,0.52),
+     0 6px 22px rgba(0,0,0,0.78);
 }

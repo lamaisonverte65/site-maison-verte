@@ -1143,7 +1143,11 @@ export default function MaisonVerte() {
           letterSpacing: "-2px",
           lineHeight: "0.95",
           color: "#eef5ee",
-          textShadow: "0 6px 25px rgba(0,0,0,0.55)",
+          textShadow: `-1.2px -1.2px 0 rgba(0,0,0,0.52),
+           1.2px -1.2px 0 rgba(0,0,0,0.52),
+          -1.2px  1.2px 0 rgba(0,0,0,0.52),
+           1.2px  1.2px 0 rgba(0,0,0,0.52),
+           0 6px 22px rgba(0,0,0,0.78)`,
         }}
       >
         La Maison Verte
@@ -1155,7 +1159,11 @@ export default function MaisonVerte() {
           fontWeight: "500",
           lineHeight: "1.4",
           color: "#e4efe4",
-          textShadow: "0 4px 15px rgba(0,0,0,0.65)",
+          textShadow: `-1px -1px 0 rgba(0,0,0,0.48),
+           1px -1px 0 rgba(0,0,0,0.48),
+          -1px  1px 0 rgba(0,0,0,0.48),
+           1px  1px 0 rgba(0,0,0,0.48),
+           0 4px 16px rgba(0,0,0,0.70)`,
           maxWidth: "900px",
           margin: "0 auto 30px",
         }}
@@ -1182,7 +1190,11 @@ export default function MaisonVerte() {
             marginBottom: "22px",
             fontWeight: "800",
             color: "white",
-            textShadow: "0 6px 20px rgba(0,0,0,0.95)",
+            textShadow: `-1px -1px 0 rgba(0,0,0,0.58),
+           1px -1px 0 rgba(0,0,0,0.58),
+          -1px  1px 0 rgba(0,0,0,0.58),
+           1px  1px 0 rgba(0,0,0,0.58),
+           0 6px 20px rgba(0,0,0,0.85)`,
           }}
         >
           -Arreau-
@@ -1198,7 +1210,11 @@ export default function MaisonVerte() {
             margin: "auto",
             color: "#f2f6f2",
             fontWeight: "600",
-            textShadow: "0 3px 10px rgba(0,0,0,0.85)",
+            textShadow: `-1px -1px 0 rgba(0,0,0,0.48),
+           1px -1px 0 rgba(0,0,0,0.48),
+          -1px  1px 0 rgba(0,0,0,0.48),
+           1px  1px 0 rgba(0,0,0,0.48),
+           0 4px 16px rgba(0,0,0,0.70)`,
           }}
         >
           Entre cols mythiques, stations de ski et randonnées,
