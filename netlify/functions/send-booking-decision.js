@@ -280,6 +280,17 @@ export async function handler(event) {
             : ""
         }
 
+        <p style="margin-top:24px;">
+          <strong>Préparer votre séjour :</strong><br />
+          Vous pouvez consulter notre livret d’accueil en ligne :
+          <a
+            href="https://lamaisonverte65.fr/livret"
+            style="color:#166534;font-weight:bold;text-decoration:none;"
+          >
+            https://lamaisonverte65.fr/livret
+          </a>
+        </p>
+
         <p style="margin-top:22px;color:#475569;">
           Si vous ne souhaitez finalement pas confirmer cette réservation,
           répondez simplement à cet email afin que nous puissions libérer les dates.

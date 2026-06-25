@@ -2,6 +2,12 @@ import MaisonVerte from "./components/MaisonVerte";
 import { useState } from "react";
 import Admin from "./components/Admin";
 import GuideValleesAureLouron from "./pages/GuideValleesAureLouron";
+import LivretAccueil from "./pages/LivretAccueil";
+import ContactRedirect from "./pages/ContactRedirect";
+import AppelerRedirect from "./pages/AppelerRedirect";
+import MentionsLegales from "./components/MentionsLegales";
+import PolitiqueConfidentialite from "./components/PolitiqueConfidentialite";
+
 
 function PaymentSuccess() {
   return (
@@ -270,9 +276,32 @@ export default function App() {
   if (path === "/arrival") {
     return <ArrivalTimePage />;
   }
+  
   if (path === "/guide-vallees-aure-louron") {
     return <GuideValleesAureLouron />;
   }
+  
+  if (path === "/livret") {
+    return <LivretAccueil />;
+  }
 
+  if (path === "/mentions-legales") {
+    return <MentionsLegales />;
+  }
+
+  if (path === "/politique-confidentialite") {
+    return <PolitiqueConfidentialite />;
+  }
+
+  if (path === "/contact") {
+    return <ContactRedirect />;
+  }
+
+  if (path === "/appeler") {
+    return <AppelerRedirect />;
+  }
+  
   return <MaisonVerte />;
+
+  
 }

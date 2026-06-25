@@ -238,6 +238,7 @@ const usefulLinks = [
       ["Les petits coins d'Arreau", "https://www.mairie-arreau.fr/decouverte-village/porte-vallees-aure-louron/les-petits-coins-d-arreau/file.html"],
       ["Patrimoine architectural d'Arreau", "https://www.mairie-arreau.fr/decouverte-village/porte-vallees-aure-louron/patrimoine-architectural.html"],
       ["Musée des Cagots", "https://www.mairie-arreau.fr/loisirs/vie-culturelle/musee-cagots.html"],
+      ["Les églises classées des vallées", "https://patrimoine-aure-louron.fr/notre-patrimoine/focus-sur-les-monuments-incontournables/"],
       ["Médiathèque d'Arreau", "https://www.facebook.com/mediathequedarreau/"],
       ["Mairie d'Arreau", "https://www.mairie-arreau.fr/"],
     ],

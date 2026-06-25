@@ -22,7 +22,6 @@
         "npm:postcss@^8.5.14",
         "npm:react-dom@^18.2.0",
         "npm:react-helmet@^6.1.0",
-        "npm:react-image-gallery@^2.1.2",
         "npm:react@^18.2.0",
         "npm:stripe@^22.1.1",
         "npm:tailwindcss@^3.4.19",

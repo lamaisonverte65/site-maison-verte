@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Règles de la maison">
+  <circle cx="32" cy="32" r="28" fill="#E9EBCF"/>
+  <g fill="none" stroke="#2F4F35" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M17 30L32 18l15 12"/>
+    <path d="M21 29v18h22V29"/>
+    <path d="M28 47V36h8v11"/>
+    <path d="M44 19l4 4"/>
+    <path d="M20 18l24 28"/>
+  </g>
+</svg>

@@ -1,0 +1,1018 @@
+:root {
+  --livret-bg: #fbfaf7;
+  --livret-green: #2f4f35;
+  --livret-green-soft: #e9ebcf;
+  --livret-ink: #182018;
+  --livret-blue: #173a59;
+}
+
+.livret {
+  min-height: 100vh;
+  background: #ebe7df;
+  padding: 28px 0 60px;
+  color: var(--livret-ink);
+  font-family: "Lora", Georgia, serif;
+}
+
+.livret-toolbar {
+  width: min(920px, calc(100% - 32px));
+  margin: 0 auto 22px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.livret-back,
+.livret-print-button {
+  border: 1px solid rgba(47, 79, 53, 0.25);
+  background: var(--livret-bg);
+  color: var(--livret-green);
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.livret-page {
+  width: 210mm;
+  height: 297mm;
+  margin: 0 auto 32px;
+  background: var(--livret-bg);
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.22);
+}
+
+/* PAGE 1 — COUVERTURE */
+.livret-cover {
+  display: grid;
+  grid-template-rows: 72% 28%;
+}
+
+.livret-cover-photo {
+  position: relative;
+  background-image:
+    linear-gradient(to bottom, rgba(0,0,0,0.30), rgba(0,0,0,0.06) 36%, rgba(0,0,0,0.02)),
+    url("/livret/couverture-salon.webp");
+  background-size: cover;
+  background-position: center top;
+  overflow: hidden;
+}
+
+.livret-cover-title-wrap {
+  position: absolute;
+  top: 42px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.livret-cover-title {
+  margin: 0;
+  text-align: center;
+  color: #fff;
+  font-family: "Cormorant Garamond", "Playfair Display", Georgia, serif;
+  font-size: 4.85rem;
+  font-weight: 600;
+  line-height: 0.92;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+  text-shadow:
+    0 3px 4px rgba(0, 0, 0, 0.55),
+    0 14px 28px rgba(0, 0, 0, 0.45);
+}
+
+.livret-cover-title span {
+  display: block;
+}
+
+.livret-cover-footer {
+  position: relative;
+  background: var(--livret-bg);
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+/* Le liseret est juste une transition, pas un bloc de contenu */
+.livret-cover-footer::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -70px;
+  height: 96px;
+  background-image: url("/livret/liseret-separateur.webp");
+  background-repeat: no-repeat;
+  background-position: top center;
+  background-size: 100% auto;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.livret-cover-banner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  object-position: center bottom;
+  background: var(--livret-bg);
+  padding: 16px 0 0;
+  box-sizing: border-box;
+}
+
+/* PAGE 2 — BIENVENUE */
+.livret-page-inner {
+  position: relative;
+  height: 100%;
+  padding: 44px 58px 0;
+  box-sizing: border-box;
+}
+
+.livret-page-header h1 {
+  margin: 0;
+  text-align: center;
+  font-family: "Cormorant Garamond", "Playfair Display", Georgia, serif;
+  color: var(--livret-green);
+  font-size: 3.35rem;
+  font-weight: 500;
+  line-height: 1.04;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.livret-ornament {
+  color: #a8b68b;
+  font-size: 1.55rem;
+  text-align: center;
+  width: 360px;
+  margin: 12px 0 26px 125px;
+}
+
+.livret-welcome-grid {
+  display: grid;
+  grid-template-columns: 1.42fr 0.82fr;
+  gap: 42px;
+}
+
+.livret-welcome-main {
+  font-size: 0.96rem;
+  line-height: 1.72;
+}
+
+.livret-welcome-main p {
+  margin: 0 0 18px;
+}
+
+.livret-welcome-main strong {
+  color: var(--livret-green);
+}
+
+.livret-signature {
+  font-family: "Segoe Script", "Brush Script MT", cursive;
+  color: var(--livret-green);
+  font-size: 1.55rem;
+  margin-top: 6px !important;
+  margin-bottom: 16px !important;
+}
+
+.livret-separator-line {
+  height: 1px;
+  background: #c9d0aa;
+  margin: 18px 0 18px;
+}
+
+.livret-contact-list {
+  background: rgba(255,255,255,0.38);
+  padding: 14px 18px 10px;
+  margin-right: 8px;
+}
+
+.livret-contact-list h2 {
+  margin: 0 0 14px;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: 2.0rem;
+  line-height: 1.05;
+  font-weight: 500;
+  color: var(--livret-green);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.livret-contact-row {
+  display: grid;
+  grid-template-columns: 45px 1fr;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.livret-contact-row img {
+  width: 40px;
+  height: 40px;
+}
+
+.livret-contact-row h3 {
+  margin: 0 0 2px;
+  color: var(--livret-green);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.78rem;
+  font-family: Arial, sans-serif;
+}
+
+.livret-contact-row p {
+  margin: 1px 0;
+  line-height: 1.25;
+  font-size: 0.9rem;
+  font-family: Arial, sans-serif;
+}
+
+.livret-welcome-side {
+  position: relative;
+  padding-left: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.livret-vertical-line {
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 92px;
+  width: 1px;
+  background: #c9d0aa;
+}
+
+.livret-qr-block {
+  text-align: center;
+  margin-bottom: 30px;
+  width: 100%;
+  max-width: 230px;
+}
+
+.livret-qr-icon {
+  width: 46px;
+  height: 46px;
+  margin: 0 auto 10px;
+  border-radius: 50%;
+  background: var(--livret-green-soft);
+  display: grid;
+  place-items: center;
+  color: var(--livret-green);
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.livret-qr-block h2 {
+  margin: 0 0 6px;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  color: var(--livret-green);
+  font-size: 1.25rem;
+  line-height: 1.02;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.livret-qr-block p {
+  margin: 0 auto 10px;
+  font-family: Arial, sans-serif;
+  font-size: 0.88rem;
+  line-height: 1.32;
+  max-width: 205px;
+  text-align: center;
+}
+
+.livret-qr-block img {
+  width: 150px;
+  height: 150px;
+  padding: 10px;
+  border: 3px solid var(--livret-green-soft);
+  border-radius: 10px;
+  background: white;
+  display: block;
+  margin: 0 auto;
+}
+
+/* Pied de page des pages intérieures */
+.livret-page-footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 100px;
+  overflow: hidden;
+  background: transparent;
+}
+
+.livret-page-footer img {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 8px;
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.livret-page-number {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: "Cormorant Garamond", Georgia, serif;
+  color: var(--livret-green);
+  font-size: 0.95rem;
+  z-index: 2;
+}
+
+@media (max-width: 900px) {
+  .livret {
+    padding: 0;
+    background: var(--livret-bg);
+  }
+
+  .livret-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    width: 100%;
+    padding: 10px 14px;
+    margin: 0;
+    background: rgba(251, 250, 247, 0.94);
+    backdrop-filter: blur(10px);
+  }
+
+  .livret-page {
+    width: 100%;
+    height: auto;
+    min-height: 100vh;
+    margin: 0;
+    box-shadow: none;
+  }
+
+  .livret-cover {
+    grid-template-rows: 70vh 250px;
+  }
+
+  .livret-cover-title {
+    font-size: clamp(3rem, 15vw, 5rem);
+  }
+
+  .livret-cover-footer::before {
+    top: -54px;
+    height: 88px;
+  }
+
+  .livret-cover-banner {
+    object-fit: contain;
+  }
+
+  .livret-page-inner {
+    padding: 38px 24px 105px;
+  }
+
+  .livret-page-header h1 {
+    font-size: clamp(2.6rem, 12vw, 4.4rem);
+  }
+
+  .livret-ornament {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .livret-welcome-grid {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .livret-welcome-side {
+    padding-left: 0;
+  }
+
+  .livret-vertical-line {
+    display: none;
+  }
+
+  .livret-page-footer {
+    height: 82px;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  html,
+  body {
+    width: 210mm;
+    margin: 0;
+    padding: 0;
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .livret {
+    background: white !important;
+    padding: 0 !important;
+  }
+
+  .livret-page {
+    width: 210mm !important;
+    height: 297mm !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    page-break-after: always;
+    break-after: page;
+    overflow: hidden !important;
+  }
+
+  .livret-page-inner {
+    height: 297mm !important;
+    box-sizing: border-box !important;
+  }
+}
+
+/* Page 2 — sommaire */
+.livret-summary {
+  background: rgba(255,255,255,0.38);
+  padding: 16px 20px 18px;
+  margin-right: 8px;
+  margin-top: 12px;
+}
+
+.livret-summary h2 {
+  margin: 0 0 16px;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: 2.0rem;
+  line-height: 1.05;
+  font-weight: 500;
+  color: var(--livret-green);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.livret-summary-list {
+  display: grid;
+  gap: 8px;
+}
+
+.livret-summary-list a {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  text-decoration: none;
+  color: var(--livret-ink);
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(201, 208, 170, 0.55);
+}
+
+.livret-summary-list a:last-child {
+  border-bottom: none;
+}
+
+.livret-summary-list span {
+  font-family: Arial, sans-serif;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--livret-green);
+  font-weight: 700;
+}
+
+.livret-summary-list strong {
+  font-size: 0.98rem;
+  font-weight: 500;
+}
+
+/* Page 2 — QR codes en version papier + liens cliquables web */
+.livret-qr-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.livret-qr-block {
+  text-align: center;
+  margin-bottom: 0;
+  width: 100%;
+  max-width: 150px;
+}
+
+.livret-qr-icon {
+  width: 34px;
+  height: 34px;
+  margin: 0 auto 8px;
+  border-radius: 50%;
+  background: var(--livret-green-soft);
+  display: grid;
+  place-items: center;
+  color: var(--livret-green);
+  font-size: 1.0rem;
+  font-weight: 700;
+}
+
+.livret-qr-block h2 {
+  margin: 0 0 5px;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  color: var(--livret-green);
+  font-size: 1.02rem;
+  line-height: 1.02;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.livret-qr-block p {
+  margin: 0 auto 8px;
+  font-family: Arial, sans-serif;
+  font-size: 0.72rem;
+  line-height: 1.22;
+  max-width: 145px;
+  text-align: center;
+}
+
+.livret-qr-block img {
+  width: 92px;
+  height: 92px;
+  padding: 7px;
+  border: 2px solid var(--livret-green-soft);
+  border-radius: 8px;
+  background: white;
+  display: block;
+  margin: 0 auto 7px;
+}
+
+.livret-qr-block a {
+  display: inline-block;
+  font-family: Arial, sans-serif;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  color: var(--livret-green);
+  font-weight: 700;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(47, 79, 53, 0.35);
+}
+
+/* PAGE 3 — FONCTIONNEMENT DU LOGEMENT */
+.livret-function-inner {
+  padding: 38px 48px 0;
+}
+
+.livret-function-header h1 {
+  font-size: 3.05rem;
+  line-height: 1;
+}
+
+.livret-function-header .livret-ornament {
+  margin: 10px auto 20px;
+  width: 100%;
+}
+
+.livret-function-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.livret-info-card {
+  background: rgba(255, 255, 255, 0.48);
+  border: 1px solid rgba(201, 208, 170, 0.55);
+  border-radius: 18px;
+  padding: 13px 15px 12px;
+  box-shadow: 0 8px 20px rgba(47, 79, 53, 0.04);
+}
+
+.livret-info-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.livret-info-title img {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+}
+
+.livret-info-title h2 {
+  margin: 0;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  color: var(--livret-green);
+  font-size: 1.38rem;
+  font-weight: 600;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+}
+
+.livret-info-card p,
+.livret-info-card li {
+  font-family: Arial, sans-serif;
+  color: #263126;
+  font-size: 0.76rem;
+  line-height: 1.38;
+}
+
+.livret-info-card p {
+  margin: 0 0 7px;
+}
+
+.livret-info-card ul {
+  margin: 5px 0 0 15px;
+  padding: 0;
+}
+
+.livret-info-card li {
+  margin-bottom: 3px;
+}
+
+.livret-note {
+  margin-top: 8px !important;
+  padding-top: 0;
+  border-top: none;
+  font-weight: 400;
+  color: #263126 !important;
+}
+
+.livret-eco-card {
+  margin-top: 14px;
+}
+
+.livret-eco-card ul {
+  margin: 6px 0 0 18px;
+  padding: 0;
+  display: block;
+}
+
+@media (max-width: 900px) {
+  .livret-function-inner {
+    padding: 38px 24px 105px;
+  }
+
+  .livret-function-grid,
+  .livret-eco-card ul {
+    grid-template-columns: 1fr;
+  }
+
+  .livret-info-card p,
+  .livret-info-card li {
+    font-size: 0.92rem;
+  }
+}
+
+
+.livret-eco-list li {
+  margin-bottom: 4px;
+}
+
+/* Force l'affichage des puces dans le livret */
+
+.livret-info-card ul,
+.livret-eco-card ul,
+.livret-eco-list {
+  list-style-type: disc !important;
+  list-style-position: outside !important;
+  padding-left: 20px !important;
+}
+
+.livret-info-card li,
+.livret-eco-card li,
+.livret-eco-list li {
+  display: list-item !important;
+}
+
+.livret-info-card li::marker,
+.livret-eco-card li::marker,
+.livret-eco-list li::marker {
+  color: var(--livret-green);
+}
+
+/* PAGE 6 — DÉCOUVRIR LES VALLÉES */
+
+.livret-discover-quote {
+  margin: -4px auto 22px;
+  max-width: 620px;
+  text-align: center;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: 1.45rem;
+  line-height: 1.3;
+  color: var(--livret-green);
+  font-style: italic;
+}
+
+.livret-discover-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 14px;
+}
+
+.livret-guide-card {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: 1fr 150px;
+  gap: 24px;
+  align-items: center;
+}
+
+.livret-guide-card > img {
+  width: 135px;
+  height: 135px;
+  padding: 10px;
+  border: 3px solid var(--livret-green-soft);
+  border-radius: 12px;
+  background: white;
+}
+
+.livret-guide-card a {
+  color: var(--livret-green);
+  font-weight: 700;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(47, 79, 53, 0.35);
+}
+
+/* PAGE 7 */
+
+.livret-review-grid{
+  margin-top:20px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:18px;
+}
+
+.livret-review-card{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-start;
+    text-align:center;
+
+    background:white;
+    border:1px solid var(--livret-green-soft);
+    border-radius:16px;
+    padding:22px;
+}
+
+.livret-review-card img{
+    display:block;
+    width:120px;
+    height:120px;
+    margin:0 auto 16px;
+}
+
+.livret-review-card h2{
+  margin:0 0 10px;
+}
+
+.livret-review-card p{
+  margin-bottom:14px;
+}
+
+.livret-review-card a{
+  color:var(--livret-green);
+  font-weight:600;
+  text-decoration:none;
+  border-bottom:1px solid rgba(47,79,53,.35);
+}
+
+/* INVENTAIRE — PAGES 8 ET 9 */
+/* Ces règles doivent rester à la fin de livret.css pour passer après les styles globaux. */
+
+.livret-inventory-page .livret-function-header h1 {
+  font-size: 2.62rem;
+}
+
+.livret-inventory-page .livret-function-inner {
+  padding: 34px 28px 0;
+}
+
+/* Cartes inventaire : largeur pleine dans leur colonne */
+.livret-inventory-section {
+  width: 100%;
+  box-sizing: border-box;
+  align-self: stretch;
+  background: rgba(255, 255, 255, 0.48);
+  border: 1px solid rgba(201, 208, 170, 0.55);
+  border-radius: 16px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 20px rgba(47, 79, 53, 0.04);
+}
+
+.livret-inventory-section h2 {
+  margin: 0 0 7px;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  color: var(--livret-green);
+  font-size: 1.20rem;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+  text-align: left;
+}
+
+.livret-inventory-section ul {
+  margin: 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+  display: grid !important;
+  gap: 3px;
+}
+
+.livret-inventory-section li {
+  display: grid !important;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 7px;
+  align-items: baseline;
+  font-family: Arial, sans-serif;
+  color: #263126;
+  font-size: 0.64rem;
+  line-height: 1.17;
+  margin: 0 !important;
+}
+
+.livret-inventory-section li span {
+  color: rgba(47, 79, 53, 0.82);
+  font-weight: 700;
+  text-align: right;
+  font-size: 0.94em;
+}
+
+/* Page 8 — RDC : haut en deux colonnes, cuisine en deux vrais cadres */
+.livret-inventory-rdc-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 14px;
+  align-items: start;
+}
+
+.livret-inventory-rdc-left,
+.livret-inventory-rdc-right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.livret-inventory-rdc-right {
+  padding-top: 2px;
+}
+
+.livret-inventory-rdc-cuisine {
+  grid-column: 1 / -1;
+  margin-top: -4px;
+}
+
+.livret-inventory-cuisine-title {
+  margin: 0 0 8px;
+  text-align: center;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  color: var(--livret-green);
+  font-size: 1.48rem;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.livret-cuisine-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.livret-cuisine-grid .livret-inventory-section {
+  height: 100%;
+}
+
+.livret-cuisine-grid .livret-inventory-section li {
+  font-size: 0.61rem;
+  line-height: 1.12;
+}
+
+/* Page 9 — étages : disposition équilibrée avec cadres larges */
+.livret-inventory-grid-etages {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.livret-inventory-grid-etages > .livret-inventory-floor-title {
+  grid-column: 1 / -1;
+}
+
+.livret-inventory-column {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+  align-self: start;
+}
+
+.livret-inventory-floor-title {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  color: var(--livret-green);
+  font-size: 1.58rem;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.livret-inventory-grid-etages .livret-inventory-section {
+  margin-bottom: 0;
+}
+
+.livret-inventory-grid-etages .livret-inventory-section h2 {
+  font-size: 1.18rem;
+}
+
+.livret-inventory-grid-etages .livret-inventory-section li {
+  font-size: 0.63rem;
+  line-height: 1.16;
+}
+
+/* Sur mobile, on repasse tout en une colonne */
+@media (max-width: 900px) {
+  .livret-inventory-rdc-layout,
+  .livret-cuisine-grid,
+  .livret-inventory-grid-etages {
+    grid-template-columns: 1fr;
+  }
+
+  .livret-inventory-rdc-cuisine {
+    grid-column: auto;
+  }
+
+  .livret-inventory-section li,
+  .livret-cuisine-grid .livret-inventory-section li,
+  .livret-inventory-grid-etages .livret-inventory-section li {
+    font-size: 0.9rem;
+  }
+}
+
+
+/* Page 9 — étages : sections avec tableaux invisibles en 2 colonnes */
+.livret-inventory-floor-section {
+  display: block;
+  margin-top: 0;
+}
+
+.livret-inventory-floor-section-second {
+  margin-top: 14px;
+}
+
+.livret-inventory-floor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+  margin-top: 10px;
+}
+
+.livret-inventory-floor-grid .livret-inventory-column {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.livret-inventory-floor-section .livret-inventory-floor-title {
+  width: 100%;
+  margin: 0;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  color: var(--livret-green);
+  font-size: 1.58rem;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .livret-inventory-floor-grid {
+    grid-template-columns: 1fr;
+  }
+}

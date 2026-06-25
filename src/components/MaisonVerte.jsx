@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet";
 import { supabase } from "../supabaseClient";
 
@@ -39,6 +39,8 @@ export default function MaisonVerte() {
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [bookingSubmitting, setBookingSubmitting] = useState(false);
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
+  const bookingFormRef = useRef(null);
+  const guestFirstNameRef = useRef(null);
   const [openFaqCategory, setOpenFaqCategory] = useState(null);
   const googleReviewUrl = "https://g.page/r/CasA-_8IxkGjEBM/review";
   const googleProfileUrl = "https://g.page/r/CasA-_8IxkGjEBM";
@@ -151,7 +153,7 @@ export default function MaisonVerte() {
         {
           question: "La maison est-elle adaptée aux familles avec enfants ?",
           answer:
-            "Oui. La Maison Verte est adaptée à une famille de 4 personnes. Un lit parapluie peut être mis à disposition sur demande. La chambre sous combles dispose également d'une barrière de sécurité amovible pouvant être installée en haut de l'escalier.",
+            "Oui. La Maison Verte est adaptée à une famille de 4 personnes. Un lit parapluie peut être mis à disposition sur demande. La chambre sous combles dispose également d'une barrière de sécurité amovible pouvant être installée en haut de l'escalier. Notez cependant la présence des 2 escaliers",
         },
         {
           question:
@@ -438,6 +440,14 @@ export default function MaisonVerte() {
     }
 
     setSelectedDates([realStart, end]);
+
+    setTimeout(() => {
+      bookingFormRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      guestFirstNameRef.current?.focus({ preventScroll: true });
+    }, 250);
   }
 
   const pricingLoaded = pricingRules.defaultNightPrice !== null;
@@ -924,7 +934,7 @@ export default function MaisonVerte() {
               bestRating: "5",
               worstRating: "1",
             },
-            priceRange: "À partir de 75€ par nuit",
+            priceRange: `À partir de ${defaultPrice}€ par nuit`,
           })}
         </script>
 
@@ -1386,6 +1396,7 @@ export default function MaisonVerte() {
             "Cuisine équipée",
             "Machine à laver",
             "Lave-vaisselle",
+            "Mini congélateur",
             "Smart TV",
             "Cafetière italienne",
             "Cafetière à filtres",
@@ -1416,6 +1427,42 @@ export default function MaisonVerte() {
               ✓ {item}
             </div>
           ))}
+        </div>
+
+        <div
+          style={{
+            marginTop: "34px",
+            textAlign: "center",
+          }}
+        >
+          <a
+            href="/livret"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "inline-block",
+              padding: "16px 26px",
+              borderRadius: "999px",
+              background: "#eef7f0",
+              color: "#1f6f3d",
+              fontWeight: "700",
+              textDecoration: "none",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.06)",
+            }}
+          >
+            Consulter le livret d’accueil
+          </a>
+
+          <p
+            style={{
+              marginTop: "12px",
+              color: "#666",
+              lineHeight: "1.7",
+            }}
+          >
+            Vous y trouverez toutes les informations utiles pour préparer votre séjour :
+            fonctionnement du logement, bonnes adresses, activités et inventaire.
+          </p>
         </div>
       </section>
 
@@ -2090,26 +2137,33 @@ export default function MaisonVerte() {
             marginBottom: "45px",
           }}
         >
-         <>
-            Sélectionnez vos dates d'arrivée et de départ.
-            <br />
-            Après acceptation de votre demande, un lien de paiement sécurisé, valable 24h, vous sera envoyé par email.
-            <br />
-            Votre réservation sera confirmée après règlement de l'acompte.
-          </>
+          Sélectionnez vos dates d'arrivée et de départ.
+          <br />
+          Après acceptation de votre demande, un lien de paiement sécurisé, valable 24h, vous sera envoyé par email.
+          <br />
+          Votre réservation sera confirmée après règlement de l'acompte.
         </p>
 
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 360px",
-            gap: "24px",
+            gridTemplateColumns: "1fr",
+            gap: "30px",
             alignItems: "start",
+            maxWidth: "980px",
+            margin: "0 auto",
           }}
         >
           {/* CALENDRIER */}
 
-          <div className="calendar-wrapper">
+          <div
+            className="calendar-wrapper"
+            style={{
+              maxWidth: "920px",
+              width: "100%",
+              margin: "0 auto",
+            }}
+          >
             <div
               style={{
                 display: "flex",
@@ -2226,10 +2280,13 @@ export default function MaisonVerte() {
           {/* CARTE RESERVATION */}
 
           <div
+            id="formulaire-reservation"
+            ref={bookingFormRef}
             style={{
-              maxWidth: "520px",
               width: "100%",
+              maxWidth: "1000px",
               margin: "0 auto",
+              scrollMarginTop: "110px",
             }}
           >
             <div
@@ -2243,7 +2300,7 @@ export default function MaisonVerte() {
             >
               <div
                 style={{
-                  marginBottom: "25px",
+                  marginBottom: "24px",
                 }}
               >
                 <div
@@ -2267,27 +2324,18 @@ export default function MaisonVerte() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr",
-                  gap: "12px",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: "14px",
                   marginBottom: "18px",
                 }}
               >
-                <p
-                  style={{
-                    color: "#666",
-                    marginBottom: "12px",
-                    fontSize: "0.95rem",
-                  }}
-                >
-                  Choisissez vos dates directement dans le calendrier.
-                </p>
-
                 <input
                   type="text"
                   placeholder="Date d’arrivée sélectionnée"
                   value={selectedDates[0] || ""}
                   readOnly
                   style={{
+                    width: "100%",
                     padding: "16px",
                     borderRadius: "16px",
                     border: "1px solid #ddd",
@@ -2300,200 +2348,190 @@ export default function MaisonVerte() {
                   value={selectedDates[1] || ""}
                   readOnly
                   style={{
+                    width: "100%",
                     padding: "16px",
                     borderRadius: "16px",
                     border: "1px solid #ddd",
                   }}
                 />
+
+                <p
+                  style={{
+                    gridColumn: "1 / -1",
+                    color: canRequestBooking ? "#1f6f3d" : "#9a5a2e",
+                    background: canRequestBooking ? "#eef7f0" : "#fff3e8",
+                    padding: "14px",
+                    borderRadius: "16px",
+                    fontSize: "0.95rem",
+                    lineHeight: "1.5",
+                    margin: 0,
+                  }}
+                >
+                  {reservationMessage}
+                </p>
+
+                <input
+                  ref={guestFirstNameRef}
+                  type="text"
+                  placeholder="Votre prénom"
+                  value={guestFirstName}
+                  onChange={(e) => setGuestFirstName(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "16px",
+                    borderRadius: "16px",
+                    border: "1px solid #ddd",
+                  }}
+                />
+
+                <input
+                  type="text"
+                  placeholder="Votre nom"
+                  value={guestLastName}
+                  onChange={(e) => setGuestLastName(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "16px",
+                    borderRadius: "16px",
+                    border: "1px solid #ddd",
+                  }}
+                />
+
+                <div>
+                  <input
+                    type="email"
+                    placeholder="Votre email"
+                    value={guestEmail}
+                    onChange={(e) => setGuestEmail(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "16px",
+                      borderRadius: "16px",
+                      border:
+                        isEmailValid || guestEmail === ""
+                          ? "1px solid #ddd"
+                          : "1px solid #d33",
+                    }}
+                  />
+
+                  {guestEmail !== "" && !isEmailValid && (
+                    <div
+                      style={{
+                        color: "#d33",
+                        fontSize: "0.85rem",
+                        marginTop: "8px",
+                      }}
+                    >
+                      Adresse email invalide.
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <input
+                    type="tel"
+                    placeholder="Votre téléphone"
+                    value={guestPhone}
+                    onChange={(e) => setGuestPhone(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "16px",
+                      borderRadius: "16px",
+                      border:
+                        isPhoneValid || guestPhone === ""
+                          ? "1px solid #ddd"
+                          : "1px solid #d33",
+                    }}
+                  />
+
+                  {guestPhone !== "" && !isPhoneValid && (
+                    <div
+                      style={{
+                        color: "#d33",
+                        fontSize: "0.85rem",
+                        marginTop: "8px",
+                      }}
+                    >
+                      Numéro de téléphone invalide.
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <p
+              <div
                 style={{
-                  color: canRequestBooking ? "#1f6f3d" : "#9a5a2e",
-                  background: canRequestBooking ? "#eef7f0" : "#fff3e8",
-                  padding: "14px",
+                  marginBottom: "16px",
+                  padding: "16px",
                   borderRadius: "16px",
-                  fontSize: "0.95rem",
-                  lineHeight: "1.5",
-                  marginBottom: "18px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
                 }}
               >
-                {reservationMessage}
-              </p>
-
-              <input
-                type="text"
-                placeholder="Votre prénom"
-                value={guestFirstName}
-                onChange={(e) => setGuestFirstName(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "16px",
-                  borderRadius: "16px",
-                  border: "1px solid #ddd",
-                  marginBottom: "14px",
-                }}
-              />
-
-              <input
-                type="text"
-                placeholder="Votre nom"
-                value={guestLastName}
-                onChange={(e) => setGuestLastName(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "16px",
-                  borderRadius: "16px",
-                  border: "1px solid #ddd",
-                  marginBottom: "14px",
-                }}
-              />
-
-              <div>
-                <input
-                  type="email"
-                  placeholder="Votre email"
-                  value={guestEmail}
-                  onChange={(e) => setGuestEmail(e.target.value)}
+                <div
                   style={{
-                    width: "100%",
-                    padding: "16px",
-                    borderRadius: "16px",
-                    border:
-                      isEmailValid || guestEmail === ""
-                        ? "1px solid #ddd"
-                        : "1px solid #d33",
-                    marginBottom: "8px",
+                    fontWeight: "700",
+                    color: "#1f6f3d",
+                    marginBottom: "12px",
                   }}
-                />
-
-                {guestEmail !== "" && !isEmailValid && (
-                  <div
-                    style={{
-                      color: "#d33",
-                      fontSize: "0.85rem",
-                      marginBottom: "14px",
-                    }}
-                  >
-                    Adresse email invalide.
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <input
-                  type="tel"
-                  placeholder="Votre téléphone"
-                  value={guestPhone}
-                  onChange={(e) => setGuestPhone(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "16px",
-                    borderRadius: "16px",
-                    border:
-                      isPhoneValid || guestPhone === ""
-                        ? "1px solid #ddd"
-                        : "1px solid #d33",
-                    marginBottom: "8px",
-                  }}
-                />
+                >
+                  Voyageurs
+                </div>
 
                 <div
                   style={{
-                    marginTop: "14px",
-                    marginBottom: "14px",
-                    padding: "16px",
-                    borderRadius: "16px",
-                    background: "#f8fafc",
-                    border: "1px solid #e2e8f0",
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr auto",
+                    gap: "12px",
+                    alignItems: "end",
                   }}
                 >
-                  <div
-                    style={{
-                      fontWeight: "700",
-                      color: "#1f6f3d",
-                      marginBottom: "10px",
-                    }}
-                  >
-                    Voyageurs
-                  </div>
-
-                  <div
+                  <label
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: "12px",
-                      marginBottom: "12px",
+                      gap: "6px",
+                      color: "#334155",
+                      fontSize: "0.9rem",
                     }}
                   >
-                    <label
-                      style={{
-                        display: "grid",
-                        gap: "6px",
-                        color: "#334155",
-                        fontSize: "0.9rem",
-                      }}
-                    >
-                      Adultes
-                      <input
-                        type="number"
-                        min="1"
-                        max="4"
-                        value={guestAdults}
-                        onChange={(event) => setGuestAdults(event.target.value)}
-                        style={{
-                          width: "100%",
-                          padding: "14px",
-                          borderRadius: "14px",
-                          border: "1px solid #d1d5db",
-                        }}
-                      />
-                    </label>
-
-                    <label
-                      style={{
-                        display: "grid",
-                        gap: "6px",
-                        color: "#334155",
-                        fontSize: "0.9rem",
-                      }}
-                    >
-                      Enfants
-                      <input
-                        type="number"
-                        min="0"
-                        max="4"
-                        value={guestChildren}
-                        onChange={(event) =>
-                          setGuestChildren(event.target.value)
-                        }
-                        style={{
-                          width: "100%",
-                          padding: "14px",
-                          borderRadius: "14px",
-                          border: "1px solid #d1d5db",
-                        }}
-                      />
-                    </label>
-                  </div>
-
-                  {childrenCount > 0 && (
+                    Adultes
                     <input
-                      type="text"
-                      placeholder="Âge des enfants : ex. 4 ans, 8 ans"
-                      value={childrenAges}
-                      onChange={(event) => setChildrenAges(event.target.value)}
+                      type="number"
+                      min="1"
+                      max="4"
+                      value={guestAdults}
+                      onChange={(event) => setGuestAdults(event.target.value)}
                       style={{
                         width: "100%",
                         padding: "14px",
                         borderRadius: "14px",
-                        border: childrenAges.trim()
-                          ? "1px solid #d1d5db"
-                          : "1px solid #d33",
-                        marginBottom: "12px",
+                        border: "1px solid #d1d5db",
                       }}
                     />
-                  )}
+                  </label>
+
+                  <label
+                    style={{
+                      display: "grid",
+                      gap: "6px",
+                      color: "#334155",
+                      fontSize: "0.9rem",
+                    }}
+                  >
+                    Enfants
+                    <input
+                      type="number"
+                      min="0"
+                      max="4"
+                      value={guestChildren}
+                      onChange={(event) => setGuestChildren(event.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "14px",
+                        borderRadius: "14px",
+                        border: "1px solid #d1d5db",
+                      }}
+                    />
+                  </label>
 
                   <label
                     style={{
@@ -2502,119 +2540,165 @@ export default function MaisonVerte() {
                       gap: "10px",
                       color: "#334155",
                       lineHeight: "1.5",
+                      paddingBottom: "13px",
+                      whiteSpace: "nowrap",
                     }}
                   >
                     <input
                       type="checkbox"
                       checked={babyBedNeeded}
-                      onChange={(event) =>
-                        setBabyBedNeeded(event.target.checked)
-                      }
+                      onChange={(event) => setBabyBedNeeded(event.target.checked)}
                     />
                     Lit bébé / bébé à prévoir
                   </label>
-
-                  {!isGuestCompositionValid && (
-                    <div
-                      style={{
-                        color: "#d33",
-                        fontSize: "0.85rem",
-                        marginTop: "10px",
-                      }}
-                    >
-                      Indiquez entre 1 et 4 voyageurs. Si des enfants sont
-                      présents, précisez leurs âges.
-                    </div>
-                  )}
                 </div>
 
-                <textarea
-                  value={guestMessage}
-                  onChange={(event) => setGuestMessage(event.target.value)}
-                  placeholder="Message optionnel : arrivée tardive, question particulière, ancien client, promo..."
-                  style={{
-                    width: "100%",
-                    minHeight: "110px",
-                    marginTop: "14px",
-                    padding: "14px",
-                    borderRadius: "14px",
-                    border: "1px solid #d1d5db",
-                    fontSize: "15px",
-                    resize: "vertical",
-                  }}
-                />
-                {guestPhone !== "" && !isPhoneValid && (
+                {childrenCount > 0 && (
+                  <input
+                    type="text"
+                    placeholder="Âge des enfants : ex. 4 ans, 8 ans"
+                    value={childrenAges}
+                    onChange={(event) => setChildrenAges(event.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "14px",
+                      borderRadius: "14px",
+                      border: childrenAges.trim()
+                        ? "1px solid #d1d5db"
+                        : "1px solid #d33",
+                      marginTop: "12px",
+                    }}
+                  />
+                )}
+
+                {!isGuestCompositionValid && (
                   <div
                     style={{
                       color: "#d33",
                       fontSize: "0.85rem",
-                      marginBottom: "14px",
+                      marginTop: "10px",
                     }}
                   >
-                    Numéro de téléphone invalide.
+                    Indiquez entre 1 et 4 voyageurs. Si des enfants sont
+                    présents, précisez leurs âges.
                   </div>
                 )}
               </div>
 
+              <textarea
+                value={guestMessage}
+                onChange={(event) => setGuestMessage(event.target.value)}
+                placeholder="Message optionnel : arrivée tardive, question particulière, ancien client, promo..."
+                style={{
+                  width: "100%",
+                  minHeight: "120px",
+                  marginBottom: "16px",
+                  padding: "14px",
+                  borderRadius: "16px",
+                  border: "1px solid #d1d5db",
+                  fontSize: "15px",
+                  resize: "vertical",
+                }}
+              />
+
               <div
                 style={{
-                  marginTop: "18px",
-                  marginBottom: "14px",
-                  padding: "16px",
-                  borderRadius: "16px",
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: "14px",
+                  alignItems: "stretch",
+                  marginBottom: "18px",
                 }}
               >
-                <label
+                <div
                   style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: "12px",
-                    cursor: "pointer",
-                    lineHeight: "1.6",
-                    color: "#334155",
+                    padding: "16px",
+                    borderRadius: "16px",
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={marketingConsent}
-                    onChange={(e) => setMarketingConsent(e.target.checked)}
+                  <label
                     style={{
-                      marginTop: "4px",
-                      transform: "scale(1.2)",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "12px",
+                      cursor: "pointer",
+                      lineHeight: "1.55",
+                      color: "#334155",
                     }}
-                  />
-                  <span>
-                    J’accepte de recevoir occasionnellement des nouvelles,
-                    offres et informations de La Maison Verte. Je pourrai
-                    demander à ne plus les recevoir à tout moment.
-                  </span>
-                </label>
-              </div>
+                  >
+                    <input
+                      type="checkbox"
+                      checked={marketingConsent}
+                      onChange={(e) => setMarketingConsent(e.target.checked)}
+                      style={{
+                        marginTop: "4px",
+                        transform: "scale(1.2)",
+                      }}
+                    />
+                    <span>
+                      J’accepte de recevoir occasionnellement des nouvelles,
+                      offres et informations de La Maison Verte (vos données restent confidentielles).
+                    </span>
+                  </label>
+                </div>
 
-              <div className="contract-acceptance-box">
-                <label className="contract-acceptance-label">
-                  <input
-                    type="checkbox"
-                    checked={contractAccepted}
-                    onChange={(e) => setContractAccepted(e.target.checked)}
-                    className="contract-acceptance-checkbox"
-                  />
+                <div className="contract-acceptance-box" style={{ margin: 0 }}>
+                  <label className="contract-acceptance-label">
+                    <input
+                      type="checkbox"
+                      checked={contractAccepted}
+                      onChange={(e) => setContractAccepted(e.target.checked)}
+                      className="contract-acceptance-checkbox"
+                    />
 
-                  <span className="contract-acceptance-text">
-                    J’ai lu et j’accepte le{" "}
-                    <a
-                      href="/documents/contrat-location.pdf"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="contract-link"
-                    >
-                      contrat de location saisonnière
-                    </a>{" "}
-                    ainsi que les conditions générales de réservation.
+                    <span className="contract-acceptance-text">
+                      J’ai lu et j’accepte le{" "}
+                      <a
+                        href="/documents/contrat-location.pdf"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="contract-link"
+                      >
+                        contrat de location
+                        <br />
+                        et les conditions générales
+                        <br />
+                        de réservation
+                      </a>.
+                    </span>
+                  </label>
+                </div>
+
+                <a
+                  href="https://lamaisonverte65.fr/livret"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "block",
+                    padding: "16px",
+                    borderRadius: "16px",
+                    background: "#eef7f0",
+                    border: "1px solid #cde8d2",
+                    color: "#1f6f3d",
+                    textDecoration: "none",
+                    fontWeight: "700",
+                    lineHeight: "1.5",
+                  }}
+                >
+                  Préparer votre séjour
+                  <br />
+                  <span
+                    style={{
+                      color: "#475569",
+                      fontWeight: "400",
+                      fontSize: "0.9rem",
+                    }}
+                  >
+                    Consulter le livret d’accueil
                   </span>
-                </label>
+                </a>
               </div>
 
               <button
@@ -2647,7 +2731,11 @@ export default function MaisonVerte() {
                 >
                   <span>Séjour x {numberOfNights} nuits</span>
 
-                  <span>{accommodationTotal}€</span>
+                  <span>
+                    {pricingLoaded && accommodationTotal > 0
+                      ? `${accommodationTotal}€`
+                      : "..."}
+                  </span>
                 </div>
 
                 <hr
@@ -2666,7 +2754,9 @@ export default function MaisonVerte() {
                 >
                   <span>Total estimatif</span>
 
-                  <span>{total}€</span>
+                  <span>
+                    {pricingLoaded && total > 0 ? `${total}€` : "..."}
+                  </span>
                 </div>
               </div>
             </div>
@@ -3192,7 +3282,7 @@ export default function MaisonVerte() {
           </div>
 
           {/* BANNIERE CONTACT */}
-
+          <a   href="mailto:lamaisonverte65@gmail.com"  title="Cliquez pour nous envoyer un email">   
           <img
             src="/banniere.webp"
             alt="Email et adresse de La Maison Verte à Arreau"
@@ -3205,6 +3295,7 @@ export default function MaisonVerte() {
               boxShadow: "0 20px 60px rgba(0,0,0,0.08)",
             }}
           />
+          </a>  
 
           {/* GOOGLE MAPS */}
 
@@ -3231,10 +3322,54 @@ export default function MaisonVerte() {
 
       {/* FOOTER */}
 
-      <footer>
-        <h3>La Maison Verte</h3>
+      <footer
+        style={{
+          background: "#1f6f3d",
+          color: "white",
+          padding: "54px 24px 42px",
+          textAlign: "center",
+        }}
+      >
+        
 
-        <p>Arreau • Hautes-Pyrénées</p>
+        <div
+          
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              flexWrap: "wrap",
+              gap: "14px 22px",
+              background: "transparent",
+            }}
+          >
+            {[
+              ["Livret d'accueil", "/livret"],
+              ["Contrat & conditions de réservation", "/documents/contrat-location.pdf"],
+              ["Mentions légales", "/mentions-legales"],
+              ["Politique de confidentialité", "/politique-confidentialite"],
+            ].map(([label, href]) => (
+              <a
+                key={href}
+                href={href}
+                target={href.endsWith(".pdf") ? "_blank" : undefined}
+                rel={href.endsWith(".pdf") ? "noopener noreferrer" : undefined}
+                style={{
+                  color: "rgba(255,255,255,0.92)",
+                  textDecoration: "none",
+                  background: "transparent",
+                }}
+              >
+                {label}
+              </a>
+            ))}
+          </div>
+        </div>
+        <br/>
+        <p style={{ margin: 0, fontSize: "0.85rem", opacity: 0.8 }}>
+          © 2026 La Maison Verte
+        </p>
       </footer>
 
       {lightboxOpen && (

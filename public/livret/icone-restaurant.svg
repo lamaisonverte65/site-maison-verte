@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <circle cx="32" cy="32" r="28" fill="#E9EBCF"></circle>
+
+  <g fill="none" stroke="#2F4F35" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- Fourchette -->
+    <path d="M20 16v10"></path>
+    <path d="M24 16v10"></path>
+    <path d="M28 16v10"></path>
+    <path d="M20 26h8"></path>
+    <path d="M24 26v22"></path>
+
+    <!-- Couteau -->
+    <path d="M40 16v32"></path>
+    <path d="M40 16c5 3 6 7 6 11s-1 8-6 10"></path>
+
+  </g>
+</svg>
