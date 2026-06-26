@@ -295,62 +295,6 @@ export default function MaisonVerte() {
     fetchPublishedReviews();
   }, []);
 
-  useEffect(() => {
-    async function trackSiteVisit() {
-      try {
-        const todayKey = formatLocalDate(new Date());
-        const storageKey = `lmv_visit_${todayKey}`;
-        if (window.localStorage.getItem(storageKey)) return;
-
-        let visitorId = window.localStorage.getItem("lmv_visitor_id");
-        if (!visitorId) {
-          visitorId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-          window.localStorage.setItem("lmv_visitor_id", visitorId);
-        }
-
-        const referrer = document.referrer || "";
-        let referrerDomain = "";
-        try {
-          referrerDomain = referrer
-            ? new URL(referrer).hostname.replace(/^www\./, "")
-            : "";
-        } catch {
-          referrerDomain = "";
-        }
-
-        const params = new URLSearchParams(window.location.search);
-        const utmSource = params.get("utm_source");
-        const detectedSource =
-          utmSource ||
-          (referrerDomain.includes("google")
-            ? "google"
-            : referrerDomain.includes("booking")
-              ? "booking"
-              : referrerDomain.includes("airbnb")
-                ? "airbnb"
-                : referrerDomain.includes("facebook")
-                  ? "facebook"
-                  : referrerDomain
-                    ? "referral"
-                    : "direct");
-
-        window.localStorage.setItem(storageKey, "1");
-        await supabase.from("site_visits").insert([
-          {
-            page: window.location.pathname || "/",
-            visitor_id: visitorId,
-            referrer,
-            referrer_domain: referrerDomain || null,
-            source: detectedSource,
-          },
-        ]);
-      } catch (error) {
-        console.error("Erreur compteur visites :", error);
-      }
-    }
-
-    trackSiteVisit();
-  }, []);
 
   useEffect(() => {
     if (

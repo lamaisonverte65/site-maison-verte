@@ -78,6 +78,125 @@ function groupCount(rows, keyGetter, limit = 6) {
   return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
 }
 
+function getVisitMetadata(visit) {
+  if (!visit?.metadata) return {};
+  if (typeof visit.metadata === "object") return visit.metadata;
+  try {
+    return JSON.parse(visit.metadata);
+  } catch {
+    return {};
+  }
+}
+
+function getVisitEventType(visit) {
+  return visit?.event_type || getVisitMetadata(visit).event_type || "page_view";
+}
+
+function isPageView(visit) {
+  const type = getVisitEventType(visit);
+  return !type || type === "page_view";
+}
+
+function isInternalVisit(visit, ownVisitorId) {
+  const meta = getVisitMetadata(visit);
+  return Boolean(
+    visit?.is_internal ||
+    visit?.is_admin ||
+    meta.is_internal ||
+    meta.is_admin ||
+    (ownVisitorId && visit?.visitor_id && String(visit.visitor_id) === String(ownVisitorId))
+  );
+}
+
+function formatDurationSeconds(value) {
+  const seconds = Number(value || 0);
+  if (!seconds) return "-";
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest ? `${minutes} min ${rest} s` : `${minutes} min`;
+}
+
+function getDeviceLabel(visit) {
+  const meta = getVisitMetadata(visit);
+  const device = visit?.device_type || meta.device_type || "-";
+  const browser = visit?.browser || meta.browser || "";
+  const os = visit?.os || meta.os || "";
+  return [device, browser, os].filter(Boolean).join(" · ") || "-";
+}
+
+function getCountryLabel(visit) {
+  const meta = getVisitMetadata(visit);
+  return visit?.country || meta.country || meta.country_hint || "-";
+}
+
+function getLinkLabel(visit) {
+  const meta = getVisitMetadata(visit);
+  const text = visit?.link_text || meta.link_text || meta.element_text || "Lien";
+  const href = visit?.href || meta.href || "";
+  return href ? `${text} → ${href}` : text;
+}
+
+function getVisitPageLabel(visit) {
+  const meta = getVisitMetadata(visit);
+  return visit?.page || meta.page || "/";
+}
+
+function getSessionId(visit) {
+  return visit?.session_id || getVisitMetadata(visit).session_id || visit?.visitor_id || "-";
+}
+
+function average(values) {
+  const filtered = values.map(Number).filter((value) => Number.isFinite(value) && value > 0);
+  if (!filtered.length) return 0;
+  return filtered.reduce((sum, value) => sum + value, 0) / filtered.length;
+}
+
+function getUniqueSessionCount(rows) {
+  return new Set((rows || []).map(getSessionId).filter(Boolean)).size;
+}
+
+function formatDayShort(value) {
+  if (!value) return "-";
+  return new Date(value).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+}
+
+function groupVisitsByDay(rows, days = 14) {
+  const map = new Map();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - i);
+    const key = date.toISOString().slice(0, 10);
+    map.set(key, { label: formatDayShort(date), pages: 0, clicks: 0, sessions: new Set(), visitors: new Set() });
+  }
+
+  for (const visit of rows || []) {
+    const date = new Date(visit.created_at);
+    if (Number.isNaN(date.getTime())) continue;
+    date.setHours(0, 0, 0, 0);
+    if (date < new Date(today.getFullYear(), today.getMonth(), today.getDate() - (days - 1))) continue;
+    const key = date.toISOString().slice(0, 10);
+    const row = map.get(key);
+    if (!row) continue;
+    const type = getVisitEventType(visit);
+    if (isPageView(visit)) row.pages += 1;
+    if (type === "link_click") row.clicks += 1;
+    if (getSessionId(visit)) row.sessions.add(getSessionId(visit));
+    if (visit.visitor_id) row.visitors.add(visit.visitor_id);
+  }
+
+  return [...map.values()].map((row) => ({
+    label: row.label,
+    pages: row.pages,
+    clicks: row.clicks,
+    sessions: row.sessions.size,
+    visitors: row.visitors.size,
+  }));
+}
+
 function addHours(hours) {
   return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 }
@@ -171,6 +290,8 @@ export default function Admin() {
   const [guestReviews, setGuestReviews] = useState([]);
   const [siteVisits, setSiteVisits] = useState([]);
   const [siteVisitsTotal, setSiteVisitsTotal] = useState(0);
+  const [ownVisitorId, setOwnVisitorId] = useState("");
+  const [adminTrackingDisabled, setAdminTrackingDisabled] = useState(true);
   const [confirmedReservations, setConfirmedReservations] = useState([]);
   const [stripePayouts, setStripePayouts] = useState([]);
   const [stripeBalanceTransactions, setStripeBalanceTransactions] = useState([]);
@@ -191,6 +312,17 @@ export default function Admin() {
       setAuthLoading(false);
     });
     return () => subscription.unsubscribe();
+  }, []);
+
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("lmv_admin_browser", "1");
+      setOwnVisitorId(window.localStorage.getItem("lmv_visitor_id") || "");
+      setAdminTrackingDisabled(window.localStorage.getItem("lmv_admin_browser") === "1");
+    } catch {
+      // localStorage peut être bloqué en navigation privée : ce n'est pas bloquant.
+    }
   }, []);
 
   useEffect(() => {
@@ -255,7 +387,7 @@ export default function Admin() {
       .order("created_at", { ascending: false });
 
     const sinceVisits = new Date();
-    sinceVisits.setDate(sinceVisits.getDate() - 31);
+    sinceVisits.setDate(sinceVisits.getDate() - 180);
     const { data: siteVisitsData } = await supabase
       .from("site_visits")
       .select("*")
@@ -771,6 +903,23 @@ export default function Admin() {
     window.open("/livret?print=1", "_blank", "noopener,noreferrer");
   }
 
+  function toggleAdminTracking() {
+    try {
+      if (adminTrackingDisabled) {
+        window.localStorage.removeItem("lmv_admin_browser");
+        setAdminTrackingDisabled(false);
+        alert("Ce navigateur sera à nouveau compté dans les visites publiques.");
+      } else {
+        window.localStorage.setItem("lmv_admin_browser", "1");
+        setAdminTrackingDisabled(true);
+        setOwnVisitorId(window.localStorage.getItem("lmv_visitor_id") || "");
+        alert("Ce navigateur ne sera plus compté dans les statistiques publiques.");
+      }
+    } catch {
+      alert("Impossible de modifier le réglage local du navigateur.");
+    }
+  }
+
   const filteredRequests = useMemo(() => bookingRequests.filter((request) => {
     const status = request.status || "pending";
     const matchesStatus = statusFilter === "all" || status === statusFilter || (statusFilter === "paid_group" && ["deposit_paid", "paid", "fully_paid", "confirmed"].includes(status));
@@ -853,11 +1002,81 @@ export default function Admin() {
     });
   }, [customers, search, customerSort, customerFilter]);
 
+  const visibleSiteVisits = useMemo(
+    () => (siteVisits || []).filter((visit) => !isInternalVisit(visit, ownVisitorId)),
+    [siteVisits, ownVisitorId]
+  );
+
+  const pageViewVisits = useMemo(
+    () => visibleSiteVisits.filter(isPageView),
+    [visibleSiteVisits]
+  );
+
+  const clickEvents = useMemo(
+    () => visibleSiteVisits.filter((visit) => getVisitEventType(visit) === "link_click"),
+    [visibleSiteVisits]
+  );
+
+  const sectionEvents = useMemo(
+    () => visibleSiteVisits.filter((visit) => getVisitEventType(visit) === "section_view"),
+    [visibleSiteVisits]
+  );
+
+  const visitSessions = useMemo(() => {
+    const map = new Map();
+    for (const visit of pageViewVisits) {
+      const key = getSessionId(visit);
+      if (!key) continue;
+      const existing = map.get(key) || {
+        sessionId: key,
+        visitorId: visit.visitor_id,
+        firstAt: visit.created_at,
+        lastAt: visit.created_at,
+        pages: [],
+        source: visit.source,
+        referrerDomain: visit.referrer_domain,
+        country: getCountryLabel(visit),
+        device: getDeviceLabel(visit),
+        duration: 0,
+        maxScroll: 0,
+      };
+      existing.firstAt = new Date(visit.created_at) < new Date(existing.firstAt) ? visit.created_at : existing.firstAt;
+      existing.lastAt = new Date(visit.created_at) > new Date(existing.lastAt) ? visit.created_at : existing.lastAt;
+      existing.pages.push(getVisitPageLabel(visit));
+      existing.duration += Number(visit.duration_seconds || getVisitMetadata(visit).duration_seconds || 0);
+      existing.maxScroll = Math.max(existing.maxScroll, Number(visit.max_scroll_percent || getVisitMetadata(visit).max_scroll_percent || 0));
+      map.set(key, existing);
+    }
+    return [...map.values()].sort((a, b) => new Date(b.lastAt || 0) - new Date(a.lastAt || 0));
+  }, [pageViewVisits]);
+
+  const analyticsStats = useMemo(() => {
+    const uniqueVisitors = uniqueVisitorCount(pageViewVisits);
+    const sessions = getUniqueSessionCount(pageViewVisits);
+    const pagesPerSession = sessions ? pageViewVisits.length / sessions : 0;
+    const avgDuration = average(pageViewVisits.map((visit) => visit.duration_seconds || getVisitMetadata(visit).duration_seconds));
+    const mobileShare = pageViewVisits.length
+      ? (pageViewVisits.filter((visit) => String(visit.device_type || getVisitMetadata(visit).device_type || "").toLowerCase() === "mobile").length / pageViewVisits.length) * 100
+      : 0;
+    const clickRate = pageViewVisits.length ? (clickEvents.length / pageViewVisits.length) * 100 : 0;
+
+    return { uniqueVisitors, sessions, pagesPerSession, avgDuration, mobileShare, clickRate };
+  }, [pageViewVisits, clickEvents]);
+
+  const pageStats = useMemo(() => groupCount(pageViewVisits, getVisitPageLabel, 12), [pageViewVisits]);
+  const deviceStats = useMemo(() => groupCount(pageViewVisits, getDeviceLabel, 8), [pageViewVisits]);
+  const browserStats = useMemo(() => groupCount(pageViewVisits, (visit) => visit.browser || getVisitMetadata(visit).browser, 8), [pageViewVisits]);
+  const screenStats = useMemo(() => groupCount(pageViewVisits, (visit) => visit.screen_size || getVisitMetadata(visit).screen_size, 8), [pageViewVisits]);
+  const clickedLinkStats = useMemo(() => groupCount(clickEvents, getLinkLabel, 12), [clickEvents]);
+  const sectionStats = useMemo(() => groupCount(sectionEvents, (visit) => visit.section_id || getVisitMetadata(visit).section_id, 12), [sectionEvents]);
+  const languageStats = useMemo(() => groupCount(pageViewVisits, (visit) => visit.language || getVisitMetadata(visit).language, 8), [pageViewVisits]);
+  const dailyVisitStats = useMemo(() => groupVisitsByDay(visibleSiteVisits, 14), [visibleSiteVisits]);
+
   function visitsSince(days) {
     const since = new Date();
     since.setHours(0, 0, 0, 0);
     if (days > 1) since.setDate(since.getDate() - (days - 1));
-    return siteVisits.filter((visit) => new Date(visit.created_at) >= since).length;
+    return pageViewVisits.filter((visit) => new Date(visit.created_at) >= since).length;
   }
 
   const stats = useMemo(() => {
@@ -866,8 +1085,8 @@ export default function Admin() {
     const confirmedRequests = activeRequests.filter((r) => isConfirmedFinancialStatus(r.status));
     const requestsCount = bookingRequests.length;
     const confirmedCount = confirmedReservations.length || confirmedRequests.length;
-    const uniqueVisitors30 = uniqueVisitorCount(siteVisits);
-    const totalVisitors = siteVisitsTotal || siteVisits.length;
+    const uniqueVisitors30 = uniqueVisitorCount(pageViewVisits);
+    const totalVisitors = pageViewVisits.length;
 
     const depositCollected = activeRequests.reduce((sum, r) => {
       if (!r.deposit_paid_at) return sum;
@@ -925,15 +1144,15 @@ export default function Admin() {
       caConfirmed,
       remainingToCollect,
     };
-  }, [bookingRequests, confirmedReservations, customers, guestReviews, siteVisits, siteVisitsTotal, stripePayouts, stripeBalanceTransactions]);
+  }, [bookingRequests, confirmedReservations, customers, guestReviews, pageViewVisits, stripePayouts, stripeBalanceTransactions]);
 
   const sourceStats = useMemo(() => groupCount([
     ...bookingRequests.filter((request) => !isCancelledFinancialStatus(request.status)).map((request) => ({ source: normalizeSource(request.source) })),
     ...confirmedReservations.map((reservation) => ({ source: normalizeSource(reservation.source) })),
   ], (row) => row.source), [bookingRequests, confirmedReservations]);
 
-  const visitSourceStats = useMemo(() => groupCount(siteVisits, (visit) => normalizeSource(visit.source || visit.referrer_domain || "Direct")), [siteVisits]);
-  const visitCountryStats = useMemo(() => groupCount(siteVisits, (visit) => visit.country || "Non renseigné"), [siteVisits]);
+  const visitSourceStats = useMemo(() => groupCount(pageViewVisits, (visit) => normalizeSource(visit.source || visit.referrer_domain || "Direct")), [pageViewVisits]);
+  const visitCountryStats = useMemo(() => groupCount(pageViewVisits, getCountryLabel), [pageViewVisits]);
 
   const paymentRows = useMemo(() => bookingRequests
     .filter((r) => ["accepted", "deposit_paid", "paid", "fully_paid", "confirmed", "cancelled"].includes(r.status) || Number(r.stripe_fee_amount || 0) > 0 || Number(r.stripe_net_amount || 0) > 0)
@@ -995,7 +1214,11 @@ export default function Admin() {
         </div>
         <div style={styles.headerActions}>
           <button style={styles.printButton} onClick={printWelcomeBooklet}>Imprimer le livret</button>
+          <button style={styles.printButton} onClick={printWelcomeBooklet}>Imprimer le livret</button>
           <button style={styles.refreshButton} onClick={loadAdminData}>Actualiser</button>
+          <button style={adminTrackingDisabled ? styles.smallButton : styles.warningButton} onClick={toggleAdminTracking}>
+            {adminTrackingDisabled ? "Mes visites ignorées" : "Compter mon navigateur"}
+          </button>
           <button style={styles.logoutButton} onClick={handleLogout}>Déconnexion</button>
         </div>
       </section>
@@ -1337,24 +1560,133 @@ export default function Admin() {
       {!loading && !error && activeTab === "visits" && (
         <section style={styles.panel}>
           <div style={styles.panelHeader}>
-            <h2 style={styles.panelTitle}>Compteur de visites</h2>
-            <p style={styles.muted}>Comptage simple : une visite par navigateur et par jour, basé sur localStorage + Supabase.</p>
+            <div>
+              <h2 style={styles.panelTitle}>Statistiques de visite</h2>
+              <p style={styles.muted}>
+                Tes visites admin sont ignorées sur ce navigateur. Les pays peuvent être faussés par VPN/proxy ; quand le pays n'est pas disponible, la langue et le fuseau horaire sont plus fiables.
+              </p>
+            </div>
+            <div style={styles.headerActions}>
+              <button style={styles.smallButton} onClick={loadAdminData}>Actualiser</button>
+              <button style={adminTrackingDisabled ? styles.smallButton : styles.warningButton} onClick={toggleAdminTracking}>
+                {adminTrackingDisabled ? "Ne pas compter mon navigateur" : "Attention : mon navigateur est compté"}
+              </button>
+            </div>
           </div>
+
           <section style={styles.statsGrid}>
-            <StatCard label="Aujourd’hui" value={stats.visitsToday} />
-            <StatCard label="7 derniers jours" value={stats.visitsWeek} />
-            <StatCard label="30 derniers jours" value={stats.visitsMonth} />
-            <StatCard label="Total" value={stats.visitsTotal} />
-            <StatCard label="Visiteurs uniques 30 jours" value={stats.uniqueVisitors30} />
+            <StatCard label="Pages vues aujourd’hui" value={stats.visitsToday} />
+            <StatCard label="Pages vues 7 jours" value={stats.visitsWeek} />
+            <StatCard label="Pages vues 30 jours" value={stats.visitsMonth} />
+            <StatCard label="Pages vues chargées" value={stats.visitsTotal} />
+            <StatCard label="Visiteurs uniques" value={analyticsStats.uniqueVisitors} />
+            <StatCard label="Sessions" value={analyticsStats.sessions} />
+            <StatCard label="Pages / session" value={analyticsStats.pagesPerSession.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} />
+            <StatCard label="Temps moyen / page" value={formatDurationSeconds(Math.round(analyticsStats.avgDuration))} />
+            <StatCard label="Part mobile" value={formatPercent(analyticsStats.mobileShare)} />
+            <StatCard label="Clics enregistrés" value={clickEvents.length} />
+            <StatCard label="Taux clic / page" value={formatPercent(analyticsStats.clickRate)} />
             <StatCard label="Visiteurs → demandes" value={formatPercent(stats.conversionVisitorsToRequests)} />
-            <StatCard label="Demandes → réservations" value={formatPercent(stats.conversionRequestsToBookings)} />
-            <StatCard label="Visiteurs → réservations" value={formatPercent(stats.conversionVisitorsToBookings)} />
           </section>
-          {siteVisits.length === 0 ? <p style={styles.empty}>Aucune visite enregistrée pour le moment.</p> : (
+
+          <div style={styles.analyticsChartsGrid}>
+            <MiniBarChart
+              title="Pages vues sur 14 jours"
+              rows={dailyVisitStats.map((row) => [row.label, row.pages])}
+              emptyLabel="Aucune page vue"
+            />
+            <MiniBarChart
+              title="Clics sur 14 jours"
+              rows={dailyVisitStats.map((row) => [row.label, row.clicks])}
+              emptyLabel="Aucun clic"
+            />
+            <MiniBarChart title="Origines principales" rows={visitSourceStats.slice(0, 8)} />
+            <MiniBarChart title="Pages les plus vues" rows={pageStats.slice(0, 8)} />
+          </div>
+
+          <div style={styles.summaryGrid}>
+            <SummaryList title="Pages les plus vues" rows={pageStats} />
+            <SummaryList title="Liens cliqués" rows={clickedLinkStats} />
+            <SummaryList title="Sources" rows={visitSourceStats} />
+            <SummaryList title="Pays / indication pays" rows={visitCountryStats} />
+            <SummaryList title="Appareils" rows={deviceStats} />
+            <SummaryList title="Navigateurs" rows={browserStats} />
+            <SummaryList title="Tailles écran" rows={screenStats} />
+            <SummaryList title="Langues" rows={languageStats} />
+            <SummaryList title="Sections vues" rows={sectionStats} />
+          </div>
+
+          <h3 style={styles.subTitle}>Sessions récentes</h3>
+          {visitSessions.length === 0 ? <p style={styles.empty}>Aucune visite externe enregistrée pour le moment.</p> : (
             <div style={styles.tableWrapper}>
               <table style={styles.table}>
-                <thead style={styles.stickyHead}><tr><th style={styles.th}>Date</th><th style={styles.th}>Page</th><th style={styles.th}>Origine</th><th style={styles.th}>Domaine référent</th><th style={styles.th}>Pays</th><th style={styles.th}>Visiteur</th></tr></thead>
-                <tbody>{siteVisits.slice(0, 120).map((visit) => <tr key={visit.id}><td style={styles.td}>{formatDateTime(visit.created_at)}</td><td style={styles.td}>{visit.page || "/"}</td><td style={styles.td}>{normalizeSource(visit.source || "Direct")}</td><td style={styles.td}>{visit.referrer_domain || "-"}</td><td style={styles.td}>{visit.country || "-"}</td><td style={styles.td}>{String(visit.visitor_id || "-").slice(0, 18)}</td></tr>)}</tbody>
+                <thead style={styles.stickyHead}>
+                  <tr>
+                    <th style={styles.th}>Dernière activité</th>
+                    <th style={styles.th}>Source</th>
+                    <th style={styles.th}>Appareil</th>
+                    <th style={styles.th}>Pays</th>
+                    <th style={styles.th}>Pages vues</th>
+                    <th style={styles.th}>Durée connue</th>
+                    <th style={styles.th}>Scroll max</th>
+                    <th style={styles.th}>Visiteur</th>
+                  </tr>
+                </thead>
+                <tbody>{visitSessions.slice(0, 80).map((session) => (
+                  <tr key={session.sessionId}>
+                    <td style={styles.td}>{formatDateTime(session.lastAt)}</td>
+                    <td style={styles.td}>{normalizeSource(session.source || session.referrerDomain || "Direct")}</td>
+                    <td style={styles.td}>{session.device}</td>
+                    <td style={styles.td}>{session.country || "-"}</td>
+                    <td style={{...styles.td, whiteSpace: "normal", minWidth: "220px"}}>{[...new Set(session.pages)].join(" → ")}</td>
+                    <td style={styles.td}>{formatDurationSeconds(session.duration)}</td>
+                    <td style={styles.td}>{session.maxScroll ? `${session.maxScroll} %` : "-"}</td>
+                    <td style={styles.td}>{String(session.visitorId || "-").slice(0, 18)}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
+
+          <h3 style={styles.subTitle}>Événements récents</h3>
+          {visibleSiteVisits.length === 0 ? <p style={styles.empty}>Aucun événement enregistré pour le moment.</p> : (
+            <div style={styles.tableWrapper}>
+              <table style={styles.table}>
+                <thead style={styles.stickyHead}>
+                  <tr>
+                    <th style={styles.th}>Date</th>
+                    <th style={styles.th}>Type</th>
+                    <th style={styles.th}>Page</th>
+                    <th style={styles.th}>Origine</th>
+                    <th style={styles.th}>Détail</th>
+                    <th style={styles.th}>Appareil</th>
+                    <th style={styles.th}>Pays</th>
+                    <th style={styles.th}>Durée / scroll</th>
+                    <th style={styles.th}>Visiteur</th>
+                  </tr>
+                </thead>
+                <tbody>{visibleSiteVisits.slice(0, 160).map((visit) => {
+                  const type = getVisitEventType(visit);
+                  const meta = getVisitMetadata(visit);
+                  const detail = type === "link_click"
+                    ? getLinkLabel(visit)
+                    : type === "section_view"
+                      ? (visit.section_id || meta.section_id || "Section")
+                      : (visit.referrer_domain || meta.referrer_domain || "-");
+                  const duration = visit.duration_seconds || meta.duration_seconds;
+                  const scroll = visit.max_scroll_percent || meta.max_scroll_percent;
+                  return <tr key={visit.id}>
+                    <td style={styles.td}>{formatDateTime(visit.created_at)}</td>
+                    <td style={styles.td}>{type}</td>
+                    <td style={styles.td}>{getVisitPageLabel(visit)}</td>
+                    <td style={styles.td}>{normalizeSource(visit.source || meta.source || "Direct")}</td>
+                    <td style={{...styles.td, whiteSpace: "normal", minWidth: "260px"}}>{detail}</td>
+                    <td style={styles.td}>{getDeviceLabel(visit)}</td>
+                    <td style={styles.td}>{getCountryLabel(visit)}</td>
+                    <td style={styles.td}>{formatDurationSeconds(duration)}{scroll ? ` · ${scroll} %` : ""}</td>
+                    <td style={styles.td}>{String(visit.visitor_id || "-").slice(0, 18)}</td>
+                  </tr>;
+                })}</tbody>
               </table>
             </div>
           )}
@@ -1648,6 +1980,36 @@ function ActionModal({ modal, onClose, onSubmit }) {
   );
 }
 
+function MiniBarChart({ title, rows, emptyLabel = "Aucune donnée" }) {
+  const cleanRows = (rows || []).filter(([label]) => label !== undefined && label !== null && String(label).trim() !== "");
+  const max = Math.max(1, ...cleanRows.map(([, count]) => Number(count || 0)));
+
+  return (
+    <div style={styles.chartBox}>
+      <strong>{title}</strong>
+      {cleanRows.length === 0 ? (
+        <p style={styles.muted}>{emptyLabel}.</p>
+      ) : (
+        <div style={styles.chartRows}>
+          {cleanRows.map(([label, count]) => {
+            const value = Number(count || 0);
+            const width = `${Math.max(4, Math.round((value / max) * 100))}%`;
+            return (
+              <div key={String(label)} style={styles.chartRow}>
+                <div style={styles.chartLabel} title={String(label)}>{String(label)}</div>
+                <div style={styles.chartTrack}>
+                  <div style={{ ...styles.chartBar, width }} />
+                </div>
+                <strong style={styles.chartValue}>{value}</strong>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SummaryList({ title, rows }) {
   return (
     <div style={styles.summaryBox}>
@@ -1666,7 +2028,7 @@ function SortableTh({ label, sortKey, sort, onSort }) { const active = sort.key 
 function EditableTd({ value, onClick }) { return <td style={styles.td} onClick={onClick} title="Cliquer pour modifier">{value || "-"}</td>; }
 
 const styles = {
-  summaryGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))",gap:"14px",marginTop:"12px"},summaryBox:{background:"#f8fafc",border:"1px solid #e5e7eb",borderRadius:"18px",padding:"14px"},summaryRow:{display:"flex",justifyContent:"space-between",gap:"12px",margin:"8px 0",color:"#475569"},
+  analyticsChartsGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))",gap:"14px",margin:"18px 0"},chartBox:{background:"#f8fafc",border:"1px solid #e5e7eb",borderRadius:"18px",padding:"14px"},chartRows:{display:"grid",gap:"10px",marginTop:"12px"},chartRow:{display:"grid",gridTemplateColumns:"minmax(90px, 150px) 1fr 38px",gap:"10px",alignItems:"center",fontSize:"13px"},chartLabel:{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"#475569"},chartTrack:{height:"12px",background:"#e2e8f0",borderRadius:"999px",overflow:"hidden"},chartBar:{height:"100%",background:"#2f4f35",borderRadius:"999px"},chartValue:{textAlign:"right",fontSize:"13px"},summaryGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))",gap:"14px",marginTop:"12px"},summaryBox:{background:"#f8fafc",border:"1px solid #e5e7eb",borderRadius:"18px",padding:"14px"},summaryRow:{display:"flex",justifyContent:"space-between",gap:"12px",margin:"8px 0",color:"#475569"},
   page:{minHeight:"100vh",padding:"32px",background:"#f3f0e8",color:"#1f2933",fontFamily:"Inter, system-ui, sans-serif"},header:{display:"flex",justifyContent:"space-between",gap:"24px",alignItems:"center",marginBottom:"28px",flexWrap:"wrap"},headerActions:{display:"flex",gap:"10px",flexWrap:"wrap"},kicker:{margin:0,color:"#4f6f52",textTransform:"uppercase",letterSpacing:"0.12em",fontSize:"12px",fontWeight:700},title:{margin:"6px 0",fontSize:"clamp(28px, 4vw, 44px)"},subtitle:{margin:0,color:"#64748b"},printButton: {
     border: "none",
     background: "#2f4f35",
@@ -1676,5 +2038,5 @@ const styles = {
     cursor: "pointer",
     fontWeight: 700,
   },
-  refreshButton:{border:"none",borderRadius:"999px",padding:"12px 18px",background:"#2f4f35",color:"white",fontWeight:700,cursor:"pointer"},logoutButton:{border:"none",borderRadius:"999px",padding:"12px 18px",background:"#dc2626",color:"white",fontWeight:700,cursor:"pointer"},statsGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))",gap:"16px",marginBottom:"22px"},statCard:{textAlign:"left",border:"none",background:"white",borderRadius:"22px",padding:"20px",boxShadow:"0 12px 30px rgba(0,0,0,0.08)",cursor:"pointer"},statLabel:{color:"#64748b",fontSize:"14px"},statValue:{display:"block",fontSize:"30px",marginTop:"8px"},toolbar:{display:"flex",gap:"12px",marginBottom:"18px",flexWrap:"wrap"},searchInput:{flex:"1 1 280px",padding:"14px 16px",borderRadius:"16px",border:"1px solid #d6d3c8",fontSize:"15px"},select:{padding:"14px 16px",borderRadius:"16px",border:"1px solid #d6d3c8",background:"white"},tabs:{display:"flex",gap:"10px",flexWrap:"wrap",marginBottom:"20px"},tab:{border:"1px solid #d6d3c8",background:"white",borderRadius:"999px",padding:"10px 16px",cursor:"pointer"},activeTab:{border:"1px solid #2f4f35",background:"#2f4f35",color:"white",borderRadius:"999px",padding:"10px 16px",cursor:"pointer"},panel:{background:"white",borderRadius:"28px",padding:"22px",boxShadow:"0 12px 30px rgba(0,0,0,0.08)"},panelHeader:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:"12px",flexWrap:"wrap"},panelTitle:{marginTop:0,marginBottom:"18px"},badge:{color:"white",borderRadius:"999px",padding:"5px 10px",fontSize:"12px",fontWeight:700,whiteSpace:"nowrap"},muted:{color:"#64748b",fontSize:"14px",margin:"4px 0"},tableWrapper:{overflowX:"auto",maxHeight:"70vh",border:"1px solid #e5e7eb",borderRadius:"18px"},table:{minWidth:"1200px",width:"100%",borderCollapse:"collapse",fontSize:"14px"},stickyHead:{position:"sticky",top:0,background:"white",zIndex:2},th:{textAlign:"left",padding:"12px",borderBottom:"1px solid #e5e7eb",whiteSpace:"nowrap",background:"white"},thButton:{border:"none",background:"transparent",fontWeight:800,cursor:"pointer",padding:0},td:{padding:"12px",borderBottom:"1px solid #e5e7eb",cursor:"pointer",verticalAlign:"top"},clickableRow:{cursor:"pointer"},selectedRow:{cursor:"pointer",background:"#f0fdf4"},reservationSheet:{display:"grid",gap:"18px"},detailHeader:{display:"flex",justifyContent:"space-between",gap:"16px",flexWrap:"wrap"},detailTitle:{margin:0,fontSize:"26px"},subTitle:{margin:"6px 0 0",color:"#2f4f35"},detailGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))",gap:"12px"},infoItem:{background:"#f8fafc",borderRadius:"16px",padding:"14px",display:"grid",gap:"5px"},noteBox:{background:"#f8fafc",borderRadius:"16px",padding:"16px",lineHeight:1.5},actions:{display:"flex",gap:"10px",flexWrap:"wrap",padding:"14px",margin:"6px 0 4px",background:"#f8fafc",border:"1px solid #e5e7eb",borderRadius:"18px",alignItems:"center"},acceptButton:{border:"none",borderRadius:"999px",padding:"11px 16px",background:"#16a34a",color:"white",cursor:"pointer",fontWeight:800,boxShadow:"0 8px 18px rgba(22,163,74,0.18)"},refuseButton:{border:"none",borderRadius:"999px",padding:"11px 16px",background:"#dc2626",color:"white",cursor:"pointer",fontWeight:800,boxShadow:"0 8px 18px rgba(220,38,38,0.18)"},confirmButton:{border:"none",borderRadius:"999px",padding:"11px 16px",background:"#15803d",color:"white",cursor:"pointer",fontWeight:800,boxShadow:"0 8px 18px rgba(21,128,61,0.18)"},cancelButton:{border:"none",borderRadius:"999px",padding:"11px 16px",background:"#6b7280",color:"white",cursor:"pointer",fontWeight:800,boxShadow:"0 8px 18px rgba(107,114,128,0.18)"},addButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#2f4f35",color:"white",cursor:"pointer"},smallButton:{border:"none",borderRadius:"999px",padding:"7px 10px",background:"#e2e8f0",cursor:"pointer",whiteSpace:"nowrap"},linkButton:{borderRadius:"999px",padding:"7px 10px",background:"#dbeafe",color:"#1d4ed8",textDecoration:"none",whiteSpace:"nowrap"},contactButtons:{display:"flex",gap:"8px",flexWrap:"wrap"},financeActionsBox:{display:"flex",gap:"10px",flexWrap:"wrap",padding:"14px",background:"#f8fafc",border:"1px solid #e5e7eb",borderRadius:"18px"},paymentButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#2563eb",color:"white",cursor:"pointer",fontWeight:700},refundButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#9333ea",color:"white",cursor:"pointer",fontWeight:700},chipList:{display:"flex",gap:"6px",flexWrap:"wrap"},historyChip:{border:"none",borderRadius:"999px",padding:"6px 9px",background:"#eef2ff",color:"#3730a3",cursor:"pointer"},deleteButton:{border:"none",borderRadius:"999px",background:"#dc2626",color:"white",padding:"8px 12px",cursor:"pointer"},empty:{color:"#64748b",lineHeight:1.6},info:{background:"white",padding:"20px",borderRadius:"18px"},error:{background:"#fee2e2",color:"#991b1b",padding:"20px",borderRadius:"18px"},historyBox:{background:"#fff",border:"1px solid #e5e7eb",borderRadius:"18px",padding:"14px"},historyList:{display:"grid",gap:"10px"},historyItem:{background:"#f8fafc",borderRadius:"14px",padding:"12px",lineHeight:1.45},modalOverlay:{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50,padding:"20px"},modal:{background:"white",width:"100%",maxWidth:"760px",borderRadius:"28px",padding:"24px",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",maxHeight:"90vh",overflowY:"auto"},modalHeader:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"16px",marginBottom:"12px"},closeButton:{border:"none",background:"#e5e7eb",borderRadius:"999px",width:"36px",height:"36px",cursor:"pointer",fontSize:"22px"},label:{display:"grid",gap:"8px",fontWeight:700,marginTop:"16px"},input:{padding:"12px 14px",borderRadius:"14px",border:"1px solid #d1d5db",fontSize:"15px"},largeTextarea:{minHeight:"220px",padding:"14px",borderRadius:"16px",border:"1px solid #d1d5db",fontSize:"15px",resize:"vertical",lineHeight:1.5},securityBox:{display:"flex",gap:"10px",alignItems:"flex-start",marginTop:"18px",padding:"14px",borderRadius:"16px",background:"#fff7ed",border:"1px solid #fed7aa",lineHeight:1.5},modalActions:{display:"flex",justifyContent:"flex-end",gap:"10px",marginTop:"20px",flexWrap:"wrap"}
+  refreshButton:{border:"none",borderRadius:"999px",padding:"12px 18px",background:"#2f4f35",color:"white",fontWeight:700,cursor:"pointer"},logoutButton:{border:"none",borderRadius:"999px",padding:"12px 18px",background:"#dc2626",color:"white",fontWeight:700,cursor:"pointer"},warningButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#f59e0b",color:"#111827",fontWeight:700,cursor:"pointer"},statsGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))",gap:"16px",marginBottom:"22px"},statCard:{textAlign:"left",border:"none",background:"white",borderRadius:"22px",padding:"20px",boxShadow:"0 12px 30px rgba(0,0,0,0.08)",cursor:"pointer"},statLabel:{color:"#64748b",fontSize:"14px"},statValue:{display:"block",fontSize:"30px",marginTop:"8px"},toolbar:{display:"flex",gap:"12px",marginBottom:"18px",flexWrap:"wrap"},searchInput:{flex:"1 1 280px",padding:"14px 16px",borderRadius:"16px",border:"1px solid #d6d3c8",fontSize:"15px"},select:{padding:"14px 16px",borderRadius:"16px",border:"1px solid #d6d3c8",background:"white"},tabs:{display:"flex",gap:"10px",flexWrap:"wrap",marginBottom:"20px"},tab:{border:"1px solid #d6d3c8",background:"white",borderRadius:"999px",padding:"10px 16px",cursor:"pointer"},activeTab:{border:"1px solid #2f4f35",background:"#2f4f35",color:"white",borderRadius:"999px",padding:"10px 16px",cursor:"pointer"},panel:{background:"white",borderRadius:"28px",padding:"22px",boxShadow:"0 12px 30px rgba(0,0,0,0.08)"},panelHeader:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:"12px",flexWrap:"wrap"},panelTitle:{marginTop:0,marginBottom:"18px"},badge:{color:"white",borderRadius:"999px",padding:"5px 10px",fontSize:"12px",fontWeight:700,whiteSpace:"nowrap"},muted:{color:"#64748b",fontSize:"14px",margin:"4px 0"},tableWrapper:{overflowX:"auto",maxHeight:"70vh",border:"1px solid #e5e7eb",borderRadius:"18px"},table:{minWidth:"1200px",width:"100%",borderCollapse:"collapse",fontSize:"14px"},stickyHead:{position:"sticky",top:0,background:"white",zIndex:2},th:{textAlign:"left",padding:"12px",borderBottom:"1px solid #e5e7eb",whiteSpace:"nowrap",background:"white"},thButton:{border:"none",background:"transparent",fontWeight:800,cursor:"pointer",padding:0},td:{padding:"12px",borderBottom:"1px solid #e5e7eb",cursor:"pointer",verticalAlign:"top"},clickableRow:{cursor:"pointer"},selectedRow:{cursor:"pointer",background:"#f0fdf4"},reservationSheet:{display:"grid",gap:"18px"},detailHeader:{display:"flex",justifyContent:"space-between",gap:"16px",flexWrap:"wrap"},detailTitle:{margin:0,fontSize:"26px"},subTitle:{margin:"6px 0 0",color:"#2f4f35"},detailGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))",gap:"12px"},infoItem:{background:"#f8fafc",borderRadius:"16px",padding:"14px",display:"grid",gap:"5px"},noteBox:{background:"#f8fafc",borderRadius:"16px",padding:"16px",lineHeight:1.5},actions:{display:"flex",gap:"10px",flexWrap:"wrap",padding:"14px",margin:"6px 0 4px",background:"#f8fafc",border:"1px solid #e5e7eb",borderRadius:"18px",alignItems:"center"},acceptButton:{border:"none",borderRadius:"999px",padding:"11px 16px",background:"#16a34a",color:"white",cursor:"pointer",fontWeight:800,boxShadow:"0 8px 18px rgba(22,163,74,0.18)"},refuseButton:{border:"none",borderRadius:"999px",padding:"11px 16px",background:"#dc2626",color:"white",cursor:"pointer",fontWeight:800,boxShadow:"0 8px 18px rgba(220,38,38,0.18)"},confirmButton:{border:"none",borderRadius:"999px",padding:"11px 16px",background:"#15803d",color:"white",cursor:"pointer",fontWeight:800,boxShadow:"0 8px 18px rgba(21,128,61,0.18)"},cancelButton:{border:"none",borderRadius:"999px",padding:"11px 16px",background:"#6b7280",color:"white",cursor:"pointer",fontWeight:800,boxShadow:"0 8px 18px rgba(107,114,128,0.18)"},addButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#2f4f35",color:"white",cursor:"pointer"},smallButton:{border:"none",borderRadius:"999px",padding:"7px 10px",background:"#e2e8f0",cursor:"pointer",whiteSpace:"nowrap"},linkButton:{borderRadius:"999px",padding:"7px 10px",background:"#dbeafe",color:"#1d4ed8",textDecoration:"none",whiteSpace:"nowrap"},contactButtons:{display:"flex",gap:"8px",flexWrap:"wrap"},financeActionsBox:{display:"flex",gap:"10px",flexWrap:"wrap",padding:"14px",background:"#f8fafc",border:"1px solid #e5e7eb",borderRadius:"18px"},paymentButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#2563eb",color:"white",cursor:"pointer",fontWeight:700},refundButton:{border:"none",borderRadius:"999px",padding:"10px 14px",background:"#9333ea",color:"white",cursor:"pointer",fontWeight:700},chipList:{display:"flex",gap:"6px",flexWrap:"wrap"},historyChip:{border:"none",borderRadius:"999px",padding:"6px 9px",background:"#eef2ff",color:"#3730a3",cursor:"pointer"},deleteButton:{border:"none",borderRadius:"999px",background:"#dc2626",color:"white",padding:"8px 12px",cursor:"pointer"},empty:{color:"#64748b",lineHeight:1.6},info:{background:"white",padding:"20px",borderRadius:"18px"},error:{background:"#fee2e2",color:"#991b1b",padding:"20px",borderRadius:"18px"},historyBox:{background:"#fff",border:"1px solid #e5e7eb",borderRadius:"18px",padding:"14px"},historyList:{display:"grid",gap:"10px"},historyItem:{background:"#f8fafc",borderRadius:"14px",padding:"12px",lineHeight:1.45},modalOverlay:{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50,padding:"20px"},modal:{background:"white",width:"100%",maxWidth:"760px",borderRadius:"28px",padding:"24px",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",maxHeight:"90vh",overflowY:"auto"},modalHeader:{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"16px",marginBottom:"12px"},closeButton:{border:"none",background:"#e5e7eb",borderRadius:"999px",width:"36px",height:"36px",cursor:"pointer",fontSize:"22px"},label:{display:"grid",gap:"8px",fontWeight:700,marginTop:"16px"},input:{padding:"12px 14px",borderRadius:"14px",border:"1px solid #d1d5db",fontSize:"15px"},largeTextarea:{minHeight:"220px",padding:"14px",borderRadius:"16px",border:"1px solid #d1d5db",fontSize:"15px",resize:"vertical",lineHeight:1.5},securityBox:{display:"flex",gap:"10px",alignItems:"flex-start",marginTop:"18px",padding:"14px",borderRadius:"16px",background:"#fff7ed",border:"1px solid #fed7aa",lineHeight:1.5},modalActions:{display:"flex",justifyContent:"flex-end",gap:"10px",marginTop:"20px",flexWrap:"wrap"}
 };

@@ -7,6 +7,7 @@ import ContactRedirect from "./pages/ContactRedirect";
 import AppelerRedirect from "./pages/AppelerRedirect";
 import MentionsLegales from "./components/MentionsLegales";
 import PolitiqueConfidentialite from "./components/PolitiqueConfidentialite";
+import SiteAnalyticsTracker from "./components/SiteAnalyticsTracker";
 
 
 function PaymentSuccess() {
@@ -261,47 +262,56 @@ function ArrivalTimePage() {
 export default function App() {
   const path = window.location.pathname;
 
+  function withAnalytics(page) {
+    return (
+      <>
+        <SiteAnalyticsTracker />
+        {page}
+      </>
+    );
+  }
+
   if (path === "/admin") {
     return <Admin />;
   }
 
   if (path === "/success") {
-    return <PaymentSuccess />;
+    return withAnalytics(<PaymentSuccess />);
   }
 
   if (path === "/cancel") {
-    return <PaymentCancel />;
+    return withAnalytics(<PaymentCancel />);
   }
 
   if (path === "/arrival") {
-    return <ArrivalTimePage />;
+    return withAnalytics(<ArrivalTimePage />);
   }
   
   if (path === "/guide-vallees-aure-louron") {
-    return <GuideValleesAureLouron />;
+    return withAnalytics(<GuideValleesAureLouron />);
   }
   
   if (path === "/livret" || path === "/livret-accueil") {
-    return <LivretAccueil />;
+    return withAnalytics(<LivretAccueil />);
   }
 
   if (path === "/mentions-legales") {
-    return <MentionsLegales />;
+    return withAnalytics(<MentionsLegales />);
   }
 
   if (path === "/politique-confidentialite") {
-    return <PolitiqueConfidentialite />;
+    return withAnalytics(<PolitiqueConfidentialite />);
   }
 
   if (path === "/contact") {
-    return <ContactRedirect />;
+    return withAnalytics(<ContactRedirect />);
   }
 
   if (path === "/appeler") {
-    return <AppelerRedirect />;
+    return withAnalytics(<AppelerRedirect />);
   }
   
-  return <MaisonVerte />;
+  return withAnalytics(<MaisonVerte />);
 
   
 }
