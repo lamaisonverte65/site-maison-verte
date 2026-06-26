@@ -281,7 +281,7 @@ export default function App() {
     return <GuideValleesAureLouron />;
   }
   
-  if (path === "/livret") {
+  if (path === "/livret" || path === "/livret-accueil") {
     return <LivretAccueil />;
   }
 

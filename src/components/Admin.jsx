@@ -767,10 +767,6 @@ export default function Admin() {
     setActiveTab("customers");
   }
 
-  function printWelcomeBooklet() {
-    window.open("/livret-accueil?print=1", "_blank", "noopener,noreferrer");
-  }
-
   const filteredRequests = useMemo(() => bookingRequests.filter((request) => {
     const status = request.status || "pending";
     const matchesStatus = statusFilter === "all" || status === statusFilter || (statusFilter === "paid_group" && ["deposit_paid", "paid", "fully_paid", "confirmed"].includes(status));
@@ -994,7 +990,7 @@ export default function Admin() {
           <p style={styles.subtitle}>Demandes en cours, réservations, clients, calendrier, paiements et CRM.</p>
         </div>
         <div style={styles.headerActions}>
-          <button style={styles.printButton} onClick={printWelcomeBooklet}>Imprimer le livret</button>
+          <a style={styles.printButton} href="/livret?print=1" target="_blank" rel="noopener noreferrer">Imprimer le livret</a>
           <button style={styles.refreshButton} onClick={loadAdminData}>Actualiser</button>
           <button style={styles.logoutButton} onClick={handleLogout}>Déconnexion</button>
         </div>

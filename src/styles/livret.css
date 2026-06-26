@@ -1185,3 +1185,64 @@
     text-decoration: none !important;
   }
 }
+
+
+/* Impression A4 — bloc final volontairement placé tout en bas
+   pour écraser les règles responsive et conserver la mise en page papier. */
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  html,
+  body,
+  #root {
+    width: 210mm !important;
+    min-width: 210mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .no-print,
+  .livret-toolbar {
+    display: none !important;
+  }
+
+  .livret {
+    width: 210mm !important;
+    min-width: 210mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .livret-page {
+    width: 210mm !important;
+    min-width: 210mm !important;
+    height: 297mm !important;
+    min-height: 297mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    overflow: hidden !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .livret-page:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  .livret-page-inner {
+    height: 297mm !important;
+    box-sizing: border-box !important;
+  }
+}

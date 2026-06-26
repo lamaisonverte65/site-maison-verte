@@ -5,14 +5,66 @@ import "../styles/livret.css";
 export default function LivretAccueil() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-
     if (params.get("print") !== "1") return;
 
-    const timer = window.setTimeout(() => {
-      window.print();
-    }, 700);
+    let cancelled = false;
+    let fallbackTimer = null;
 
-    return () => window.clearTimeout(timer);
+    const wait = (delay) => new Promise((resolve) => window.setTimeout(resolve, delay));
+
+    const waitForImages = () => {
+      const images = Array.from(document.images || []);
+      return Promise.all(
+        images.map((image) => {
+          if (image.complete) return Promise.resolve();
+
+          return new Promise((resolve) => {
+            image.addEventListener("load", resolve, { once: true });
+            image.addEventListener("error", resolve, { once: true });
+          });
+        })
+      );
+    };
+
+    async function launchPrint() {
+      try {
+        await Promise.race([
+          Promise.all([
+            document.fonts?.ready || Promise.resolve(),
+            waitForImages(),
+          ]),
+          wait(3500),
+        ]);
+
+        await wait(500);
+
+        if (!cancelled) {
+          window.focus();
+          window.print();
+        }
+      } catch {
+        if (!cancelled) {
+          window.focus();
+          window.print();
+        }
+      }
+    }
+
+    function schedulePrint() {
+      fallbackTimer = window.setTimeout(launchPrint, 300);
+    }
+
+    if (document.readyState === "complete") {
+      schedulePrint();
+    } else {
+      window.addEventListener("load", schedulePrint, { once: true });
+    }
+
+    return () => {
+      cancelled = true;
+      if (fallbackTimer) window.clearTimeout(fallbackTimer);
+      window.removeEventListener("load", schedulePrint);
+    };
   }, []);
 
   return (
@@ -23,7 +75,7 @@ export default function LivretAccueil() {
           name="description"
           content="Livret d'accueil de La Maison Verte à Arreau : coordonnées, informations utiles, guide des vallées d'Aure et du Louron."
         />
-        <link rel="canonical" href="https://lamaisonverte65.fr/livret-accueil" />
+        <link rel="canonical" href="https://lamaisonverte65.fr/livret" />
       </Helmet>
 
       <main className="livret">
