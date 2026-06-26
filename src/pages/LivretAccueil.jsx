@@ -1,7 +1,20 @@
+import { useEffect } from "react";
 import { Helmet } from "react-helmet";
 import "../styles/livret.css";
 
 export default function LivretAccueil() {
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+
+    if (params.get("print") !== "1") return;
+
+    const timer = window.setTimeout(() => {
+      window.print();
+    }, 700);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
   return (
     <>
       <Helmet>
@@ -14,15 +27,6 @@ export default function LivretAccueil() {
       </Helmet>
 
       <main className="livret">
-        <div className="livret-toolbar no-print">
-          <a href="/" className="livret-back">
-            ← Retour au site
-          </a>
-          <button type="button" onClick={() => window.print()} className="livret-print-button">
-            Imprimer / PDF
-          </button>
-        </div>
-
         {/* PAGE 1 — COUVERTURE */}
         <section className="livret-page livret-cover" aria-label="Couverture du livret d'accueil">
           <div className="livret-cover-photo">
