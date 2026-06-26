@@ -1187,11 +1187,14 @@
 }
 
 
-/* Impression A4 — bloc final volontairement placé tout en bas
-   pour écraser les règles responsive et conserver la mise en page papier. */
+/* ------------------------------------------------------------------
+   Impression A4 fiable — version sans changement d'échelle.
+   Objectif : conserver une page A4 100 %, mais réduire seulement les
+   espaces internes pour que le contenu ne passe pas sous le liseret.
+------------------------------------------------------------------ */
 @media print {
   @page {
-    size: A4;
+    size: A4 portrait;
     margin: 0;
   }
 
@@ -1219,6 +1222,7 @@
     margin: 0 !important;
     padding: 0 !important;
     background: #ffffff !important;
+    overflow: visible !important;
   }
 
   .livret-page {
@@ -1234,6 +1238,7 @@
     break-after: page !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
+    transform: none !important;
   }
 
   .livret-page:last-child {
@@ -1243,6 +1248,263 @@
 
   .livret-page-inner {
     height: 297mm !important;
+    padding: 26px 42px 72px !important;
     box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  .livret-function-inner {
+    padding: 24px 40px 72px !important;
+  }
+
+  .livret-page br {
+    display: none !important;
+  }
+
+  .livret-page-header h1 {
+    font-size: 2.72rem !important;
+    line-height: 0.96 !important;
+  }
+
+  .livret-function-header h1 {
+    font-size: 2.46rem !important;
+    line-height: 0.95 !important;
+  }
+
+  .livret-function-header .livret-ornament,
+  .livret-ornament {
+    margin: 7px auto 11px !important;
+    width: 100% !important;
+    font-size: 1.2rem !important;
+  }
+
+  .livret-welcome-grid {
+    display: grid !important;
+    grid-template-columns: 1.42fr 0.82fr !important;
+    gap: 30px !important;
+  }
+
+  .livret-welcome-main {
+    font-size: 0.86rem !important;
+    line-height: 1.48 !important;
+  }
+
+  .livret-welcome-main p {
+    margin-bottom: 11px !important;
+  }
+
+  .livret-signature {
+    font-size: 1.32rem !important;
+    margin-bottom: 10px !important;
+  }
+
+  .livret-separator-line {
+    margin: 10px 0 !important;
+  }
+
+  .livret-summary {
+    padding: 11px 14px 12px !important;
+    margin-top: 8px !important;
+  }
+
+  .livret-summary h2 {
+    font-size: 1.65rem !important;
+    margin-bottom: 10px !important;
+  }
+
+  .livret-summary-list {
+    gap: 4px !important;
+  }
+
+  .livret-summary-list a {
+    padding: 4px 0 !important;
+    grid-template-columns: 62px 1fr !important;
+    gap: 10px !important;
+  }
+
+  .livret-summary-list span {
+    font-size: 0.66rem !important;
+  }
+
+  .livret-summary-list strong {
+    font-size: 0.84rem !important;
+  }
+
+  .livret-qr-grid {
+    gap: 12px !important;
+  }
+
+  .livret-qr-block img {
+    width: 78px !important;
+    height: 78px !important;
+    padding: 6px !important;
+  }
+
+  .livret-qr-icon {
+    width: 28px !important;
+    height: 28px !important;
+    margin-bottom: 5px !important;
+  }
+
+  .livret-qr-block h2 {
+    font-size: 0.88rem !important;
+  }
+
+  .livret-function-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 9px !important;
+  }
+
+  .livret-info-card {
+    border-radius: 14px !important;
+    padding: 8px 10px 8px !important;
+    box-shadow: none !important;
+  }
+
+  .livret-info-title {
+    gap: 7px !important;
+    margin-bottom: 5px !important;
+  }
+
+  .livret-info-title img {
+    width: 25px !important;
+    height: 25px !important;
+  }
+
+  .livret-info-title h2 {
+    font-size: 1.12rem !important;
+    line-height: 0.95 !important;
+  }
+
+  .livret-info-card p,
+  .livret-info-card li {
+    font-size: 0.66rem !important;
+    line-height: 1.22 !important;
+  }
+
+  .livret-info-card p {
+    margin-bottom: 4px !important;
+  }
+
+  .livret-info-card ul,
+  .livret-eco-card ul,
+  .livret-eco-list {
+    margin-top: 2px !important;
+    padding-left: 15px !important;
+  }
+
+  .livret-info-card li {
+    margin-bottom: 1px !important;
+  }
+
+  .livret-eco-card {
+    margin-top: 8px !important;
+  }
+
+  .livret-discover-quote {
+    margin: -2px auto 12px !important;
+    font-size: 1.18rem !important;
+    line-height: 1.18 !important;
+  }
+
+  .livret-discover-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr 1fr !important;
+    gap: 9px !important;
+  }
+
+  .livret-guide-card {
+    margin-top: 9px !important;
+    display: grid !important;
+    grid-template-columns: 1fr 112px !important;
+    gap: 14px !important;
+  }
+
+  .livret-guide-card > img {
+    width: 96px !important;
+    height: 96px !important;
+    padding: 7px !important;
+  }
+
+  .livret-review-grid {
+    margin-top: 12px !important;
+    gap: 12px !important;
+  }
+
+  .livret-review-card {
+    padding: 14px !important;
+  }
+
+  .livret-review-card img {
+    width: 94px !important;
+    height: 94px !important;
+    margin-bottom: 9px !important;
+  }
+
+  .livret-page-footer {
+    height: 72px !important;
+  }
+
+  .livret-page-footer img {
+    bottom: 6px !important;
+  }
+
+  .livret-page-number {
+    bottom: 2px !important;
+    font-size: 0.82rem !important;
+  }
+
+  .livret-cover {
+    display: grid !important;
+    grid-template-rows: 72% 28% !important;
+  }
+
+  .livret-cover-title {
+    font-size: 4.7rem !important;
+  }
+
+  .livret-cover-footer::before {
+    top: -70px !important;
+    height: 96px !important;
+  }
+
+  .livret-inventory-page .livret-function-inner {
+    padding: 22px 24px 66px !important;
+  }
+
+  .livret-inventory-page .livret-function-header h1 {
+    font-size: 2.15rem !important;
+  }
+
+  .livret-inventory-rdc-layout,
+  .livret-inventory-floor-grid,
+  .livret-cuisine-grid {
+    gap: 8px 10px !important;
+  }
+
+  .livret-inventory-section {
+    border-radius: 12px !important;
+    padding: 7px 8px !important;
+    box-shadow: none !important;
+  }
+
+  .livret-inventory-section h2,
+  .livret-inventory-cuisine-title,
+  .livret-inventory-floor-title {
+    font-size: 1.08rem !important;
+    margin-bottom: 5px !important;
+  }
+
+  .livret-inventory-section li,
+  .livret-cuisine-grid .livret-inventory-section li,
+  .livret-inventory-grid-etages .livret-inventory-section li {
+    font-size: 0.55rem !important;
+    line-height: 1.08 !important;
+  }
+
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
   }
 }
