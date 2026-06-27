@@ -38,9 +38,16 @@ export default function MaisonVerte() {
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [bookingSubmitting, setBookingSubmitting] = useState(false);
+  const [bookingValidationErrors, setBookingValidationErrors] = useState([]);
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
   const bookingFormRef = useRef(null);
+  const bookingErrorRef = useRef(null);
   const guestFirstNameRef = useRef(null);
+  const guestLastNameRef = useRef(null);
+  const guestEmailRef = useRef(null);
+  const guestPhoneRef = useRef(null);
+  const childrenAgesRef = useRef(null);
+  const contractAcceptedRef = useRef(null);
   const [openFaqCategory, setOpenFaqCategory] = useState(null);
   const googleReviewUrl = "https://g.page/r/CasA-_8IxkGjEBM/review";
   const googleProfileUrl = "https://g.page/r/CasA-_8IxkGjEBM";
@@ -517,7 +524,7 @@ export default function MaisonVerte() {
     isPhoneValid &&
     isGuestCompositionValid;
 
-  const canSubmitRequest = canRequestBooking && isFormValid && contractAccepted && !bookingSubmitting;
+  const canSubmitRequest = canRequestBooking && isFormValid && contractAccepted;
 
   const total = accommodationTotal;
 
@@ -529,11 +536,85 @@ export default function MaisonVerte() {
     setCurrentMonth(new Date(year, month + 1, 1));
   }
 
+  function getBookingValidationErrors() {
+    const errors = [];
+
+    if (selectedDates.length !== 2) {
+      errors.push({
+        message: "Sélectionnez vos dates d’arrivée et de départ.",
+        ref: bookingFormRef,
+      });
+    } else if (numberOfNights < minimumNights) {
+      errors.push({
+        message: `Le séjour doit comporter au minimum ${minimumNights} nuits sur cette période.`,
+        ref: bookingFormRef,
+      });
+    }
+
+    if (guestFirstName.trim() === "") {
+      errors.push({ message: "Renseignez votre prénom.", ref: guestFirstNameRef });
+    }
+
+    if (guestLastName.trim() === "") {
+      errors.push({ message: "Renseignez votre nom.", ref: guestLastNameRef });
+    }
+
+    if (guestEmail.trim() === "") {
+      errors.push({ message: "Renseignez votre adresse email.", ref: guestEmailRef });
+    } else if (!isEmailValid) {
+      errors.push({ message: "Renseignez une adresse email valide.", ref: guestEmailRef });
+    }
+
+    if (guestPhone.trim() === "") {
+      errors.push({ message: "Renseignez votre numéro de téléphone.", ref: guestPhoneRef });
+    } else if (!isPhoneValid) {
+      errors.push({ message: "Renseignez un numéro de téléphone valide.", ref: guestPhoneRef });
+    }
+
+    if (!isGuestCompositionValid) {
+      errors.push({
+        message:
+          childrenCount > 0 && childrenAges.trim() === ""
+            ? "Précisez l’âge des enfants."
+            : "Indiquez entre 1 et 4 voyageurs.",
+        ref: childrenCount > 0 ? childrenAgesRef : bookingFormRef,
+      });
+    }
+
+    if (!contractAccepted) {
+      errors.push({
+        message: "Acceptez le contrat de location et les conditions générales de réservation.",
+        ref: contractAcceptedRef,
+      });
+    }
+
+    return errors;
+  }
+
   async function submitBookingRequest() {
-    if (!canSubmitRequest) {
+    if (bookingSubmitting) {
       return;
     }
 
+    const validationErrors = getBookingValidationErrors();
+
+    if (validationErrors.length > 0) {
+      setBookingValidationErrors(validationErrors.map((error) => error.message));
+
+      setTimeout(() => {
+        bookingErrorRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+
+        const firstErrorRef = validationErrors[0]?.ref;
+        firstErrorRef?.current?.focus?.({ preventScroll: true });
+      }, 100);
+
+      return;
+    }
+
+    setBookingValidationErrors([]);
     setBookingSubmitting(true);
 
     try {
@@ -634,6 +715,7 @@ export default function MaisonVerte() {
 
       setSelectedDates([]);
       setContractAccepted(false);
+      setBookingValidationErrors([]);
 
       window.location.reload();
     } catch (err) {
@@ -1363,6 +1445,7 @@ export default function MaisonVerte() {
             "Bouilloire",
             "Grille-pain",
             "Appareil à raclette",
+            "Sèche cheveux",
             "Fer à repasser",
             "Lit parapluie",
             "58 m²",
@@ -2345,6 +2428,7 @@ export default function MaisonVerte() {
                 />
 
                 <input
+                  ref={guestLastNameRef}
                   type="text"
                   placeholder="Votre nom"
                   value={guestLastName}
@@ -2359,6 +2443,7 @@ export default function MaisonVerte() {
 
                 <div>
                   <input
+                    ref={guestEmailRef}
                     type="email"
                     placeholder="Votre email"
                     value={guestEmail}
@@ -2389,6 +2474,7 @@ export default function MaisonVerte() {
 
                 <div>
                   <input
+                    ref={guestPhoneRef}
                     type="tel"
                     placeholder="Votre téléphone"
                     value={guestPhone}
@@ -2515,6 +2601,7 @@ export default function MaisonVerte() {
 
                 {childrenCount > 0 && (
                   <input
+                    ref={childrenAgesRef}
                     type="text"
                     placeholder="Âge des enfants : ex. 4 ans, 8 ans"
                     value={childrenAges}
@@ -2598,7 +2685,7 @@ export default function MaisonVerte() {
                   </label>
                 </div>
 
-                <div className="contract-acceptance-box" style={{ margin: 0 }}>
+                <div ref={contractAcceptedRef} className="contract-acceptance-box" style={{ margin: 0 }} tabIndex={-1}>
                   <label className="contract-acceptance-label">
                     <input
                       type="checkbox"
@@ -2655,17 +2742,44 @@ export default function MaisonVerte() {
                 </a>
               </div>
 
+              {bookingValidationErrors.length > 0 && (
+                <div
+                  ref={bookingErrorRef}
+                  role="alert"
+                  style={{
+                    marginTop: "18px",
+                    marginBottom: "16px",
+                    padding: "16px",
+                    borderRadius: "16px",
+                    background: "#fff3e8",
+                    border: "1px solid #f2c69d",
+                    color: "#7a3f12",
+                    lineHeight: "1.55",
+                  }}
+                >
+                  <strong>Votre demande ne peut pas encore être envoyée.</strong>
+                  <div style={{ marginTop: "8px", marginBottom: "6px" }}>
+                    Merci de compléter :
+                  </div>
+                  <ul style={{ margin: "0", paddingLeft: "20px" }}>
+                    {bookingValidationErrors.map((error) => (
+                      <li key={error}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <button
                 className="button"
-                disabled={!canSubmitRequest || bookingSubmitting}
+                disabled={bookingSubmitting}
                 onClick={submitBookingRequest}
                 style={{
                   width: "100%",
                   padding: "18px",
                   fontSize: "1rem",
                   fontWeight: "700",
-                  opacity: canSubmitRequest && !bookingSubmitting ? 1 : 0.55,
-                  cursor: canSubmitRequest && !bookingSubmitting ? "pointer" : "not-allowed",
+                  opacity: bookingSubmitting ? 0.7 : 1,
+                  cursor: bookingSubmitting ? "wait" : "pointer",
                 }}
               >
                 {bookingSubmitting ? "Envoi en cours..." : "Faire une demande de réservation"}

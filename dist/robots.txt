@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://lamaisonverte65.fr/sitemap.xml

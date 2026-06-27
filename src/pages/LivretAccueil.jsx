@@ -719,7 +719,7 @@ export default function LivretAccueil() {
                 <p>
                   Sur les plateformes de réservation, les notes ne sont pas
                   toujours interprétées comme à l'école.
-                  Une note de <strong>5/5</strong> ou <strong>10/10</strong>
+                  Une note de <strong>5/5</strong> ou <strong>10/10</strong> 
                   correspond à un séjour conforme ou supérieur aux attentes.
                 </p>
 
@@ -1017,6 +1017,7 @@ export default function LivretAccueil() {
                       <li><span>1</span>Porte-shampoing douche</li>
                       <li><span>1</span>Poubelle à pied noire</li>
                       <li><span>1</span>Raclette douche</li>
+                      <li><span>1</span>Sèche cheveux</li>
                       <li><span>1</span>Tapis de salle de bain</li>
                       <li><span>1</span>Verre brosses à dents</li>
                   </ul>
