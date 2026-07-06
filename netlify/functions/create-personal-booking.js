@@ -42,6 +42,40 @@ function cleanText(value) {
   return text || null;
 }
 
+function fieldProvided(body, field) {
+  return Object.prototype.hasOwnProperty.call(body, field);
+}
+
+
+function normalizeBookingKind(value) {
+  const kind = String(value || "").toLowerCase();
+  if (["site", "client", "admin_client"].includes(kind)) return "site";
+  if (kind === "booking") return "booking";
+  if (kind === "airbnb") return "airbnb";
+  return "personal";
+}
+
+function getBookingSource(kind) {
+  if (kind === "site") return "admin_client";
+  if (kind === "booking") return "booking_import";
+  if (kind === "airbnb") return "airbnb_import";
+  return "admin_personal";
+}
+
+function getBookingContractVersion(kind) {
+  if (kind === "site") return "admin_client";
+  if (kind === "booking") return "booking_import";
+  if (kind === "airbnb") return "airbnb_import";
+  return "admin_personal";
+}
+
+function getBookingKindLabel(kind) {
+  if (kind === "site") return "Réservation client";
+  if (kind === "booking") return "Réservation Booking";
+  if (kind === "airbnb") return "Réservation Airbnb";
+  return "Réservation personnelle";
+}
+
 function nightsBetween(startDate, endDate) {
   const start = new Date(`${startDate}T12:00:00`);
   const end = new Date(`${endDate}T12:00:00`);
@@ -177,10 +211,24 @@ async function sendAdminBookingPaymentEmail({ booking, paymentLink, paymentType,
 }
 
 async function findOrCreateCustomer(body, startDate, endDate) {
-  const bookingKind = body.bookingKind === "client" ? "client" : "personal";
-  if (bookingKind !== "client") return null;
+  const bookingKind = normalizeBookingKind(body.bookingKind);
+  if (bookingKind === "personal") return null;
 
-  if (body.customerMode === "existing" && body.customerId) {
+  const firstName = cleanText(body.firstName);
+  const lastName = cleanText(body.lastName);
+  const email = cleanText(body.email);
+  const phone = cleanText(body.phone);
+  const customerSource = cleanText(body.customerSource) || getBookingSource(bookingKind);
+  const customerNotes = fieldProvided(body, "customerNotes") ? cleanText(body.customerNotes) : undefined;
+  const marketingConsent = Boolean(body.marketingConsent);
+
+  if (!firstName || !lastName) {
+    throw new Error("Prénom et nom obligatoires pour créer ou mettre à jour la fiche client.");
+  }
+
+  let existingCustomer = null;
+
+  if (body.customerId) {
     const { data, error } = await supabase
       .from("customers")
       .select("*")
@@ -188,28 +236,11 @@ async function findOrCreateCustomer(body, startDate, endDate) {
       .maybeSingle();
 
     if (error) throw error;
-    if (!data) throw new Error("Client existant introuvable.");
-
-    await supabase.from("customers").update({
-      last_request_at: new Date().toISOString(),
-      last_stay: endDate,
-    }).eq("id", data.id);
-
-    return data;
+    if (!data) throw new Error("Client sélectionné introuvable.");
+    existingCustomer = data;
   }
 
-  const firstName = cleanText(body.firstName);
-  const lastName = cleanText(body.lastName);
-  const email = cleanText(body.email);
-  const phone = cleanText(body.phone);
-
-  if (!firstName || !lastName) {
-    throw new Error("Prénom et nom obligatoires pour créer un nouveau client.");
-  }
-
-  let existingCustomer = null;
-
-  if (email) {
+  if (!existingCustomer && email) {
     const { data } = await supabase.from("customers").select("*").eq("email", email).maybeSingle();
     existingCustomer = data;
   }
@@ -219,18 +250,37 @@ async function findOrCreateCustomer(body, startDate, endDate) {
     existingCustomer = data;
   }
 
+  if (!existingCustomer && firstName && lastName) {
+    const { data } = await supabase
+      .from("customers")
+      .select("*")
+      .ilike("first_name", firstName)
+      .ilike("last_name", lastName)
+      .maybeSingle();
+    existingCustomer = data;
+  }
+
+  const basePayload = {
+    first_name: firstName,
+    last_name: lastName,
+    email,
+    phone,
+    source: customerSource,
+    marketing_consent: marketingConsent,
+    last_request_at: new Date().toISOString(),
+    last_stay: endDate,
+  };
+
+  if (customerNotes) {
+    basePayload.notes = customerNotes;
+  }
+
   if (existingCustomer) {
     const { data, error } = await supabase
       .from("customers")
       .update({
-        first_name: firstName || existingCustomer.first_name,
-        last_name: lastName || existingCustomer.last_name,
-        email: email || existingCustomer.email,
-        phone: phone || existingCustomer.phone,
-        source: existingCustomer.source || "admin_client",
-        notes: cleanText(body.notes) || existingCustomer.notes,
-        last_request_at: new Date().toISOString(),
-        last_stay: endDate,
+        ...basePayload,
+        first_stay: existingCustomer.first_stay || startDate,
       })
       .eq("id", existingCustomer.id)
       .select()
@@ -243,15 +293,8 @@ async function findOrCreateCustomer(body, startDate, endDate) {
   const { data, error } = await supabase
     .from("customers")
     .insert([{
-      first_name: firstName,
-      last_name: lastName,
-      email,
-      phone,
-      source: "admin_client",
-      notes: cleanText(body.notes),
+      ...basePayload,
       first_stay: startDate,
-      last_stay: endDate,
-      last_request_at: new Date().toISOString(),
       booking_count: 0,
       booking_request_count: 1,
       customer_status: "prospect",
@@ -325,13 +368,15 @@ export async function handler(event) {
       return { statusCode: 400, body: JSON.stringify({ error: "Période invalide." }) };
     }
 
-    const bookingKind = body.bookingKind === "client" ? "client" : "personal";
-    const total = Math.max(Number(body.total || 0), 0);
-    const amountPaid = Math.max(Number(body.amountPaid || 0), 0);
-    const sendPaymentLink = body.sendPaymentLink !== false;
-    const shouldCreatePaymentLink = total > 0 && sendPaymentLink;
+    const bookingKind = normalizeBookingKind(body.bookingKind);
+    const total = bookingKind === "site" ? Math.max(Number(body.total || 0), 0) : 0;
+    const amountPaid = 0;
+    const sendPaymentLink = bookingKind === "site" && body.sendPaymentLink !== false;
+    const shouldCreatePaymentLink = bookingKind === "site" && total > 0 && sendPaymentLink;
     const nights = nightsBetween(startDate, endDate);
-    const notes = cleanText(body.notes);
+    const clientMessage = cleanText(body.clientMessage);
+    const internalNotes = cleanText(body.internalNotes);
+    const housekeepingNotes = cleanText(body.housekeepingNotes);
     const acceptanceExpiresAt = shouldCreatePaymentLink ? addHours(24) : null;
 
     const customer = await findOrCreateCustomer(body, startDate, endDate);
@@ -340,10 +385,10 @@ export async function handler(event) {
     let guestLastName = cleanText(body.lastName);
     let guestEmail = cleanText(body.email);
     let guestPhone = cleanText(body.phone);
-    let source = bookingKind === "client" ? "admin_client" : "admin_personal";
-    let contractVersion = bookingKind === "client" ? "admin_client" : "admin_personal";
+    let source = getBookingSource(bookingKind);
+    let contractVersion = getBookingContractVersion(bookingKind);
 
-    if (bookingKind === "client" && customer) {
+    if (bookingKind !== "personal" && customer) {
       guestFirstName = customer.first_name || guestFirstName;
       guestLastName = customer.last_name || guestLastName;
       guestEmail = customer.email || guestEmail;
@@ -356,7 +401,7 @@ export async function handler(event) {
       guestLastName = display.lastName;
     }
 
-    if (!guestFirstName && bookingKind === "client") {
+    if (!guestFirstName && bookingKind !== "personal") {
       throw new Error("Nom client manquant.");
     }
 
@@ -395,9 +440,15 @@ export async function handler(event) {
         balance_amount: balanceAmount,
         deposit_status: shouldCreatePaymentLink && paymentTypePreview !== "full" ? "à payer" : "non applicable",
         balance_status: shouldCreatePaymentLink ? (paymentTypePreview === "full" ? "à payer" : "en attente") : "non applicable",
-        message: notes || (bookingKind === "client" ? "Réservation client créée depuis le calendrier admin." : "Réservation personnelle créée depuis le calendrier admin."),
-        owner_message: notes || (bookingKind === "client" ? "Réservation client créée depuis le calendrier admin." : "Réservation personnelle créée depuis le calendrier admin."),
-        notes,
+        adults_count: Number(body.adults || 0) || null,
+        children_count: Number(body.children || 0) || null,
+        baby_bed_needed: Boolean(body.babyBedNeeded),
+        arrival_time: cleanText(body.arrivalTime),
+        // Le champ message est réservé aux textes réellement rédigés par le client.
+        // Les consignes propriétaire/ménage restent dans housekeeping_notes.
+        message: clientMessage,
+        owner_message: internalNotes,
+        housekeeping_notes: housekeepingNotes,
         payment_link: null,
         acceptance_expires_at: acceptanceExpiresAt,
         accepted_at: shouldCreatePaymentLink ? now : null,
@@ -452,7 +503,7 @@ export async function handler(event) {
         paymentType,
         paymentAmount,
         acceptanceExpiresAt,
-        message: notes,
+        message: internalNotes,
       });
 
       await logBookingEvent({
@@ -477,9 +528,9 @@ export async function handler(event) {
 
     await logBookingEvent({
       bookingId: booking.id,
-      eventType: bookingKind === "client" ? "admin_client_booking_created" : "personal_booking_created",
-      label: bookingKind === "client" ? "Réservation client créée" : "Réservation personnelle créée",
-      message: notes || "Créée depuis le calendrier admin.",
+      eventType: `${bookingKind}_booking_created_from_calendar`,
+      label: `${getBookingKindLabel(bookingKind)} créée`,
+      message: housekeepingNotes || "Créée depuis le calendrier admin.",
       metadata: { source: "calendar_admin", bookingKind, total, amountPaid },
     });
 

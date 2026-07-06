@@ -3,109 +3,93 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import { supabase } from "../supabaseClient";
+import CalendarToolbar from "./calendar/CalendarToolbar";
+import CalendarLegend from "./calendar/CalendarLegend";
+import CalendarHomePanel from "./admin/calendar/CalendarHomePanel";
+import EventPanel from "./admin/calendar/EventPanel";
+import SelectionPanel from "./admin/calendar/SelectionPanel";
+import ReservationSummaryPanel from "./admin/calendar/ReservationSummaryPanel";
+import HousekeepingReservationView from "./admin/reservation/HousekeepingReservationView";
+import { calendarCss, styles } from "./admin/calendar/calendarStyles";
+import {
+  buildExternalReservation,
+  contactEmail,
+  contactPhone,
+  contactSms,
+  emptySelectionForm,
+  formatDate,
+  formatLocalDate,
+  formatMoney,
+  getExternalImportStatus,
+  getExternalTitle,
+  isBeforeToday,
+  isClosedExternalReservation,
+  isDateInSelectedPeriod,
+  nightsBetween,
+  parseLocalDate,
+  selectionStartsBeforeToday,
+} from "./admin/calendar/calendarHelpers";
 
 const COLORS = {
-  airbnb: "#ff5a5f",
-  booking: "#003580",
-  pending: "#f59e0b",
-  accepted: "#f97316",
-  deposit_paid: "#2563eb",
-  paid: "#14532d",
-  fully_paid: "#052e16",
-  confirmed: "#15803d",
-  admin_block: "#7c3aed",
+  airbnb: "#dc2626",          // Airbnb : rouge
+  booking: "#2563eb",         // Booking : bleu
+  pending: "#eab308",         // Demande en attente : jaune
+  accepted: "#dcfce7",        // Acceptée, attente paiement : vert très pâle
+  deposit_paid: "#22c55e",    // Acompte payé : vert clair / normal
+  fully_paid: "#14532d",      // Solde payé / confirmé : vert foncé
+  confirmed: "#14532d",
+  personal: "#6b7280",        // Réservation personnelle : gris
+  admin_block: "#111827",     // Dates bloquées : noir
   price: "#0f766e",
 };
 
 function getColor(status) {
-  return COLORS[status] || "#6b7280";
+  const value = String(status || "").toLowerCase();
+  if (value === "pending") return COLORS.pending;
+  if (["accepted", "deposit_pending", "payment_pending", "awaiting_payment"].includes(value)) return COLORS.accepted;
+  if (["deposit_paid", "paid"].includes(value)) return COLORS.deposit_paid;
+  if (["fully_paid", "confirmed"].includes(value)) return COLORS.fully_paid;
+  return "#6b7280";
 }
 
-function formatDate(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleDateString("fr-FR");
+function addOneDayDate(dateStr) {
+  const date = parseLocalDate(String(dateStr || "").slice(0, 10));
+  if (!date) return dateStr;
+  date.setDate(date.getDate() + 1);
+  return formatLocalDate(date);
 }
 
-function formatMoney(value) {
-  if (value === null || value === undefined || value === "" || Number.isNaN(Number(value))) return "-";
-  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(value));
+function isVisualHalfDayEvent(event) {
+  const type = event?.extendedProps?.type;
+  return ["external", "booking_request", "admin_block"].includes(type);
 }
 
-function emptyClientForm() {
-  return { firstName: "", lastName: "", phone: "", email: "", notes: "" };
+function getSourceStart(event) {
+  const props = event?.extendedProps || {};
+  if (props.type === "booking_request") return props.reservation?.start_date || event.start;
+  if (props.type === "admin_block") return props.block?.start_date || event.start;
+  return props.start_date || event.start;
 }
 
-
-function isBeforeToday(dateStr) {
-  const value = parseLocalDate(dateStr);
-  if (!value) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  value.setHours(0, 0, 0, 0);
-  return value < today;
+function getSourceEnd(event) {
+  const props = event?.extendedProps || {};
+  if (props.type === "booking_request") return props.reservation?.end_date || event.end;
+  if (props.type === "admin_block") return props.block?.end_date || event.end;
+  return props.end_date || event.end;
 }
 
-function selectionStartsBeforeToday(selectionInfo) {
-  return isBeforeToday(selectionInfo?.startStr);
-}
-function emptySelectionForm(selection = null) {
-  return {
-    action: "block",
-    title: "Blocage admin",
-    notes: "",
-    reservationType: "personal",
-    customerMode: "existing",
-    customerId: "",
-    customerSearch: "",
-    displayName: "",
-    firstName: "",
-    lastName: "",
-    phone: "",
-    email: "",
-    total: "0",
-    amountPaid: "0",
-    sendPaymentLink: true,
-    priceLabel: "Tarif spécifique",
-    nightPrice: "80",
-    priceReason: "ajustement",
-    priceNotes: "",
-    startDate: selection?.startStr || "",
-    endDate: selection?.endStr || "",
-  };
+function updateHalfDayEdge(info) {
+  if (!isVisualHalfDayEvent(info?.event) || !info?.el) return;
+
+  const calendarRoot = info.el.closest(".calendar-admin-calendar");
+  const dayCell = calendarRoot?.querySelector(".fc-daygrid-day");
+  const dayWidth = dayCell?.getBoundingClientRect?.().width || 0;
+
+  if (!dayWidth) return;
+  info.el.style.setProperty("--reservation-edge", `${dayWidth / 2}px`);
 }
 
-function parseLocalDate(value) {
-  if (!value) return null;
-  const [year, month, day] = String(value).slice(0, 10).split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function formatLocalDate(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-
-
-function nightsBetween(startDate, endDate) {
-  const start = parseLocalDate(startDate);
-  const end = parseLocalDate(endDate);
-  if (!start || !end) return [];
-  const nights = [];
-  for (let d = new Date(start); d < end; d.setDate(d.getDate() + 1)) {
-    nights.push(formatLocalDate(d));
-  }
-  return nights;
-}
-
-function isDateInSelectedPeriod(key, selectedPeriod) {
-  if (!selectedPeriod?.startStr || !selectedPeriod?.endStr) return false;
-  return key >= selectedPeriod.startStr && key < selectedPeriod.endStr;
-}
-
-export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }) {
+export default function CalendarAdmin({ mode = "admin", onSelectReservation, onCalendarUpdated, reservationToEdit, onReservationEditHandled }) {
   const [events, setEvents] = useState([]);
   const [blocks, setBlocks] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -115,16 +99,24 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   const [pricingVersion, setPricingVersion] = useState(0);
   const [calendarRenderKey, setCalendarRenderKey] = useState(0);
   const [selectedExternalEvent, setSelectedExternalEvent] = useState(null);
+  const [selectedCalendarReservation, setSelectedCalendarReservation] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
+  const [editingReservation, setEditingReservation] = useState(null);
   const [pendingRangeStart, setPendingRangeStart] = useState(null);
   const [selectionForm, setSelectionForm] = useState(emptySelectionForm());
-  const [clientForm, setClientForm] = useState(emptyClientForm());
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     loadCalendar();
     loadCustomers();
   }, []);
+
+  useEffect(() => {
+    const reservation = reservationToEdit?.request || reservationToEdit;
+    if (!reservation?.id) return;
+    openReservationEdition(reservation);
+    onReservationEditHandled?.();
+  }, [reservationToEdit?.key, reservationToEdit?.request?.id, reservationToEdit?.id]);
 
   async function getAdminFetchHeaders() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -188,17 +180,18 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
         .from("external_reservation_clients")
         .select("*");
 
+      // Couche source brute : on affiche toujours les ICS Booking/Airbnb tels que renvoyés par calendar.js.
+      // Les créations manuelles depuis un import sont affichées ensuite via booking_requests, en parallèle.
       const externalEvents = (calendarData.externalReservations || []).map((reservation) => {
         const linkedClient = (externalClientLinks || []).find((item) => item.uid === reservation.uid);
-        const clientName = linkedClient
-          ? [linkedClient.guest_first_name, linkedClient.guest_last_name].filter(Boolean).join(" ")
-          : "";
         const sourceLabel = reservation.source === "airbnb" ? "Airbnb" : "Booking";
+        const importStatus = getExternalImportStatus(reservation, linkedClient);
+        const isClosedBlock = isClosedExternalReservation(reservation);
         const color = reservation.source === "airbnb" ? COLORS.airbnb : COLORS.booking;
 
         return {
           id: reservation.uid,
-          title: clientName ? `${sourceLabel} - ${clientName}` : sourceLabel,
+          title: getExternalTitle({ reservation, linkedClient, sourceLabel }),
           start: reservation.start_date,
           end: reservation.end_date,
           backgroundColor: color,
@@ -207,9 +200,13 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
             type: "external",
             source: reservation.source,
             uid: reservation.uid,
+            title: reservation.title,
+            guest_name: reservation.guest_name,
             start_date: reservation.start_date,
             end_date: reservation.end_date,
             linkedClient,
+            import_status: importStatus,
+            is_closed_block: isClosedBlock,
           },
         };
       });
@@ -223,10 +220,10 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
         .filter((reservation) => !["refused", "expired", "cancelled"].includes(reservation.status))
         .map((reservation) => {
           const status = reservation.status || "pending";
-          const color = getColor(status);
-          const price = reservation.owner_price || reservation.estimated_total;
           const isAdminPersonal = reservation.source === "admin_personal" || reservation.contract_version === "admin_personal";
           const isAdminClient = reservation.source === "admin_client";
+          const color = isAdminPersonal ? COLORS.personal : getColor(status);
+          const price = reservation.owner_price || reservation.estimated_total;
           const prefix = isAdminPersonal ? "Perso" : isAdminClient ? "Admin" : status === "pending" ? "Demande" : "Direct";
           const name = [reservation.guest_first_name, reservation.guest_last_name].filter(Boolean).join(" ") || "Client";
           return {
@@ -299,25 +296,42 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
     }
 
     if (props.type === "booking_request") {
-      onSelectReservation?.(props.reservation);
+      setSelectedExternalEvent(null);
+      setSelectedPeriod(null);
+      setEditingReservation(null);
+      setSelectedCalendarReservation(props.reservation);
       return;
     }
 
     if (props.type === "external") {
-      const existing = props.linkedClient || {};
-      setClientForm({
-        firstName: existing.guest_first_name || "",
-        lastName: existing.guest_last_name || "",
-        phone: existing.guest_phone || "",
-        email: existing.guest_email || "",
-        notes: existing.notes || "",
-      });
+      const externalEvent = { title: info.event.title, start: info.event.startStr, end: info.event.endStr, ...props };
+      const reservation = buildExternalReservation(externalEvent, info.event.title);
       setSelectedPeriod(null);
-      setSelectedExternalEvent({ title: info.event.title, start: info.event.startStr, end: info.event.endStr, ...props });
+
+      if (mode === "housekeeping") {
+        setSelectedExternalEvent(null);
+        setSelectedCalendarReservation(reservation);
+        return;
+      }
+
+      if (props.import_status === "needs_action" || props.import_status === "needs_info" || props.is_closed_block) {
+        setSelectedCalendarReservation(null);
+        setSelectedExternalEvent({
+            ...externalEvent,
+            reservation,
+            type: "external_import",
+        });
+        return;
+      }
+
+      setSelectedExternalEvent(null);
+      onSelectReservation?.(reservation);
       return;
     }
 
     if (props.type === "admin_block") {
+      if (mode === "housekeeping") return;
+      setSelectedCalendarReservation(null);
       setSelectedPeriod(null);
       setSelectedExternalEvent({ title: info.event.title, start: info.event.startStr, end: info.event.endStr, ...props });
     }
@@ -333,18 +347,106 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
     };
   }
 
+  function getActionFromReservation(reservation = {}) {
+    const source = String(reservation.source || reservation.contract_version || "").toLowerCase();
+    if (source.includes("booking")) return "booking";
+    if (source.includes("airbnb")) return "airbnb";
+    if (source.includes("personal")) return "personal";
+    return "site";
+  }
+
+  function clearEditionAndSelection() {
+    setEditingReservation(null);
+    setPendingRangeStart(null);
+    setSelectedPeriod(null);
+    setSelectedExternalEvent(null);
+    setSelectedCalendarReservation(null);
+    setSelectionForm(emptySelectionForm());
+  }
+
+  function openReservationEdition(reservation) {
+    if (!reservation?.id) return;
+    const startStr = String(reservation.start_date || "").slice(0, 10);
+    const endStr = String(reservation.end_date || "").slice(0, 10);
+    if (!startStr || !endStr) return alert("Dates de réservation invalides.");
+
+    const action = getActionFromReservation(reservation);
+    const editSelection = buildSelectionFromDates(startStr, endStr);
+    const total = Number(reservation.owner_price ?? reservation.estimated_total ?? reservation.gross_amount ?? 0) || 0;
+
+    setSelectedExternalEvent(null);
+    setSelectedCalendarReservation(null);
+    setPendingRangeStart(null);
+    setEditingReservation(reservation);
+    setSelectedPeriod(editSelection);
+    setSelectionForm({
+      ...emptySelectionForm(editSelection),
+      mode: "edit",
+      bookingId: reservation.id,
+      action,
+      title: reservation.title || "Blocage admin",
+      displayName: [reservation.guest_first_name, reservation.guest_last_name].filter(Boolean).join(" ") || reservation.display_name || "",
+      customerId: reservation.customer_id || "",
+      customerSearch: [reservation.guest_last_name, reservation.guest_first_name].filter(Boolean).join(" "),
+      firstName: reservation.guest_first_name || "",
+      lastName: reservation.guest_last_name || "",
+      phone: reservation.guest_phone || "",
+      email: reservation.guest_email || "",
+      customerNotes: reservation.customer_notes || reservation.customer?.notes || "",
+      customerSource: reservation.customer?.source || (action === "site" ? "site" : action),
+      marketingConsent: Boolean(reservation.customer?.marketing_consent),
+      adults: reservation.adults_count ?? "",
+      children: reservation.children_count ?? "",
+      babyBedNeeded: Boolean(reservation.baby_bed_needed),
+      arrivalTime: reservation.arrival_time || "",
+      total: action === "site" ? String(total || 0) : "0",
+      amountPaid: String(reservation.amount_paid || 0),
+      sendPaymentLink: false,
+      clientMessage: reservation.message || "",
+      internalNotes: reservation.owner_message || "",
+      housekeepingNotes: reservation.housekeeping_notes || "",
+      notes: "",
+      nightPrice: String(getPriceForDate(startStr)),
+    });
+  }
+
+  async function deleteReservation(reservation) {
+    if (!reservation?.id) return;
+    const label = [reservation.guest_first_name, reservation.guest_last_name].filter(Boolean).join(" ") || "cette réservation";
+    if (!window.confirm(`Supprimer ${label} ?`)) return;
+
+    try {
+      const response = await fetch("/.netlify/functions/delete-booking-request", {
+        method: "POST",
+        headers: await getAdminFetchHeaders(),
+        body: JSON.stringify({ bookingId: reservation.id }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Erreur suppression réservation.");
+      alert("Réservation supprimée.");
+      clearEditionAndSelection();
+      await loadCalendar();
+      onCalendarUpdated?.();
+    } catch (error) {
+      alert("Erreur : " + error.message);
+    }
+  }
+
   function openSelectedPeriod(selectionInfo) {
     const computedTotal = computeTotal(selectionInfo.startStr, selectionInfo.endStr);
     setSelectedExternalEvent(null);
+    setSelectedCalendarReservation(null);
+    setEditingReservation(null);
     setSelectedPeriod(selectionInfo);
     setSelectionForm({
       ...emptySelectionForm(selectionInfo),
-      total: "0",
+      total: String(computedTotal || 0),
       nightPrice: String(getPriceForDate(selectionInfo.startStr)),
     });
   }
 
   function handleDateSelect(selectionInfo) {
+    if (mode === "housekeeping") return;
     if (selectionStartsBeforeToday(selectionInfo)) {
       setPendingRangeStart(null);
       setSelectedPeriod(null);
@@ -354,6 +456,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
   }
 
   function handleDateClick(info) {
+    if (mode === "housekeeping") return;
     if (isBeforeToday(info.dateStr)) {
       setPendingRangeStart(null);
       setSelectedPeriod(null);
@@ -363,6 +466,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
     if (!clickedDate) return;
 
     setSelectedExternalEvent(null);
+    setEditingReservation(null);
 
     if (!pendingRangeStart) {
       setSelectedPeriod(null);
@@ -380,12 +484,10 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
     }
 
     const start = pendingRangeStart < info.dateStr ? pendingRangeStart : info.dateStr;
-    const lastClickedDate = pendingRangeStart < info.dateStr ? clickedDate : parseLocalDate(pendingRangeStart);
-    const endDate = new Date(lastClickedDate);
-    endDate.setDate(endDate.getDate() + 1);
+    const end = pendingRangeStart < info.dateStr ? info.dateStr : pendingRangeStart;
 
     setPendingRangeStart(null);
-    openSelectedPeriod(buildSelectionFromDates(start, formatLocalDate(endDate)));
+    openSelectedPeriod(buildSelectionFromDates(start, end));
   }
 
   async function saveSelectionAction(event) {
@@ -393,13 +495,20 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
 
     if (!selectedPeriod) return;
 
+    const effectiveStartDate = String(selectionForm.startDate || selectedPeriod.startStr || "").slice(0, 10);
+    const effectiveEndDate = String(selectionForm.endDate || selectedPeriod.endStr || "").slice(0, 10);
+
+    if (!effectiveStartDate || !effectiveEndDate || effectiveEndDate <= effectiveStartDate) {
+      return alert("La période de réservation est invalide.");
+    }
+
     try {
       if (selectionForm.action === "block") {
         const { error } = await supabase.from("calendar_blocks").insert([
           {
             title: selectionForm.title || "Blocage admin",
-            start_date: selectedPeriod.startStr,
-            end_date: selectedPeriod.endStr,
+            start_date: effectiveStartDate,
+            end_date: effectiveEndDate,
             notes: selectionForm.notes || null,
             source: "admin",
             status: "blocked",
@@ -410,50 +519,64 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
         alert("Dates bloquées.");
       }
 
-      if (selectionForm.action === "personal") {
-        const total = Number(String(selectionForm.total || "0").replace(",", "."));
+      if (["personal", "site", "booking", "airbnb"].includes(selectionForm.action)) {
+        const total = selectionForm.action === "site"
+          ? Number(String(selectionForm.total || "0").replace(",", "."))
+          : 0;
 
-        if (selectionForm.reservationType === "personal" && !selectionForm.displayName.trim()) {
+        if (selectionForm.action === "personal" && !selectionForm.displayName.trim()) {
           return alert("Le nom affiché est obligatoire pour garder une information claire dans le calendrier.");
         }
 
-        if (selectionForm.reservationType === "client") {
-          if (selectionForm.customerMode === "existing" && !selectionForm.customerId) {
-            return alert("Choisis un client existant ou crée un nouveau client.");
-          }
-          if (selectionForm.customerMode === "new" && (!selectionForm.firstName.trim() || !selectionForm.lastName.trim())) {
-            return alert("Le prénom et le nom du nouveau client sont obligatoires.");
+        if (["site", "booking", "airbnb"].includes(selectionForm.action)) {
+          if (!selectionForm.firstName.trim() || !selectionForm.lastName.trim()) {
+            return alert("Le prénom et le nom du client sont obligatoires.");
           }
         }
 
-        if (total > 0 && selectionForm.sendPaymentLink && !selectionForm.email.trim() && selectionForm.customerMode !== "existing") {
+        if (selectionForm.action === "site" && total > 0 && selectionForm.sendPaymentLink && !selectionForm.email.trim()) {
           return alert("Un email est obligatoire pour envoyer un lien de paiement Stripe.");
         }
 
-        const response = await fetch("/.netlify/functions/create-personal-booking", {
+        const payload = {
+          bookingKind: selectionForm.action,
+          customerId: selectionForm.customerId || null,
+          startDate: effectiveStartDate,
+          endDate: effectiveEndDate,
+          displayName: selectionForm.displayName,
+          firstName: selectionForm.firstName,
+          lastName: selectionForm.lastName,
+          phone: selectionForm.phone,
+          email: selectionForm.email,
+          customerSource: selectionForm.customerSource,
+          marketingConsent: Boolean(selectionForm.marketingConsent),
+          adults: selectionForm.adults,
+          children: selectionForm.children,
+          babyBedNeeded: Boolean(selectionForm.babyBedNeeded),
+          arrivalTime: selectionForm.arrivalTime,
+          total,
+          amountPaid: 0,
+          sendPaymentLink: selectionForm.action === "site" && !editingReservation ? Boolean(selectionForm.sendPaymentLink) : false,
+          clientMessage: selectionForm.clientMessage,
+          internalNotes: selectionForm.internalNotes,
+          housekeepingNotes: selectionForm.housekeepingNotes,
+        };
+
+        if (String(selectionForm.customerNotes || "").trim()) {
+          payload.customerNotes = selectionForm.customerNotes;
+        }
+
+        if (editingReservation?.id) payload.bookingId = editingReservation.id;
+
+        const response = await fetch(editingReservation?.id ? "/.netlify/functions/update-booking-request" : "/.netlify/functions/create-personal-booking", {
           method: "POST",
           headers: await getAdminFetchHeaders(),
-          body: JSON.stringify({
-            bookingKind: selectionForm.reservationType,
-            customerMode: selectionForm.customerMode,
-            customerId: selectionForm.customerId || null,
-            startDate: selectedPeriod.startStr,
-            endDate: selectedPeriod.endStr,
-            displayName: selectionForm.displayName,
-            firstName: selectionForm.firstName,
-            lastName: selectionForm.lastName,
-            phone: selectionForm.phone,
-            email: selectionForm.email,
-            total,
-            amountPaid: Number(String(selectionForm.amountPaid || "0").replace(",", ".")),
-            sendPaymentLink: Boolean(selectionForm.sendPaymentLink),
-            notes: selectionForm.notes,
-          }),
+          body: JSON.stringify(payload),
         });
 
-        if (!response.ok) throw new Error(await response.text());
-        const result = await response.json();
-        alert(result.paymentLink ? "Réservation créée et lien de paiement envoyé." : "Réservation créée.");
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || "Erreur enregistrement réservation.");
+        alert(editingReservation?.id ? "Réservation modifiée." : (result.paymentLink ? "Réservation créée et lien de paiement envoyé." : "Réservation créée."));
         onSelectReservation?.(result.booking);
         onCalendarUpdated?.();
       }
@@ -466,8 +589,8 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
             action: "create",
             ruleType: "override",
             label: selectionForm.priceLabel || "Tarif spécifique",
-            startDate: selectedPeriod.startStr,
-            endDate: selectedPeriod.endStr,
+            startDate: effectiveStartDate,
+            endDate: effectiveEndDate,
             nightPrice: Number(selectionForm.nightPrice || 0),
             reason: selectionForm.priceReason || "ajustement",
             notes: selectionForm.priceNotes || selectionForm.notes || null,
@@ -480,6 +603,7 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
 
       setPendingRangeStart(null);
       setSelectedPeriod(null);
+      setEditingReservation(null);
       await loadCalendar();
     } catch (error) {
       alert("Erreur : " + error.message);
@@ -520,107 +644,26 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
     alert("La modification des saisons se fait maintenant dans l’onglet Tarifs, avec une interface complète.");
   }
 
-  async function createOrUpdateCustomer({ firstName, lastName, email, phone, source, notes }) {
-    let existingCustomer = null;
-
-    if (email) {
-      const { data } = await supabase.from("customers").select("*").eq("email", email).maybeSingle();
-      existingCustomer = data;
-    }
-
-    if (!existingCustomer && phone) {
-      const { data } = await supabase.from("customers").select("*").eq("phone", phone).maybeSingle();
-      existingCustomer = data;
-    }
-
-    if (!existingCustomer && firstName && lastName) {
-      const { data } = await supabase
-        .from("customers")
-        .select("*")
-        .ilike("first_name", firstName)
-        .ilike("last_name", lastName)
-        .maybeSingle();
-      existingCustomer = data;
-    }
-
-    if (existingCustomer) {
-      const { data, error } = await supabase
-        .from("customers")
-        .update({
-          first_name: firstName || existingCustomer.first_name,
-          last_name: lastName || existingCustomer.last_name,
-          email: email || existingCustomer.email,
-          phone: phone || existingCustomer.phone,
-          source: source || existingCustomer.source,
-          notes: notes || existingCustomer.notes,
-          last_stay: selectedExternalEvent?.end_date || selectedExternalEvent?.end || existingCustomer.last_stay,
-        })
-        .eq("id", existingCustomer.id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    }
-
-    const { data, error } = await supabase
-      .from("customers")
-      .insert([
-        {
-          first_name: firstName || null,
-          last_name: lastName || null,
-          email: email || null,
-          phone: phone || null,
-          source,
-          notes: notes || null,
-          first_stay: selectedExternalEvent?.start_date || selectedExternalEvent?.start || null,
-          last_stay: selectedExternalEvent?.end_date || selectedExternalEvent?.end || null,
-          booking_count: 1,
-        },
-      ])
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
-  }
-
-  async function saveExternalClient() {
-    if (!selectedExternalEvent || selectedExternalEvent.type !== "external") return;
-
+  async function applyExternalCalendarAction(payload) {
     try {
-      const customer = await createOrUpdateCustomer({
-        firstName: clientForm.firstName.trim(),
-        lastName: clientForm.lastName.trim(),
-        email: clientForm.email.trim(),
-        phone: clientForm.phone.trim(),
-        source: selectedExternalEvent.source,
-        notes: clientForm.notes.trim(),
+      const response = await fetch("/.netlify/functions/apply-external-calendar-action", {
+        method: "POST",
+        headers: await getAdminFetchHeaders(),
+        body: JSON.stringify(payload),
       });
 
-      const { error } = await supabase.from("external_reservation_clients").upsert(
-        {
-          uid: selectedExternalEvent.uid,
-          source: selectedExternalEvent.source,
-          start_date: selectedExternalEvent.start_date,
-          end_date: selectedExternalEvent.end_date,
-          customer_id: customer.id,
-          guest_first_name: clientForm.firstName.trim() || null,
-          guest_last_name: clientForm.lastName.trim() || null,
-          guest_email: clientForm.email.trim() || null,
-          guest_phone: clientForm.phone.trim() || null,
-          notes: clientForm.notes.trim() || null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "uid" }
-      );
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Erreur traitement import externe.");
 
-      if (error) throw error;
-      alert("Client enregistré et lié à la réservation externe.");
+      alert("Import externe traité.");
       setSelectedExternalEvent(null);
+      setSelectedCalendarReservation(null);
       await loadCalendar();
+      onCalendarUpdated?.();
+      return result;
     } catch (error) {
       alert("Erreur : " + error.message);
+      throw error;
     }
   }
 
@@ -672,137 +715,73 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
         }]
       : [];
 
-    return [...selectedRangeEvent, ...events];
+    const visualEvents = events.map((event) => {
+      if (!isVisualHalfDayEvent(event)) return event;
+
+      const sourceStart = String(getSourceStart(event) || "").slice(0, 10);
+      const sourceEnd = String(getSourceEnd(event) || "").slice(0, 10);
+
+      return {
+        ...event,
+        start: sourceStart || event.start,
+        // FullCalendar utilise une date de fin exclusive.
+        // Pour afficher le départ jusqu'au milieu du jour de départ, on inclut visuellement ce jour
+        // puis le CSS raccourcit la barre à droite d'une demi-cellule.
+        end: sourceEnd ? addOneDayDate(sourceEnd) : event.end,
+        allDay: true,
+        display: "block",
+        extendedProps: {
+          ...event.extendedProps,
+          real_start_date: sourceStart || event.start,
+          real_end_date: sourceEnd || event.end,
+          calendar_display_title: event.title,
+        },
+      };
+    });
+
+    return [...selectedRangeEvent, ...visualEvents];
   }, [events, selectedPeriod]);
+
+  const calendarSummary = useMemo(() => {
+    const external = events.filter((event) => event.extendedProps?.type === "external").length;
+    const direct = events.filter((event) => event.extendedProps?.type === "booking_request").length;
+    const adminBlocks = events.filter((event) => event.extendedProps?.type === "admin_block").length;
+
+    return {
+      external,
+      direct,
+      adminBlocks,
+      priceRules: (seasonPrices?.length || 0) + (priceOverrides?.length || 0),
+    };
+  }, [events, seasonPrices, priceOverrides]);
+
+  const legendItems = [
+    { color: COLORS.pending, label: "Demande en attente" },
+    { color: COLORS.accepted, label: "Acceptée — attente paiement" },
+    { color: COLORS.deposit_paid, label: "Acompte payé" },
+    { color: COLORS.fully_paid, label: "Solde payé / confirmée" },
+    { color: COLORS.booking, label: "Booking" },
+    { color: COLORS.airbnb, label: "Airbnb" },
+    { color: COLORS.personal, label: "Réservation personnelle" },
+    { color: COLORS.admin_block, label: "Dates bloquées" },
+    { color: COLORS.price, label: "Tarif spécifique / saison" },
+  ];
 
   return (
     <div style={styles.wrapper}>
-      <style>{`
-        .calendar-admin-calendar .fc {
-          font-size: 1.05rem;
-          --fc-border-color: #dbe3ea;
-          --fc-page-bg-color: #ffffff;
-          --fc-neutral-bg-color: #f8fafc;
-          --fc-today-bg-color: #ecfdf5;
-        }
+      <style>{calendarCss}</style>
+      <CalendarToolbar
+        loading={loading}
+        summary={calendarSummary}
+        selectedPeriod={selectedPeriod}
+        pendingRangeStart={pendingRangeStart}
+        onRefresh={loadCalendar}
+        onClearSelection={() => {
+          clearEditionAndSelection();
+        }}
+      />
 
-        .calendar-admin-calendar .fc-toolbar {
-          gap: 14px;
-          margin-bottom: 22px;
-          flex-wrap: wrap;
-        }
-
-        .calendar-admin-calendar .fc-toolbar-title {
-          color: #1f6f3d;
-          font-size: clamp(1.55rem, 2.5vw, 2.15rem);
-          font-weight: 800;
-          text-transform: capitalize;
-        }
-
-        .calendar-admin-calendar .fc-button {
-          background: #2f4f35 !important;
-          border: none !important;
-          border-radius: 999px !important;
-          padding: 10px 16px !important;
-          font-weight: 800 !important;
-          box-shadow: 0 8px 18px rgba(47,79,53,0.18);
-        }
-
-        .calendar-admin-calendar .fc-button:hover {
-          filter: brightness(1.08);
-        }
-
-        .calendar-admin-calendar .fc-col-header-cell {
-          background: #eef7f0;
-          padding: 12px 6px;
-          color: #1f6f3d;
-          font-weight: 900;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-          font-size: 0.9rem;
-        }
-
-        .calendar-admin-calendar .fc-daygrid-day {
-          background: #ffffff;
-          transition: background 0.2s ease, transform 0.2s ease;
-        }
-
-        .calendar-admin-calendar .fc-daygrid-day:hover {
-          background: #f8fafc;
-        }
-
-        .calendar-admin-calendar .fc-daygrid-day-frame {
-          min-height: 128px;
-          padding: 6px;
-        }
-
-        .calendar-admin-calendar .fc-daygrid-day-top {
-          justify-content: center;
-        }
-
-        .calendar-admin-calendar .fc-event {
-          border: none !important;
-          border-radius: 10px !important;
-          padding: 3px 6px !important;
-          font-size: 0.82rem !important;
-          font-weight: 800 !important;
-          box-shadow: 0 4px 10px rgba(15,23,42,0.14);
-        }
-
-        .calendar-admin-calendar .fc-bg-event {
-          opacity: 1 !important;
-          border-radius: 14px;
-        }
-
-        .calendar-admin-calendar .fc-day-today {
-          box-shadow: inset 0 0 0 3px rgba(31,111,61,0.22);
-        }
-
-        @media (max-width: 900px) {
-          .calendar-admin-layout {
-            grid-template-columns: 1fr !important;
-          }
-
-          .calendar-admin-side-panel {
-            order: 2;
-            position: static !important;
-            max-height: none !important;
-          }
-
-          .calendar-admin-calendar-scroll {
-            order: 1;
-            overflow-x: auto;
-            padding-bottom: 10px;
-            -webkit-overflow-scrolling: touch;
-          }
-
-          .calendar-admin-calendar {
-            min-width: 760px;
-          }
-
-          .calendar-admin-calendar .fc {
-            font-size: 0.92rem;
-          }
-
-          .calendar-admin-calendar .fc-daygrid-day-frame {
-            min-height: 104px;
-          }
-
-          .calendar-admin-calendar .fc-bg-event {
-            opacity: 1 !important;
-          }
-        }
-      `}</style>
-      <div style={styles.legend}>
-        <Legend color={COLORS.airbnb} label="Airbnb" />
-        <Legend color={COLORS.booking} label="Booking" />
-        <Legend color={COLORS.pending} label="Demande" />
-        <Legend color={COLORS.accepted} label="Acceptée" />
-        <Legend color={COLORS.deposit_paid} label="Acompte payé" />
-        <Legend color={COLORS.confirmed} label="Confirmée" />
-        <Legend color={COLORS.admin_block} label="Blocage" />
-        <Legend color={COLORS.price} label="Tarif spécifique / saison" />
-      </div>
+      <CalendarLegend items={legendItems} />
 
       {loading && <p>Chargement du calendrier...</p>}
 
@@ -817,15 +796,24 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
             height="auto"
             fixedWeekCount={false}
             expandRows={true}
-            dayMaxEventRows={3}
+            dayMaxEventRows={5}
             buttonText={{ today: "Aujourd’hui", month: "Mois" }}
             events={calendarEvents}
-            selectable={true}
-            selectAllow={(selectInfo) => !selectionStartsBeforeToday(selectInfo)}
+            selectable={mode !== "housekeeping"}
+            selectAllow={(selectInfo) => mode !== "housekeeping" && !selectionStartsBeforeToday(selectInfo)}
             selectMirror={true}
             select={handleDateSelect}
             dateClick={handleDateClick}
             eventClick={openEvent}
+            displayEventTime={false}
+            eventClassNames={(arg) => {
+              if (!isVisualHalfDayEvent(arg.event)) return [];
+              return [
+                "fc-reservation-half-day",
+                `fc-reservation-${arg.event.extendedProps.type}`,
+              ];
+            }}
+            eventDidMount={updateHalfDayEdge}
             dayCellContent={(arg) => {
               const key = formatLocalDate(arg.date);
               const isPendingStart = pendingRangeStart === key;
@@ -860,18 +848,56 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
         </div>
 
         <aside className="calendar-admin-side-panel" style={styles.sidePanel}>
-          {!selectedExternalEvent && !selectedPeriod ? (
+          {!selectedExternalEvent && !selectedPeriod && !selectedCalendarReservation ? (
+            <CalendarHomePanel
+              events={events}
+              mode={mode}
+              onOpenReservation={(reservation) => {
+                setSelectedExternalEvent(null);
+                setSelectedPeriod(null);
+                setEditingReservation(null);
+                          setSelectedCalendarReservation(reservation);
+              }}
+              onStartBlock={() => setPendingRangeStart(null)}
+            />
+          ) : selectedCalendarReservation ? (
             <div>
-              <h3>Fiche calendrier</h3>
-              {pendingRangeStart ? (
-                <p style={styles.selectionHint}>Début sélectionné : {formatDate(pendingRangeStart)}. Clique maintenant sur la date de fin.</p>
+              <button
+                style={styles.closePanelButton}
+                onClick={() => {
+                  setSelectedCalendarReservation(null);
+                            }}
+              >
+                Fermer la fiche
+              </button>
+
+              {mode === "housekeeping" ? (
+                <HousekeepingReservationView
+                  reservation={selectedCalendarReservation}
+                  onEmail={contactEmail}
+                  onPhone={contactPhone}
+                  onSms={contactSms}
+                  onReservationUpdated={async () => {
+                    await loadCalendar();
+                    onCalendarUpdated?.();
+                  }}
+                />
               ) : (
-                <p style={styles.muted}>Clique une première date de début, puis une date de fin pour sélectionner une période.</p>
+                <ReservationSummaryPanel
+                  reservation={selectedCalendarReservation}
+                  onEmail={contactEmail}
+                  onPhone={contactPhone}
+                  onSms={contactSms}
+                  onOpenFull={() => {
+                    const reservationToOpen = selectedCalendarReservation;
+                    setSelectedCalendarReservation(null);
+                    setSelectedExternalEvent(null);
+                    setSelectedPeriod(null);
+                    setEditingReservation(null);
+                    onSelectReservation?.(reservationToOpen);
+                  }}
+                />
               )}
-              <p style={styles.muted}>Tu peux ensuite bloquer, créer une réservation ou changer les tarifs.</p>
-              <p style={styles.muted}>Les prix affichés ici utilisent exactement les mêmes données que le calendrier du site public.</p>
-              <p style={styles.muted}>Clique sur une réservation directe pour ouvrir la fiche résa centrale.</p>
-              <p style={styles.muted}>Clique sur Airbnb/Booking pour renseigner les infos client.</p>
             </div>
           ) : selectedPeriod ? (
             <SelectionPanel
@@ -880,7 +906,9 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
               setForm={setSelectionForm}
               total={selectedPeriodTotal}
               customers={customers}
-              onClose={() => { setPendingRangeStart(null); setSelectedPeriod(null); }}
+              mode={editingReservation ? "edit" : "create"}
+              editingReservation={editingReservation}
+              onClose={clearEditionAndSelection}
               onSubmit={saveSelectionAction}
             />
           ) : (
@@ -888,74 +916,14 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
               <button style={styles.closePanelButton} onClick={() => setSelectedExternalEvent(null)}>Fermer la fiche</button>
               <EventPanel
                 event={selectedExternalEvent}
-                clientForm={clientForm}
-                setClientForm={setClientForm}
-                onSaveExternal={saveExternalClient}
                 onDeleteBlock={deleteBlock}
+                onApplyExternalAction={applyExternalCalendarAction}
               />
             </div>
           )}
         </aside>
       </div>
 
-
-      <section style={styles.blockList}>
-        <div style={styles.sectionHeader}>
-          <div>
-            <h3>Tarif par défaut</h3>
-            <p style={styles.muted}>Ce tarif est utilisé hors saison et hors tarif spécifique.</p>
-          </div>
-          <button style={styles.primaryButton} onClick={editDefaultNightPrice}>Modifier dans Tarifs</button>
-        </div>
-        <div style={styles.priceItem}>
-          <strong>{defaultNightPrice === null ? "Chargement..." : `${formatMoney(defaultNightPrice)} / nuit`}</strong>
-          <p style={styles.muted}>Priorité appliquée : tarif spécifique → tarif saisonnier → tarif par défaut.</p>
-        </div>
-      </section>
-
-      <section style={styles.blockList}>
-        <div style={styles.sectionHeader}>
-          <div>
-            <h3>Tarifs saisonniers</h3>
-            <p style={styles.muted}>Tu peux modifier les dates et prix des vacances année par année.</p>
-          </div>
-          <button style={styles.primaryButton} onClick={() => editSeasonPrice(null)}>Gérer dans Tarifs</button>
-        </div>
-        {seasonPrices.length === 0 ? (
-          <p style={styles.muted}>Aucun tarif saisonnier.</p>
-        ) : (
-          <div style={styles.priceGrid}>
-            {seasonPrices.map((rule) => (
-              <div key={rule.id} style={styles.priceItem}>
-                <strong>{rule.label}</strong>
-                <p style={styles.muted}>{formatDate(rule.start_date)} → {formatDate(rule.end_date)} · {formatMoney(rule.night_price)} / nuit</p>
-                {rule.minimum_nights && <p style={styles.muted}>Minimum : {rule.minimum_nights} nuits</p>}
-                {rule.notes && <p style={styles.muted}>{rule.notes}</p>}
-                <p style={styles.muted}>Modification centralisée dans l’onglet Tarifs.</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section style={styles.blockList}>
-        <h3>Tarifs spécifiques</h3>
-        {priceOverrides.length === 0 ? (
-          <p style={styles.muted}>Aucun tarif spécifique enregistré.</p>
-        ) : (
-          <div style={styles.priceGrid}>
-            {priceOverrides.map((rule) => (
-              <div key={rule.id} style={styles.priceItem}>
-                <strong>{rule.label}</strong>
-                <p style={styles.muted}>{formatDate(rule.start_date)} → {formatDate(rule.end_date)} · {formatMoney(rule.night_price)} / nuit</p>
-                {rule.reason && <p style={styles.muted}>Motif : {rule.reason}</p>}
-                {rule.notes && <p style={styles.muted}>{rule.notes}</p>}
-                <button style={styles.deleteButton} onClick={() => deletePriceRule("override", rule.id)}>Supprimer</button>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
 
       <section style={styles.blockList}>
         <h3>Blocages admin</h3>
@@ -977,291 +945,3 @@ export default function CalendarAdmin({ onSelectReservation, onCalendarUpdated }
     </div>
   );
 }
-
-function SelectionPanel({ selection, form, setForm, total, customers = [], onClose, onSubmit }) {
-  const selectedCustomer = customers.find((customer) => String(customer.id) === String(form.customerId));
-  const search = String(form.customerSearch || "").toLowerCase().trim();
-  const filteredCustomers = customers
-    .filter((customer) => {
-      if (!search) return true;
-      return [customer.first_name, customer.last_name, customer.email, customer.phone]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(search);
-    })
-    .slice(0, 80);
-
-  function updateReservationType(nextType) {
-    setForm({
-      ...form,
-      reservationType: nextType,
-      total: nextType === "client" ? String(total || 0) : "0",
-      amountPaid: "0",
-    });
-  }
-
-  function updateCustomerMode(nextMode) {
-    setForm({
-      ...form,
-      customerMode: nextMode,
-      customerId: "",
-      firstName: "",
-      lastName: "",
-      phone: "",
-      email: "",
-    });
-  }
-
-  function updateSelectedCustomer(customerId) {
-    const customer = customers.find((item) => String(item.id) === String(customerId));
-    setForm({
-      ...form,
-      customerId,
-      firstName: customer?.first_name || "",
-      lastName: customer?.last_name || "",
-      phone: customer?.phone || "",
-      email: customer?.email || "",
-    });
-  }
-
-  const totalNumber = Number(String(form.total || "0").replace(",", "."));
-  const needsPaymentEmail = totalNumber > 0 && form.sendPaymentLink;
-
-  return (
-    <form onSubmit={onSubmit}>
-      <button type="button" style={styles.closePanelButton} onClick={onClose}>Fermer</button>
-      <h3>Période sélectionnée</h3>
-      <p style={styles.muted}>{formatDate(selection.startStr)} → {formatDate(selection.endStr)}</p>
-      <p style={styles.muted}>Total théorique selon tarifs actuels : <strong>{formatMoney(total)}</strong></p>
-
-      <label style={styles.label}>Action
-        <select style={styles.input} value={form.action} onChange={(event) => setForm({ ...form, action: event.target.value })}>
-          <option value="block">Bloquer les dates</option>
-          <option value="personal">Créer une réservation</option>
-          <option value="price">Changer les tarifs de cette période</option>
-        </select>
-      </label>
-
-      {form.action === "block" && (
-        <>
-          <input style={styles.input} placeholder="Titre" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
-          <textarea style={styles.textarea} placeholder="Notes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
-        </>
-      )}
-
-      {form.action === "personal" && (
-        <div style={styles.formGrid}>
-          <label style={styles.label}>Type de réservation
-            <select style={styles.input} value={form.reservationType} onChange={(event) => updateReservationType(event.target.value)}>
-              <option value="personal">Réservation personnelle / famille / amis</option>
-              <option value="client">Réservation client</option>
-            </select>
-          </label>
-
-          {form.reservationType === "personal" && (
-            <>
-              <input style={styles.input} placeholder="Nom affiché dans le calendrier * (ex : Famille Benoit, Amis de Toulouse)" value={form.displayName} onChange={(event) => setForm({ ...form, displayName: event.target.value })} />
-              <input style={styles.input} placeholder="Prix du séjour (€) — 0 par défaut" value={form.total} onChange={(event) => setForm({ ...form, total: event.target.value })} />
-              {totalNumber > 0 && (
-                <>
-                  <label style={styles.checkboxLine}>
-                    <input type="checkbox" checked={form.sendPaymentLink} onChange={(event) => setForm({ ...form, sendPaymentLink: event.target.checked })} />
-                    Envoyer un lien de paiement Stripe
-                  </label>
-                  {form.sendPaymentLink && <input style={styles.input} placeholder="Email pour envoyer le lien de paiement *" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />}
-                  <input style={styles.input} placeholder="Téléphone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
-                </>
-              )}
-              <textarea style={styles.textarea} placeholder="Notes internes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
-            </>
-          )}
-
-          {form.reservationType === "client" && (
-            <>
-              <label style={styles.label}>Client
-                <select style={styles.input} value={form.customerMode} onChange={(event) => updateCustomerMode(event.target.value)}>
-                  <option value="existing">Choisir un client existant</option>
-                  <option value="new">Créer un nouveau client</option>
-                </select>
-              </label>
-
-              {form.customerMode === "existing" && (
-                <>
-                  <input style={styles.input} placeholder="Rechercher un client..." value={form.customerSearch} onChange={(event) => setForm({ ...form, customerSearch: event.target.value })} />
-                  <select style={styles.input} value={form.customerId} onChange={(event) => updateSelectedCustomer(event.target.value)}>
-                    <option value="">Sélectionner un client</option>
-                    {filteredCustomers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {[customer.last_name, customer.first_name].filter(Boolean).join(" ") || "Client sans nom"} {customer.email ? `— ${customer.email}` : customer.phone ? `— ${customer.phone}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedCustomer && (
-                    <p style={styles.muted}>
-                      Client sélectionné : {[selectedCustomer.first_name, selectedCustomer.last_name].filter(Boolean).join(" ")} {selectedCustomer.email ? `· ${selectedCustomer.email}` : ""}
-                    </p>
-                  )}
-                </>
-              )}
-
-              {form.customerMode === "new" && (
-                <>
-                  <input style={styles.input} placeholder="Prénom *" value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} />
-                  <input style={styles.input} placeholder="Nom *" value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} />
-                  <input style={styles.input} placeholder="Téléphone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
-                  <input style={styles.input} placeholder={needsPaymentEmail ? "Email *" : "Email"} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
-                </>
-              )}
-
-              <input style={styles.input} placeholder="Prix du séjour (€)" value={form.total} onChange={(event) => setForm({ ...form, total: event.target.value })} />
-              <label style={styles.checkboxLine}>
-                <input type="checkbox" checked={form.sendPaymentLink} onChange={(event) => setForm({ ...form, sendPaymentLink: event.target.checked })} />
-                Envoyer le lien de paiement immédiatement si prix &gt; 0
-              </label>
-              <textarea style={styles.textarea} placeholder="Notes internes / message" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
-            </>
-          )}
-        </div>
-      )}
-
-      {form.action === "price" && (
-        <div style={styles.formGrid}>
-          <input style={styles.input} placeholder="Nom du tarif" value={form.priceLabel} onChange={(event) => setForm({ ...form, priceLabel: event.target.value })} />
-          <input style={styles.input} placeholder="Prix par nuit (€)" value={form.nightPrice} onChange={(event) => setForm({ ...form, nightPrice: event.target.value })} />
-          <select style={styles.input} value={form.priceReason} onChange={(event) => setForm({ ...form, priceReason: event.target.value })}>
-            <option value="ajustement">Ajustement</option>
-            <option value="promo">Promo</option>
-            <option value="vacances">Vacances</option>
-            <option value="pont">Pont / week-end spécial</option>
-            <option value="evenement">Événement</option>
-          </select>
-          <textarea style={styles.textarea} placeholder="Notes" value={form.priceNotes} onChange={(event) => setForm({ ...form, priceNotes: event.target.value })} />
-        </div>
-      )}
-
-      <button style={styles.primaryButton} type="submit">Valider</button>
-    </form>
-  );
-}
-
-function EventPanel({ event, clientForm, setClientForm, onSaveExternal, onDeleteBlock }) {
-  if (event.type === "external") {
-    return (
-      <div>
-        <h3>{event.source === "airbnb" ? "Réservation Airbnb" : "Réservation Booking"}</h3>
-        <p style={styles.muted}>{formatDate(event.start_date)} → {formatDate(event.end_date)}</p>
-        <div style={styles.formGrid}>
-          <input style={styles.input} placeholder="Prénom" value={clientForm.firstName} onChange={(event) => setClientForm({ ...clientForm, firstName: event.target.value })} />
-          <input style={styles.input} placeholder="Nom" value={clientForm.lastName} onChange={(event) => setClientForm({ ...clientForm, lastName: event.target.value })} />
-          <input style={styles.input} placeholder="Téléphone" value={clientForm.phone} onChange={(event) => setClientForm({ ...clientForm, phone: event.target.value })} />
-          <input style={styles.input} placeholder="Email" value={clientForm.email} onChange={(event) => setClientForm({ ...clientForm, email: event.target.value })} />
-          <textarea style={styles.textarea} placeholder="Notes internes" value={clientForm.notes} onChange={(event) => setClientForm({ ...clientForm, notes: event.target.value })} />
-        </div>
-        <button style={styles.primaryButton} onClick={onSaveExternal}>Enregistrer la fiche client</button>
-      </div>
-    );
-  }
-
-  if (event.type === "admin_block") {
-    const block = event.block;
-    return (
-      <div>
-        <h3>Blocage admin</h3>
-        <p><strong>{block.title}</strong></p>
-        <p style={styles.muted}>{formatDate(block.start_date)} → {formatDate(block.end_date)}</p>
-        {block.notes && <p>{block.notes}</p>}
-        <button style={styles.deleteButton} onClick={() => onDeleteBlock(block.id)}>Débloquer / supprimer</button>
-      </div>
-    );
-  }
-
-  return null;
-}
-
-function Legend({ color, label }) {
-  return <div style={styles.legendItem}><div style={{ width: "14px", height: "14px", borderRadius: "999px", background: color }} /><span>{label}</span></div>;
-}
-
-const styles = {
-  calendarScroll: {
-    width: "100%",
-  },
-  pendingStartCell: {
-    background: "#fff7ed",
-    border: "2px solid #f97316",
-    borderRadius: "14px",
-    padding: "4px",
-  },
-  pendingStartPill: {
-    marginTop: "4px",
-    display: "inline-block",
-    padding: "3px 8px",
-    borderRadius: "999px",
-    background: "#f97316",
-    color: "white",
-    fontSize: "0.75rem",
-    fontWeight: 800,
-  },
-  selectedRangeCell: {
-    background: "#ffedd5",
-    border: "2px solid #fb923c",
-    borderRadius: "14px",
-    padding: "4px",
-  },
-  selectedRangePill: {
-    marginTop: "4px",
-    display: "inline-block",
-    padding: "3px 8px",
-    borderRadius: "999px",
-    background: "#ea580c",
-    color: "white",
-    fontSize: "0.75rem",
-    fontWeight: 800,
-  },
-  selectionHint: {
-    background: "#fff7ed",
-    border: "1px solid #fdba74",
-    color: "#9a3412",
-    padding: "12px",
-    borderRadius: "14px",
-    lineHeight: 1.5,
-    fontWeight: 700,
-  },
-
-  wrapper: { background: "white", borderRadius: "28px", padding: "28px", boxShadow: "0 18px 45px rgba(15,23,42,0.08)" },
-  legend: { display: "flex", gap: "18px", marginBottom: "20px", flexWrap: "wrap" },
-  legendItem: { display: "flex", alignItems: "center", gap: "8px" },
-  layout: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(300px, 380px)", gap: "24px", alignItems: "start" },
-  calendar: { minWidth: 0, background: "#ffffff", borderRadius: "24px", padding: "18px", border: "1px solid #e2e8f0", boxShadow: "0 14px 36px rgba(15,23,42,0.07)" },
-  sidePanel: { background: "#f8fafc", borderRadius: "20px", padding: "18px", position: "sticky", top: "20px" },
-  closePanelButton: { border: "none", borderRadius: "999px", padding: "8px 12px", background: "#e2e8f0", cursor: "pointer", marginBottom: "12px" },
-  muted: { color: "#64748b", margin: "4px 0" },
-  label: { display: "grid", gap: "8px", margin: "12px 0", fontWeight: 700 },
-  formGrid: { display: "grid", gap: "10px", margin: "16px 0" },
-  input: { padding: "12px 14px", borderRadius: "14px", border: "1px solid #d1d5db", fontSize: "14px", width: "100%", boxSizing: "border-box" },
-  textarea: { padding: "12px 14px", borderRadius: "14px", border: "1px solid #d1d5db", fontSize: "14px", minHeight: "100px", resize: "vertical", width: "100%", boxSizing: "border-box" },
-  checkboxLine: { display: "flex", alignItems: "center", gap: "8px", color: "#334155", fontWeight: 700, lineHeight: 1.4 },
-  primaryButton: { border: "none", borderRadius: "999px", padding: "10px 14px", background: "#2f4f35", color: "white", cursor: "pointer", fontWeight: 700 },
-  smallButton: { border: "none", borderRadius: "999px", padding: "8px 12px", background: "#e2e8f0", cursor: "pointer", fontWeight: 700 },
-  deleteButton: { border: "none", borderRadius: "999px", background: "#dc2626", color: "white", padding: "10px 14px", cursor: "pointer" },
-  blockList: { marginTop: "28px" },
-  sectionHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" },
-  blockItem: { display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "center", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "14px", marginBottom: "10px" },
-  priceGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "12px" },
-  priceItem: { border: "1px solid #e5e7eb", borderRadius: "16px", padding: "14px", background: "#f8fafc" },
-  actionsRow: { display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "10px" },
-  dayCellContent: { display: "grid", gap: "6px", justifyItems: "center", alignContent: "start", minHeight: "64px", fontWeight: 900, color: "#1f2937" },
-  pastDayCell: { opacity: 0.45, filter: "grayscale(1)", cursor: "not-allowed" },
-  dayPrice: { fontSize: "11px", color: "#0f766e", fontWeight: 800 },
-  dayPricePill: {
-    marginTop: "4px",
-    display: "inline-block",
-    padding: "4px 10px",
-    borderRadius: "999px",
-    background: "#ecfdf5",
-    color: "#0f766e",
-    fontSize: "0.82rem",
-    fontWeight: 800,
-  },
-};

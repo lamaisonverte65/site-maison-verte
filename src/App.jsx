@@ -1,15 +1,13 @@
-import MaisonVerte from "./components/MaisonVerte";
+import MaisonVerte from "./pages/MaisonVerte";
 import { useState } from "react";
-import Admin from "./components/Admin";
+import Admin from "./pages/Admin";
 import GuideValleesAureLouron from "./pages/GuideValleesAureLouron";
 import LivretAccueil from "./pages/LivretAccueil";
 import ContactRedirect from "./pages/ContactRedirect";
 import AppelerRedirect from "./pages/AppelerRedirect";
-import MentionsLegales from "./components/MentionsLegales";
-import PolitiqueConfidentialite from "./components/PolitiqueConfidentialite";
+import MentionsLegales from "./pages/MentionsLegales";
+import PolitiqueConfidentialite from "./pages/PolitiqueConfidentialite";
 import SiteAnalyticsTracker from "./components/SiteAnalyticsTracker";
-
-
 function PaymentSuccess() {
   return (
     <main

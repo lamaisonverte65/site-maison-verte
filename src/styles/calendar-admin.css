@@ -1,0 +1,118 @@
+/* Affichage demi-journée des réservations dans CalendarAdmin.
+   Solution bloc unique : FullCalendar garde un seul événement multi-jours,
+   le CSS décale seulement les extrémités visuelles à la demi-journée.
+   Les dates métier restent inchangées. */
+
+.calendar-admin-calendar .fc-daygrid-event.fc-reservation-half-day {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin-top: 2px;
+  margin-bottom: 2px;
+  overflow: visible !important;
+}
+
+.calendar-admin-calendar .fc-reservation-half-day .fc-event-main,
+.calendar-admin-calendar .fc-reservation-half-day .fc-event-main-frame {
+  display: block;
+  overflow: visible !important;
+  padding: 0 !important;
+}
+
+.calendar-admin-reservation-ribbon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 10px;
+  background: var(--reservation-color);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow: visible;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.22);
+  box-sizing: border-box;
+  z-index: 2;
+}
+
+.calendar-admin-reservation-title {
+  position: absolute;
+  z-index: 3;
+  left: 10px;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Le texte est positionné en inline depuis CalendarAdmin.jsx :
+   il commence après la case du jour d'arrivée et reste avant la zone de départ. */
+
+/* Arrivée : la barre commence au milieu du jour d'arrivée.
+   --reservation-edge vaut une demi-cellule réelle en px.
+   C'est volontaire : FullCalendar découpe les événements par semaine, donc un %
+   calculé sur la largeur du fragment donne un mauvais départ quand la réservation
+   commence en fin de ligne, par exemple un dimanche. */
+.calendar-admin-calendar .fc-reservation-half-day.fc-event-start .calendar-admin-reservation-ribbon {
+  margin-left: var(--reservation-edge);
+  border-top-left-radius: 999px;
+  border-bottom-left-radius: 999px;
+}
+
+/* Départ : CalendarAdmin.jsx inclut visuellement le jour de départ.
+   On raccourcit donc la barre à droite pour qu'elle s'arrête au milieu de ce jour.
+   Cette méthode reste correcte si le départ tombe un lundi ou si la période touche
+   un bord de ligne : on ne dessine jamais hors de la ligne FullCalendar. */
+.calendar-admin-calendar .fc-reservation-half-day.fc-event-end .calendar-admin-reservation-ribbon {
+  margin-right: var(--reservation-edge);
+  border-top-right-radius: 999px;
+  border-bottom-right-radius: 999px;
+}
+
+/* Séjour d'une seule nuit : l'événement visuel couvre arrivée + départ.
+   Les marges gauche et droite le limitent donc du milieu du jour d'arrivée
+   au milieu du jour de départ. */
+.calendar-admin-calendar .fc-reservation-half-day.fc-event-start.fc-event-end .calendar-admin-reservation-ribbon {
+  min-width: 0;
+}
+
+.calendar-admin-calendar .fc-daygrid-day-events {
+  min-height: 3.2em;
+  overflow: visible !important;
+}
+
+.calendar-admin-calendar .fc-daygrid-day-frame,
+.calendar-admin-calendar .fc-daygrid-day-events,
+.calendar-admin-calendar .fc-daygrid-event-harness,
+.calendar-admin-calendar .fc-daygrid-event-harness-abs {
+  overflow: visible !important;
+}
+
+@media (max-width: 720px) {
+  .calendar-admin-reservation-ribbon {
+    min-height: 22px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    font-size: 11px;
+  }
+}
+
+/* FullCalendar garde parfois 1 ou 2 px de respiration autour des événements.
+   On les neutralise pour que la couleur colle au quadrillage. */
+.calendar-admin-calendar .fc-daygrid-block-event,
+.calendar-admin-calendar .fc-daygrid-dot-event {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+.calendar-admin-calendar .fc-daygrid-event-harness {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}

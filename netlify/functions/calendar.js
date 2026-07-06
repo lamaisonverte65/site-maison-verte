@@ -81,6 +81,19 @@ export async function handler() {
 
           const startDate = toDateString(event.start);
           const endDate = toDateString(event.end);
+          const durationInNights = Math.round(
+            (parseLocalDate(endDate) - parseLocalDate(startDate)) /
+              (1000 * 60 * 60 * 24)
+          );
+
+          // Booking peut envoyer des blocages ICS isolés d'une seule nuit,
+          // alors que les vraies réservations Booking ne peuvent pas être d'une nuit.
+          // On les ignore à la source pour ne pas bloquer inutilement le calendrier public/admin.
+          // Si Booking rattache ce jour à un événement plus long, on conserve l'événement entier
+          // pour éviter de casser une vraie réservation.
+          if (sourceConfig.source === "booking" && durationInNights === 1) {
+            continue;
+          }
 
           unavailableDates.push(...getDatesBetween(startDate, endDate));
 

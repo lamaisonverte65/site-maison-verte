@@ -261,6 +261,7 @@ export default function LivretAccueil() {
                 <p>Utilisez la hotte aspirante de la cuisine pour la cuisson.</p>
                 <p>Ces ventilations contribuent au confort du logement et à la préservation du bâtiment.</p>
                 <p>Pour ouvrir la fenêtre de la chambre sous combles, vous trouverez une poignée sur le meuble de droite. Celle-ci est amovible afin de ne pas gêner le coulissement du store.</p>
+                
               </article>
 
               <article className="livret-info-card">
@@ -270,9 +271,10 @@ export default function LivretAccueil() {
                 </div>
 
                 <p>Le ballon d'eau chaude a une capacité de 200 litres.</p>
-                <p>L'eau est principalement chauffée durant la nuit. Une utilisation raisonnée permet de conserver suffisamment d'eau chaude pour l'ensemble des occupants, notamment en soirée.</p>
+                <p>Une utilisation raisonnée est nécessaire afin de conserver suffisamment d'eau chaude.</p>
+                <p>Une petite raclette se trouve sous le mitigeur et permet d'évacuer un maximum d'eau, de garder la douche propre et saine</p>
                 <p>En cas de fuite, dysfonctionnement ou anomalie, merci de nous prévenir rapidement.</p>
-                <p>La vanne d'eau se trouve derrière le rideau à côté du lave vaisselle au rdc.</p>
+                <p>La vanne d'eau se trouve à côté du lave vaisselle.</p>
 
               </article>
 
@@ -290,6 +292,9 @@ export default function LivretAccueil() {
                   <li>respect du calme du voisinage ;</li>
                   <li>aucune nuisance sonore après 22 h ;</li>
                   <li>fêtes et rassemblements bruyants non autorisés.</li>
+                  <li>des chaussons sont disponibles dans le meuble du palier d'entrée.</li>
+                  <li>2 couettes sont disponibles par lit</li>
+
                 </ul>
 
               </article>
@@ -301,12 +306,12 @@ export default function LivretAccueil() {
                 <h2>Bon à savoir</h2>
               </div>
 
-              <p>Le tableau électrique se situe à droite de la porte d'entrée.</p>
+              <p>Le tableau électrique se situe derrière la porte d'entrée.</p>
               <p>La télévision peut être connectée à Internet. Activez le partage de connexion de votre téléphone puis connectez la télévision au réseau Wi-Fi créé.</p>
               <p>Les conteneurs de tri sont situés à l'entrée du parking du Monument aux Morts. En sortant de l'impasse, tournez à droite puis continuez tout droit.</p>
-              <p>De l'huile, du sel, du sucre, du café ainsi que quelques condiments sont laissés à votre disposition pour faciliter votre arrivée ou les courts séjours.</p>
-              <p>Vous trouverez aussi des tablettes de lave vaisselle sous l'évier</p>
-              <p>Dans le placard haut de la buanderie se trouvent de la lessive et adoussissant, des amploules, des rouloeaux de paier toilette en cas de besoin</p>
+              <p>De l'huile, du sel, du sucre, du café ainsi que quelques condiments sont laissés à votre disposition pour faciliter votre arrivée ou les courts séjours, merci de ne pas en abuser.</p>
+              <p>Vous trouverez aussi des tablettes de lave vaisselle sous l'évier.</p>
+              <p>Dans le placard haut de la buanderie se trouvent de la lessive et adoussissant, des amploules, des rouleaux de papier toilette en cas de besoin.</p>
             </article>
 
             <footer className="livret-page-footer">
