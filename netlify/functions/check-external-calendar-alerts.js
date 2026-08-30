@@ -153,7 +153,7 @@ export async function runExternalCalendarAlerts() {
   return { success: true, checked: (actions || []).length, missing: claimed.length };
 }
 
-export const handler = schedule("30 7 * * *", async () => {
+export const handler = schedule("*/5 * * * *", async () => {
   try {
     return { statusCode: 200, body: JSON.stringify(await runExternalCalendarAlerts()) };
   } catch (error) {
