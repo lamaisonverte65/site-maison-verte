@@ -1,176 +1,118 @@
 import { createClient } from "@supabase/supabase-js";
+import { createHmac } from "node:crypto";
+import { buildPublicBookingEmails, claimPublicBookingSubmission, isDuplicatePublicBooking, validatePublicBookingPayload } from "./_lib/public-booking.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const json = (statusCode, body) => new Response(JSON.stringify(body), {
+  status: statusCode,
+  headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+});
 
-async function logEmail({ bookingId = null, emailType, toEmail, subject, status, errorMessage = null, providerId = null }) {
+export const config = { path: "/api/booking-request" };
+const ipHash = (value) => createHmac("sha256", process.env.SUPABASE_SERVICE_ROLE_KEY || "")
+  .update(`public-booking-ip:${String(value || "")}`, "utf8")
+  .digest("hex");
+
+async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null }) {
   const { error } = await supabase.from("email_logs").insert([{
-    booking_request_id: bookingId,
-    email_type: emailType,
-    to_email: toEmail,
-    subject,
-    status,
-    error_message: errorMessage,
-    provider_id: providerId,
-    sent_at: new Date().toISOString(),
+    booking_request_id: bookingId, email_type: emailType, to_email: toEmail, subject, status,
+    error_message: errorMessage, provider_id: providerId, sent_at: new Date().toISOString(),
   }]);
   if (error) console.error("Erreur log email_logs:", error.message);
 }
 
-export async function handler(event) {
-  if (event.httpMethod !== "POST") {
-    return {
-      statusCode: 405,
-      body: "Method Not Allowed"
-    };
-  }
-
-  const data = JSON.parse(event.body || "{}");
-  const bookingId = data.bookingId || null;
-
-  const travelersSummary = [
-    data.adultsCount ? `${data.adultsCount} adulte${Number(data.adultsCount) > 1 ? "s" : ""}` : null,
-    Number(data.childrenCount || 0) > 0 ? `${data.childrenCount} enfant${Number(data.childrenCount) > 1 ? "s" : ""}` : null,
-    data.childrenAges ? `âges : ${data.childrenAges}` : null,
-    data.babyBedNeeded ? "lit bébé / bébé à prévoir" : null,
-  ].filter(Boolean).join(" · ") || "Non renseigné";
-
-  const ownerEmailHtml = `
-    
-<div style="font-family:Arial,sans-serif;line-height:1.7;color:#1e293b;">
-  <h2 style="color:#14532d;">Nouvelle demande de réservation</h2>
-  <p>Bonjour Raphaël,</p>
-  <p>
-    Une nouvelle demande de réservation vient d’être reçue pour
-    <strong>La Maison Verte à Arreau</strong>.
-  </p>
-  <p>
-    Voici le récapitulatif de la demande :
-  </p>
-
-    <p><strong>Nom :</strong> ${data.guestFirstName} ${data.guestLastName}</p>
-    <p><strong>Email :</strong> ${data.guestEmail}</p>
-    <p><strong>Téléphone :</strong> ${data.guestPhone}</p>
-    <p><strong>Voyageurs :</strong> ${travelersSummary}</p>
-    <p><strong>Arrivée :</strong> ${data.startDate}</p>
-    <p><strong>Départ :</strong> ${data.endDate}</p>
-    <p><strong>Nuits :</strong> ${data.nights}</p>
-    <p><strong>Total estimatif :</strong> ${data.total}€</p>
-  
-<hr style="margin:32px 0 20px;border:none;border-top:1px solid #e5e7eb;" />
-<p style="font-size:14px;color:#475569;line-height:1.7;">
-  <strong>La Maison Verte</strong><br/>
-  Centre historique d’Arreau — Hautes‑Pyrénées<br/>
-  <a href="https://lamaisonverte65.fr" style="color:#14532d;">lamaisonverte65.fr</a><br/>
-  contact@lamaisonverte65.fr
-</p>
-
-</div>
-  `;
-
-  const guestEmailHtml = `
-    
-<div style="font-family:Arial,sans-serif;line-height:1.7;color:#1e293b;">
-  <h2 style="color:#14532d;">Votre demande a bien été reçue</h2>
-
-
-    <p>Bonjour ${data.guestFirstName} ${data.guestLastName},</p>
-
-    <p>
-      Nous avons bien reçu votre demande de réservation
-      pour La Maison Verte à Arreau.
-    </p>
-
-    <p>
-      <strong>Arrivée :</strong> ${data.startDate}<br />
-      <strong>Départ :</strong> ${data.endDate}<br />
-      <strong>Voyageurs :</strong> ${travelersSummary}<br />
-      <strong>Nombre de nuits :</strong> ${data.nights}<br />
-      <strong>Total estimatif :</strong> ${data.total}€
-    </p>
-
-    <p>
-      Votre demande va être étudiée rapidement avant validation définitive.
-    </p>
-
-    <p>
-      Merci et à bientôt dans les Pyrénées 🙂
-    </p>
-  
-<hr style="margin:32px 0 20px;border:none;border-top:1px solid #e5e7eb;" />
-<p style="font-size:14px;color:#475569;line-height:1.7;">
-  <strong>La Maison Verte</strong><br/>
-  Centre historique d’Arreau — Hautes‑Pyrénées<br/>
-  <a href="https://lamaisonverte65.fr" style="color:#14532d;">lamaisonverte65.fr</a><br/>
-  contact@lamaisonverte65.fr
-</p>
-
-</div>
-  `;
-
-  const ownerResponse = await fetch("https://api.resend.com/emails", {
+async function sendEmail(email, bookingId, emailType) {
+  const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json"
-    },
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
-      to: ["lamaisonverte65@gmail.com"],
+      to: [email.to],
       reply_to: "contact@lamaisonverte65.fr",
-      subject: "Nouvelle demande de réservation",
-      html: ownerEmailHtml
-    })
+      subject: email.subject,
+      html: email.html,
+    }),
   });
-
-  if (!ownerResponse.ok) {
-    const error = await ownerResponse.text();
-
-    console.error("Erreur Resend propriétaire :", error);
-    await logEmail({ bookingId, emailType: "booking_request:owner", toEmail: "lamaisonverte65@gmail.com", subject: "Nouvelle demande de réservation", status: "error", errorMessage: error });
-
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error })
-    };
+  if (!response.ok) {
+    const providerError = await response.text();
+    await logEmail({ bookingId, emailType, toEmail: email.to, subject: email.subject, status: "error", errorMessage: providerError.slice(0, 500) });
+    throw new Error("Envoi email indisponible.");
   }
+  const responseData = await response.json().catch(() => null);
+  await logEmail({ bookingId, emailType, toEmail: email.to, subject: email.subject, status: "sent", providerId: responseData?.id || null });
+}
 
-  let ownerResponseData = null;
-  try { ownerResponseData = await ownerResponse.json(); } catch (_) {}
-  await logEmail({ bookingId, emailType: "booking_request:owner", toEmail: "lamaisonverte65@gmail.com", subject: "Nouvelle demande de réservation", status: "sent", providerId: ownerResponseData?.id || null });
+export default async function handler(request, context) {
+  if (request.method !== "POST") return json(405, { error: "Method Not Allowed" });
+  let recordedBookingId = null;
+  try {
+    const { data: ipAllowed, error: ipLimitError } = await supabase.rpc("claim_public_rate_limit", {
+      p_scope: "public_booking_ip",
+      p_key_hash: ipHash(context?.ip),
+      p_window_seconds: 60,
+      p_limit: 5,
+      p_now: new Date().toISOString(),
+    });
+    if (ipLimitError) throw ipLimitError;
+    if (ipAllowed !== true) return json(429, { error: "Trop de demandes. Réessayez plus tard." });
 
-  const guestResponse = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      from: "La Maison Verte <contact@lamaisonverte65.fr>",
-      to: [data.guestEmail],
-      reply_to: "contact@lamaisonverte65.fr",
-      subject: "Votre demande de réservation - La Maison Verte",
-      html: guestEmailHtml
-    })
-  });
+    let input;
+    try {
+      input = await request.json();
+    } catch {
+      return json(400, { error: "Corps JSON invalide." });
+    }
+    const validated = validatePublicBookingPayload(input);
+    if (!validated.ok) return json(validated.statusCode, { error: validated.error });
 
-  if (!guestResponse.ok) {
-    const error = await guestResponse.text();
+    const claimed = await claimPublicBookingSubmission({
+      async claimFingerprint(fingerprint) {
+        const { data, error } = await supabase.rpc("claim_public_rate_limit", {
+          p_scope: "public_booking_duplicate",
+          p_key_hash: fingerprint,
+          p_window_seconds: 300,
+          p_limit: 1,
+          p_now: new Date().toISOString(),
+        });
+        if (error) throw error;
+        return data === true;
+      },
+    }, validated.booking);
+    if (!claimed) return json(409, { error: "Une demande identique a déjà été reçue récemment." });
 
-    console.error("Erreur Resend client :", error);
-    await logEmail({ bookingId, emailType: "booking_request:guest", toEmail: data.guestEmail, subject: "Votre demande de réservation - La Maison Verte", status: "error", errorMessage: error });
+    const duplicateSince = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data: duplicates, error: duplicateError } = await supabase
+      .from("booking_requests")
+      .select("id,created_at,guest_first_name,guest_last_name,guest_email,guest_phone,adults_count,children_count,children_ages,baby_bed_needed,marketing_consent,message,start_date,end_date,nights,estimated_total,contract_accepted,contract_version")
+      .eq("guest_email", validated.booking.guest_email)
+      .eq("start_date", validated.booking.start_date)
+      .eq("end_date", validated.booking.end_date)
+      .gte("created_at", duplicateSince)
+      .limit(10);
+    if (duplicateError) throw duplicateError;
+    if (isDuplicatePublicBooking(duplicates, validated.booking)) {
+      return json(409, { error: "Une demande identique a déjà été reçue récemment." });
+    }
 
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error })
-    };
+    const { data: booking, error: insertError } = await supabase
+      .from("booking_requests")
+      .insert([validated.booking])
+      .select("id")
+      .single();
+    if (insertError || !booking?.id) throw insertError || new Error("Création de la demande impossible.");
+    recordedBookingId = booking.id;
+
+    const ownerEmail = String(process.env.BOOKING_NOTIFICATION_EMAIL || "lamaisonverte65@gmail.com").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) throw new Error("Configuration destinataire invalide.");
+    const emails = buildPublicBookingEmails(validated.emailModel, { ownerEmail });
+    await sendEmail(emails.owner, booking.id, "booking_request:owner");
+    await sendEmail(emails.guest, booking.id, "booking_request:guest");
+    return json(200, { success: true, bookingId: booking.id });
+  } catch (error) {
+    console.error("Erreur demande publique:", error);
+    if (recordedBookingId) {
+      return json(202, { success: true, bookingId: recordedBookingId, confirmationPending: true });
+    }
+    return json(500, { error: "La demande a été enregistrée ou traitée partiellement. Contactez-nous si vous ne recevez pas de confirmation." });
   }
-
-  let guestResponseData = null;
-  try { guestResponseData = await guestResponse.json(); } catch (_) {}
-  await logEmail({ bookingId, emailType: "booking_request:guest", toEmail: data.guestEmail, subject: "Votre demande de réservation - La Maison Verte", status: "sent", providerId: guestResponseData?.id || null });
-
-  return {
-    statusCode: 200,
-    body: JSON.stringify({ success: true })
-  };
 }

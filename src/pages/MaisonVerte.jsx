@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet";
 import { supabase } from "../supabaseClient";
+import { submitPublicBooking } from "../utils/publicBookingSubmission";
 
 export default function MaisonVerte() {
   const [selectedDates, setSelectedDates] = useState([]);
@@ -23,6 +24,7 @@ export default function MaisonVerte() {
   const [childrenAges, setChildrenAges] = useState("");
   const [babyBedNeeded, setBabyBedNeeded] = useState(false);
   const [guestMessage, setGuestMessage] = useState("");
+  const [bookingWebsite, setBookingWebsite] = useState("");
   const [contractAccepted, setContractAccepted] = useState(false);
   const [publishedReviews, setPublishedReviews] = useState([]);
   const [reviewFirstName, setReviewFirstName] = useState("");
@@ -620,88 +622,34 @@ export default function MaisonVerte() {
     setBookingSubmitting(true);
 
     try {
-      const { data: insertedBookings, error } = await supabase.from("booking_requests").insert([
-        {
-          status: "pending",
-          guest_first_name: guestFirstName.trim(),
-          guest_last_name: guestLastName.trim(),
+      const outcome = await submitPublicBooking({
+        guestFirstName: guestFirstName.trim(),
+        guestLastName: guestLastName.trim(),
+        guestEmail: guestEmail.trim(),
+        guestPhone: guestPhone.trim(),
+        adultsCount,
+        childrenCount,
+        childrenAges: childrenAges.trim(),
+        babyBedNeeded,
+        guestMessage,
+        startDate: selectedDates[0],
+        endDate: selectedDates[1],
+        nights: numberOfNights,
+        total,
+        marketingConsent,
+        contractAccepted,
+        website: bookingWebsite,
+      });
 
-          guest_email: guestEmail.trim(),
-          guest_phone: guestPhone.trim(),
-          adults_count: adultsCount,
-          children_count: childrenCount,
-          children_ages: childrenAges.trim() || null,
-          baby_bed_needed: babyBedNeeded,
-          marketing_consent: marketingConsent,
-          marketing_consent_at: marketingConsent
-            ? new Date().toISOString()
-            : null,
-
-          start_date: selectedDates[0],
-          end_date: selectedDates[1],
-
-          nights: numberOfNights,
-          estimated_total: total,
-          message: guestMessage.trim() || null,
-          contract_accepted: contractAccepted,
-          contract_accepted_at: new Date().toISOString(),
-          contract_version: "v1.1",
-          contract_url:
-            "https://lamaisonverte65.fr/documents/contrat-location.pdf",
-        },
-      ]).select("id");
-
-      if (error) {
-        console.error(error);
-
-        alert("Erreur lors de l'envoi de la demande.");
-
+      if (!outcome.success) {
+        setBookingValidationErrors([outcome.message]);
+        setTimeout(() => bookingErrorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
         return;
       }
 
-      const bookingRequestId = insertedBookings?.[0]?.id || null;
-
-      const emailResponse = await fetch("/.netlify/functions/send-booking-request", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          bookingId: bookingRequestId,
-          guestFirstName: guestFirstName.trim(),
-          guestLastName: guestLastName.trim(),
-
-          guestEmail: guestEmail.trim(),
-          guestPhone: guestPhone.trim(),
-          adultsCount,
-          childrenCount,
-          childrenAges: childrenAges.trim(),
-          babyBedNeeded,
-          guestMessage,
-
-          startDate: selectedDates[0],
-          endDate: selectedDates[1],
-
-          nights: numberOfNights,
-          total,
-        }),
-      });
-
-      if (!emailResponse.ok) {
-        let errorMessage = "Erreur lors de l’envoi de l’email de confirmation.";
-        try {
-          const errorData = await emailResponse.json();
-          errorMessage = errorData?.error || errorMessage;
-        } catch (_) {}
-
-        alert(
-          `Votre demande a bien été enregistrée, mais l’email de confirmation n’a pas pu être envoyé automatiquement. Merci de nous contacter si vous ne recevez rien rapidement. Détail technique : ${errorMessage}`
-        );
-      } else {
-        alert(
-        "Votre demande de réservation a bien été envoyée. Un email de confirmation vient de vous être adressé. Pensez à vérifier vos courriers indésirables / spams si vous ne le recevez pas rapidement. Le calendrier va maintenant se mettre à jour.",
-        );
-      }
+      alert(outcome.confirmationPending
+        ? "Votre demande a bien été enregistrée. L’email de confirmation n’a pas pu être confirmé immédiatement ; ne renvoyez pas le formulaire et contactez-nous si vous ne recevez rien."
+        : "Votre demande de réservation a bien été envoyée. Un email de confirmation vient de vous être adressé. Pensez à vérifier vos courriers indésirables / spams si vous ne le recevez pas rapidement. Le calendrier va maintenant se mettre à jour.");
 
       setGuestFirstName("");
       setGuestLastName("");
@@ -714,6 +662,7 @@ export default function MaisonVerte() {
       setBabyBedNeeded(false);
       setMarketingConsent(false);
       setGuestMessage("");
+      setBookingWebsite("");
 
       setSelectedDates([]);
       setContractAccepted(false);
@@ -722,8 +671,7 @@ export default function MaisonVerte() {
       window.location.reload();
     } catch (err) {
       console.error(err);
-
-      alert("Une erreur est survenue.");
+      setBookingValidationErrors(["Une erreur inattendue est survenue. Vos informations sont conservées ; réessayez."]);
     } finally {
       bookingSubmitLockRef.current = false;
       setBookingSubmitting(false);
@@ -2650,6 +2598,18 @@ export default function MaisonVerte() {
                   resize: "vertical",
                 }}
               />
+
+              <label style={{ position: "absolute", left: "-10000px" }} aria-hidden="true">
+                Site internet
+                <input
+                  type="text"
+                  name="website"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={bookingWebsite}
+                  onChange={(event) => setBookingWebsite(event.target.value)}
+                />
+              </label>
 
               <div
                 className="booking-consent-grid"

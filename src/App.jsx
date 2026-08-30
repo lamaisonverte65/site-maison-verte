@@ -7,6 +7,7 @@ import ContactRedirect from "./pages/ContactRedirect";
 import AppelerRedirect from "./pages/AppelerRedirect";
 import MentionsLegales from "./pages/MentionsLegales";
 import PolitiqueConfidentialite from "./pages/PolitiqueConfidentialite";
+import { getArrivalLinkMode } from "./utils/arrivalLink";
 import SiteAnalyticsTracker from "./components/SiteAnalyticsTracker";
 function PaymentSuccess() {
   return (
@@ -215,14 +216,41 @@ function PaymentCancel() {
 function ArrivalTimePage() {
   const params = new URLSearchParams(window.location.search);
   const bookingId = params.get("booking") || "";
+  const token = params.get("token") || "";
+  const linkMode = getArrivalLinkMode({ bookingId, token });
   const [arrivalTime, setArrivalTime] = useState("");
   const [status, setStatus] = useState("");
+  const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [recoveryLastName, setRecoveryLastName] = useState("");
+  const [recoveryStatus, setRecoveryStatus] = useState("");
+  const [recoverySubmitting, setRecoverySubmitting] = useState(false);
+
+  async function requestSecureArrivalLink(event) {
+    event.preventDefault();
+    if (!recoveryEmail.trim() || !recoveryLastName.trim()) {
+      setRecoveryStatus("Renseignez l’adresse email et le nom utilisés pour la réservation.");
+      return;
+    }
+    setRecoverySubmitting(true);
+    try {
+      await fetch("/.netlify/functions/request-arrival-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId, email: recoveryEmail, lastName: recoveryLastName, website: "" }),
+      });
+      setRecoveryStatus("Si les informations correspondent, un nouveau lien sécurisé sera envoyé à l’adresse enregistrée.");
+    } catch (_) {
+      setRecoveryStatus("Le service est momentanément indisponible. Réessayez plus tard ou contactez-nous directement.");
+    } finally {
+      setRecoverySubmitting(false);
+    }
+  }
 
   async function submitArrivalTime(event) {
     event.preventDefault();
 
-    if (!bookingId || !arrivalTime) {
-      setStatus("Merci de renseigner votre heure d’arrivée.");
+    if (!bookingId || !token || !arrivalTime) {
+      setStatus(!token ? "Ce lien d’arrivée est incomplet ou a expiré." : "Merci de renseigner votre heure d’arrivée.");
       return;
     }
 
@@ -230,7 +258,7 @@ function ArrivalTimePage() {
       const response = await fetch("/.netlify/functions/update-arrival-time", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId, arrivalTime }),
+        body: JSON.stringify({ bookingId, token, arrivalTime }),
       });
 
       if (!response.ok) {
@@ -243,12 +271,28 @@ function ArrivalTimePage() {
     }
   }
 
+  if (linkMode !== "secure") return (
+    <main style={{ minHeight: "100vh", background: "#f3f0e8", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", fontFamily: "Inter, sans-serif" }}>
+      <form onSubmit={requestSecureArrivalLink} style={{ background: "white", borderRadius: "28px", padding: "40px", maxWidth: "640px", width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,0.12)", textAlign: "center" }}>
+        <h1 style={{ color: "#14532d", marginTop: 0 }}>Nouveau lien d’arrivée</h1>
+        {linkMode === "recovery" ? <>
+          <p style={{ color: "#334155", lineHeight: 1.7 }}>Ce lien ancien ne permet plus de modifier directement votre réservation. Indiquez les informations utilisées lors de la réservation pour recevoir un nouveau lien sécurisé.</p>
+          <input type="email" value={recoveryEmail} onChange={(event) => setRecoveryEmail(event.target.value)} placeholder="Adresse email de la réservation" autoComplete="email" style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "18px" }} />
+          <input type="text" value={recoveryLastName} onChange={(event) => setRecoveryLastName(event.target.value)} placeholder="Nom de famille" autoComplete="family-name" style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "12px" }} />
+          <button type="submit" disabled={recoverySubmitting} style={{ marginTop: "22px", border: "none", background: "#2f4f35", color: "white", padding: "14px 24px", borderRadius: "999px", fontWeight: "bold", cursor: recoverySubmitting ? "wait" : "pointer" }}>{recoverySubmitting ? "Envoi…" : "Recevoir un nouveau lien"}</button>
+        </> : <p style={{ color: "#b91c1c", lineHeight: 1.7 }}>Ce lien d’arrivée est incomplet. Contactez-nous pour obtenir un nouveau lien sécurisé.</p>}
+        {recoveryStatus && <p style={{ marginTop: "22px", color: "#334155" }}>{recoveryStatus}</p>}
+        <a href="/" style={{ marginTop: "24px", display: "inline-block", color: "#2f4f35" }}>Retour au site</a>
+      </form>
+    </main>
+  );
+
   return (
     <main style={{ minHeight: "100vh", background: "#f3f0e8", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", fontFamily: "Inter, sans-serif" }}>
       <form onSubmit={submitArrivalTime} style={{ background: "white", borderRadius: "28px", padding: "40px", maxWidth: "640px", width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,0.12)", textAlign: "center" }}>
         <h1 style={{ color: "#14532d", marginTop: 0 }}>Heure d’arrivée</h1>
         <p style={{ color: "#334155", lineHeight: 1.7 }}>Merci de nous indiquer votre heure d’arrivée estimée afin d’organiser votre accueil à La Maison Verte.</p>
-        <input type="text" value={arrivalTime} onChange={(event) => setArrivalTime(event.target.value)} placeholder="Exemple : 17h30" style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "18px" }} />
+        <input type="time" value={arrivalTime} onChange={(event) => setArrivalTime(event.target.value)} step="300" style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "18px" }} />
         <button type="submit" style={{ marginTop: "22px", border: "none", background: "#2f4f35", color: "white", padding: "14px 24px", borderRadius: "999px", fontWeight: "bold", cursor: "pointer" }}>Envoyer</button>
         {status && <p style={{ marginTop: "22px", color: status.includes("✅") ? "#166534" : "#b91c1c" }}>{status}</p>}
         <a href="/" style={{ marginTop: "24px", display: "inline-block", color: "#2f4f35" }}>Retour au site</a>

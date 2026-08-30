@@ -1,5 +1,7 @@
 import { schedule } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
+import { createArrivalToken, shouldSendSecureArrivalReminder } from "./_lib/arrival-token.js";
+import { escapeHtml } from "./_lib/html.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -104,13 +106,26 @@ async function sendArrivalReminderEmail(booking) {
   }
 
   const subject = "Votre heure d’arrivée - La Maison Verte";
-  const arrivalUrl = `${SITE_URL}/arrival?booking=${encodeURIComponent(booking.id)}`;
+  const capability = createArrivalToken(booking);
+  let tokenClaim = supabase.from("booking_requests").update({
+    arrival_token_hash: capability.hash,
+    arrival_token_expires_at: capability.expiresAt,
+    arrival_token_created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("id", booking.id);
+  tokenClaim = booking.arrival_token_hash
+    ? tokenClaim.eq("arrival_token_hash", booking.arrival_token_hash)
+    : tokenClaim.is("arrival_token_hash", null);
+  const { data: claimedBooking, error: tokenError } = await tokenClaim.select("id").maybeSingle();
+  if (tokenError) throw new Error("Migration des jetons d'arrivée absente ou écriture impossible.");
+  if (!claimedBooking?.id) return { sent: false, reason: "concurrent_secure_link_claim" };
+  const arrivalUrl = `${SITE_URL}/arrival?booking=${encodeURIComponent(booking.id)}&token=${encodeURIComponent(capability.token)}`;
 
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6;">
       <h2>Préparation de votre arrivée</h2>
 
-      <p>Bonjour ${booking.guest_first_name || ""} ${booking.guest_last_name || ""},</p>
+      <p>Bonjour ${escapeHtml(booking.guest_first_name)} ${escapeHtml(booking.guest_last_name)},</p>
 
       <p>
         Votre séjour à <strong>La Maison Verte à Arreau</strong> approche.
@@ -176,7 +191,7 @@ async function sendArrivalReminderEmail(booking) {
       subject,
       status: "error",
       errorMessage: errorText,
-      metadata: { arrivalUrl },
+      metadata: { tokenExpiresAt: capability.expiresAt },
     });
 
     return { sent: false, reason: errorText };
@@ -194,7 +209,7 @@ async function sendArrivalReminderEmail(booking) {
     subject,
     status: "sent",
     providerId: responseData?.id || null,
-    metadata: { arrivalUrl },
+    metadata: { tokenExpiresAt: capability.expiresAt },
   });
 
   return { sent: true };
@@ -227,7 +242,7 @@ async function runArrivalReminder() {
 
     const sentAlready = await alreadySentArrivalReminder(booking.id);
 
-    if (sentAlready) {
+    if (!shouldSendSecureArrivalReminder(booking, { reminderSent: sentAlready })) {
       skipped.push({
         bookingId: booking.id,
         reason: "already_sent",

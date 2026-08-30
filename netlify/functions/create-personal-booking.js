@@ -1,41 +1,13 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
+import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
-function getAdminEmails() {
-  return String(process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-async function requireAdmin(event, supabaseClient) {
-  const authHeader = event.headers.authorization || event.headers.Authorization || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-
-  if (!token) {
-    return { ok: false, statusCode: 401, error: "Session admin manquante." };
-  }
-
-  const { data, error } = await supabaseClient.auth.getUser(token);
-  const email = data?.user?.email?.toLowerCase();
-  const allowed = getAdminEmails();
-
-  if (error || !email) {
-    return { ok: false, statusCode: 401, error: "Session admin invalide." };
-  }
-
-  if (allowed.length > 0 && !allowed.includes(email)) {
-    return { ok: false, statusCode: 403, error: "Compte non autorisé." };
-  }
-
-  return { ok: true, user: data.user };
-}
 
 function cleanText(value) {
   const text = String(value || "").trim();
@@ -355,10 +327,8 @@ export async function handler(event) {
   }
 
   try {
-    const admin = await requireAdmin(event, supabase);
-    if (!admin.ok) {
-      return { statusCode: admin.statusCode, body: JSON.stringify({ error: admin.error }) };
-    }
+    const admin = await authorizeAdminRequest(event, supabase, { anyOf: [ADMIN_PERMISSIONS.manageReservations, ADMIN_PERMISSIONS.manageCalendar] });
+    if (!admin.ok) return authorizationResponse(admin);
 
     const body = JSON.parse(event.body || "{}");
     const startDate = body.startDate;

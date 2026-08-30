@@ -1,32 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
+import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
+import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
-function getAdminEmails() {
-  return String(process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-async function requireAdmin(event, supabaseClient) {
-  const authHeader = event.headers.authorization || event.headers.Authorization || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-
-  if (!token) return { ok: false, statusCode: 401, error: "Session admin manquante." };
-
-  const { data, error } = await supabaseClient.auth.getUser(token);
-  const email = data?.user?.email?.toLowerCase();
-  const allowed = getAdminEmails();
-
-  if (error || !email) return { ok: false, statusCode: 401, error: "Session admin invalide." };
-  if (allowed.length > 0 && !allowed.includes(email)) return { ok: false, statusCode: 403, error: "Compte non autorisé." };
-
-  return { ok: true, user: data.user };
-}
 
 async function logBookingEvent({ bookingId, userEmail }) {
   if (!bookingId) return;
@@ -47,8 +26,8 @@ export async function handler(event) {
   }
 
   try {
-    const admin = await requireAdmin(event, supabase);
-    if (!admin.ok) return { statusCode: admin.statusCode, body: JSON.stringify({ error: admin.error }) };
+    const admin = await authorizeAdminRequest(event, supabase, { anyOf: [ADMIN_PERMISSIONS.manageReservations] });
+    if (!admin.ok) return authorizationResponse(admin);
 
     const body = JSON.parse(event.body || "{}");
     const bookingId = body.bookingId;
@@ -63,7 +42,7 @@ export async function handler(event) {
     if (fetchError) throw fetchError;
     if (!existing) return { statusCode: 404, body: JSON.stringify({ error: "Réservation introuvable." }) };
 
-    await logBookingEvent({ bookingId, userEmail: admin.user?.email });
+    await logBookingEvent({ bookingId, userEmail: admin.authUser?.email });
 
     // Suppression logique : la réservation disparaît du calendrier car CalendarAdmin filtre cancelled.
     // On conserve l'historique des paiements / emails / actions.

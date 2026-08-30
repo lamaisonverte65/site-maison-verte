@@ -1,65 +1,11 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
+import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
+import { escapeHtml } from "./_lib/html.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-async function requireAdmin(event) {
-  const rawHeader =
-    event.headers?.authorization ||
-    event.headers?.Authorization ||
-    "";
-
-  const token = rawHeader.startsWith("Bearer ")
-    ? rawHeader.slice("Bearer ".length)
-    : null;
-
-  if (!token) {
-    return {
-      error: {
-        statusCode: 401,
-        body: JSON.stringify({ error: "Unauthorized" }),
-      },
-    };
-  }
-
-  const { data, error } = await supabase.auth.getUser(token);
-
-  if (error || !data?.user) {
-    return {
-      error: {
-        statusCode: 401,
-        body: JSON.stringify({ error: "Invalid admin session" }),
-      },
-    };
-  }
-
-  const allowedRaw =
-    process.env.ADMIN_EMAILS ||
-    process.env.ADMIN_EMAIL ||
-    "";
-
-  const allowedEmails = allowedRaw
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
-
-  if (
-    allowedEmails.length > 0 &&
-    !allowedEmails.includes(String(data.user.email || "").toLowerCase())
-  ) {
-    return {
-      error: {
-        statusCode: 403,
-        body: JSON.stringify({ error: "Forbidden" }),
-      },
-    };
-  }
-
-  return { user: data.user };
-}
-
-
 
 async function logBookingEvent({ bookingId, eventType, label, message, metadata = {} }) {
   if (!bookingId) return;
@@ -124,7 +70,7 @@ async function sendManualPaymentEmail({ bookingId, guestEmail, guestFirstName, g
     <div style="font-family: Arial, sans-serif; line-height: 1.6;">
       <h2>${reasonLabel} à régler — La Maison Verte</h2>
 
-      <p>Bonjour ${guestFirstName || ""} ${guestLastName || ""},</p>
+      <p>Bonjour ${escapeHtml(guestFirstName)} ${escapeHtml(guestLastName)},</p>
 
       <p>
         Un lien de paiement sécurisé vous est envoyé concernant votre séjour à
@@ -145,10 +91,10 @@ async function sendManualPaymentEmail({ bookingId, guestEmail, guestFirstName, g
         </p>
       ` : ""}
 
-      ${message ? `<p><strong>Message :</strong><br />${message}</p>` : ""}
+      ${message ? `<p><strong>Message :</strong><br />${escapeHtml(message).replace(/\r?\n/g, "<br />")}</p>` : ""}
 
       <p style="margin-top:30px;">
-        <a href="${paymentLink}" style="background:#16a34a;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;">
+        <a href="${escapeHtml(paymentLink)}" style="background:#16a34a;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;">
           ${buttonLabel}
         </a>
       </p>
@@ -191,18 +137,13 @@ export async function handler(event) {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
 
-  const adminAuth = await requireAdmin(event);
-  if (adminAuth.error) return adminAuth.error;
+  const adminAuth = await authorizeAdminRequest(event, supabase, { anyOf: [ADMIN_PERMISSIONS.managePayments] });
+  if (!adminAuth.ok) return authorizationResponse(adminAuth);
 
   try {
     const data = JSON.parse(event.body || "{}");
     const {
       bookingId,
-      guestEmail,
-      guestFirstName,
-      guestLastName,
-      startDate,
-      endDate,
       amount,
       reason = "solde",
       message = "",
@@ -212,13 +153,26 @@ export async function handler(event) {
     const safeReason = allowedReasons.includes(reason) ? reason : "complement";
     const numericAmount = Number(amount || 0);
 
-    if (!bookingId || !guestEmail) {
-      return { statusCode: 400, body: JSON.stringify({ error: "bookingId et guestEmail obligatoires" }) };
+    if (!bookingId) {
+      return { statusCode: 400, body: JSON.stringify({ error: "bookingId obligatoire" }) };
     }
 
     if (!numericAmount || numericAmount <= 0) {
       return { statusCode: 400, body: JSON.stringify({ error: "Montant invalide" }) };
     }
+
+    if (String(message || "").length > 1500) {
+      return { statusCode: 400, body: JSON.stringify({ error: "Message trop long" }) };
+    }
+
+    const { data: booking, error: bookingError } = await supabase.from("booking_requests").select("*").eq("id", bookingId).single();
+    if (bookingError || !booking) return { statusCode: 404, body: JSON.stringify({ error: "Réservation introuvable" }) };
+    const guestEmail = booking.guest_email;
+    const guestFirstName = booking.guest_first_name;
+    const guestLastName = booking.guest_last_name;
+    const startDate = booking.start_date;
+    const endDate = booking.end_date;
+    if (!guestEmail) return { statusCode: 400, body: JSON.stringify({ error: "Email client manquant dans la réservation" }) };
 
     const reasonLabel = getReasonLabel(safeReason);
 

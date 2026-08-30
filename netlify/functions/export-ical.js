@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
-  process.env.VITE_SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 function formatDateForIcal(dateString) {
@@ -34,13 +34,13 @@ export async function handler() {
   try {
     const { data: blocks, error: blocksError } = await supabase
       .from("calendar_blocks")
-      .select("*");
+      .select("id,start_date,end_date");
 
     if (blocksError) throw blocksError;
 
     const { data: requests, error: requestsError } = await supabase
       .from("booking_requests")
-      .select("*")
+      .select("id,start_date,end_date,status")
       .in("status", ["accepted", "paid", "confirmed"]);
 
     if (requestsError) throw requestsError;
@@ -50,8 +50,8 @@ export async function handler() {
         uid: `block-${block.id}@lamaisonverte65.fr`,
         start_date: block.start_date,
         end_date: block.end_date,
-        title: block.title || "Indisponible",
-        description: block.notes || "Blocage admin La Maison Verte",
+        title: "Indisponible",
+        description: "Période indisponible",
       })
     );
 
@@ -61,14 +61,7 @@ export async function handler() {
         start_date: request.start_date,
         end_date: request.end_date,
         title: "Réservation directe - La Maison Verte",
-        description: [
-          request.guest_first_name,
-          request.guest_last_name,
-          request.guest_email,
-          request.guest_phone,
-        ]
-          .filter(Boolean)
-          .join(" - "),
+        description: "Période indisponible",
       })
     );
 

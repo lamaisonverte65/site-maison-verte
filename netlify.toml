@@ -23,3 +23,6 @@
 
 [functions."send-arrival-reminder"]
   schedule = "0 9 * * *"
+
+[functions."check-external-calendar-alerts"]
+  schedule = "30 7 * * *"

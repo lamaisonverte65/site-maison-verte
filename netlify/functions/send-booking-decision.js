@@ -1,63 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
+import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
+import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
+import { escapeHtml } from "./_lib/html.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-async function requireAdmin(event) {
-  const rawHeader =
-    event.headers?.authorization ||
-    event.headers?.Authorization ||
-    "";
-
-  const token = rawHeader.startsWith("Bearer ")
-    ? rawHeader.slice("Bearer ".length)
-    : null;
-
-  if (!token) {
-    return {
-      error: {
-        statusCode: 401,
-        body: JSON.stringify({ error: "Unauthorized" }),
-      },
-    };
-  }
-
-  const { data, error } = await supabase.auth.getUser(token);
-
-  if (error || !data?.user) {
-    return {
-      error: {
-        statusCode: 401,
-        body: JSON.stringify({ error: "Invalid admin session" }),
-      },
-    };
-  }
-
-  const allowedRaw =
-    process.env.ADMIN_EMAILS ||
-    process.env.ADMIN_EMAIL ||
-    "";
-
-  const allowedEmails = allowedRaw
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
-
-  if (
-    allowedEmails.length > 0 &&
-    !allowedEmails.includes(String(data.user.email || "").toLowerCase())
-  ) {
-    return {
-      error: {
-        statusCode: 403,
-        body: JSON.stringify({ error: "Forbidden" }),
-      },
-    };
-  }
-
-  return { user: data.user };
-}
-
-
 
 async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null }) {
   const { error } = await supabase.from("email_logs").insert([{
@@ -162,8 +108,8 @@ export async function handler(event) {
     };
   }
 
-  const adminAuth = await requireAdmin(event);
-  if (adminAuth.error) return adminAuth.error;
+  const adminAuth = await authorizeAdminRequest(event, supabase, { anyOf: [ADMIN_PERMISSIONS.manageReservations, ADMIN_PERMISSIONS.manageCommunication] });
+  if (!adminAuth.ok) return authorizationResponse(adminAuth);
 
   try {
     const data = JSON.parse(event.body || "{}");
@@ -191,6 +137,20 @@ export async function handler(event) {
       paymentAmount,
       daysBeforeArrival,
     } = data;
+
+    if (!bookingId) return { statusCode: 400, body: JSON.stringify({ error: "bookingId obligatoire." }) };
+    const { data: storedBooking, error: bookingError } = await supabase.from("booking_requests").select("*").eq("id", bookingId).single();
+    if (bookingError || !storedBooking?.guest_email) return { statusCode: 404, body: JSON.stringify({ error: "Réservation introuvable." }) };
+    const recipientEmail = storedBooking.guest_email;
+    const safeOwnerMessage = escapeHtml(ownerMessage).replace(/\r?\n/g, "<br />");
+    if (paymentLink) {
+      try {
+        const url = new URL(paymentLink);
+        if (url.protocol !== "https:" || !["checkout.stripe.com", "buy.stripe.com"].includes(url.hostname)) throw new Error("invalid");
+      } catch {
+        return { statusCode: 400, body: JSON.stringify({ error: "Lien de paiement non autorisé." }) };
+      }
+    }
 
     let subject = "";
     let title = "";
@@ -237,7 +197,7 @@ export async function handler(event) {
             ? `
           <p>
             <strong>Message :</strong><br />
-            ${ownerMessage}
+            ${safeOwnerMessage}
           </p>
         `
             : ""
@@ -320,7 +280,7 @@ export async function handler(event) {
             ? `
           <p>
             <strong>Message :</strong><br />
-            ${ownerMessage}
+            ${safeOwnerMessage}
           </p>
         `
             : ""
@@ -373,7 +333,7 @@ export async function handler(event) {
             ? `
           <p>
             <strong>Message :</strong><br />
-            ${ownerMessage}
+            ${safeOwnerMessage}
           </p>
         `
             : ""
@@ -413,7 +373,7 @@ export async function handler(event) {
       },
       body: JSON.stringify({
         from: "La Maison Verte <contact@lamaisonverte65.fr>",
-        to: [guestEmail],
+        to: [recipientEmail],
         reply_to: "contact@lamaisonverte65.fr",
         subject,
         html,
@@ -423,7 +383,7 @@ export async function handler(event) {
     if (!response.ok) {
       const error = await response.text();
       console.error("Erreur Resend :", error);
-      await logEmail({ bookingId, emailType: `booking_decision:${type}`, toEmail: guestEmail, subject, status: "error", errorMessage: error });
+      await logEmail({ bookingId, emailType: `booking_decision:${type}`, toEmail: recipientEmail, subject, status: "error", errorMessage: error });
 
       return {
         statusCode: 500,
@@ -433,7 +393,7 @@ export async function handler(event) {
 
     let responseData = null;
     try { responseData = await response.json(); } catch (_) {}
-    await logEmail({ bookingId, emailType: `booking_decision:${type}`, toEmail: guestEmail, subject, status: "sent", providerId: responseData?.id || null });
+    await logEmail({ bookingId, emailType: `booking_decision:${type}`, toEmail: recipientEmail, subject, status: "sent", providerId: responseData?.id || null });
 
     return {
       statusCode: 200,

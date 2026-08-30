@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../../../supabaseClient";
 import { styles } from "../adminStyles";
 import { displayValue, formatBool, formatDateValue } from "../../../utils/reservationUtils";
 
@@ -12,15 +11,7 @@ function HousekeepingInfo({ label, value }) {
   );
 }
 
-const textareaStyle = {
-  ...styles.largeTextarea,
-  width: "100%",
-  minHeight: "130px",
-  boxSizing: "border-box",
-  background: "white",
-};
-
-function ReadOnlyNoteBox({ title, children }) {
+function ReadOnlyBox({ title, children }) {
   return (
     <section style={styles.noteBox}>
       <strong>{title}</strong>
@@ -29,82 +20,41 @@ function ReadOnlyNoteBox({ title, children }) {
   );
 }
 
-export default function HousekeepingReservationView({ reservation, onEmail, onPhone, onSms, onReservationUpdated }) {
-  const customer = reservation.customerSummary || {};
-  const phone = customer.phone || reservation.guest_phone || "";
-  const email = customer.email || reservation.guest_email || "";
-  const firstName = customer.firstName || reservation.guest_first_name || "-";
-  const lastName = customer.lastName || reservation.guest_last_name || "-";
-  const adults = reservation.occupancy?.adults ?? reservation.adults_count ?? "-";
-  const children = reservation.occupancy?.children ?? reservation.children_count ?? "-";
-  const babyBed = reservation.occupancy?.babyBedNeeded ?? reservation.baby_bed_needed;
-  const arrival = reservation.stay?.arrivalTime || reservation.arrival_time || "Non renseignée";
-  const adminNotes = [reservation.housekeeping_notes, reservation.owner_message].filter(Boolean).join("\n\n");
-  const clientMessage = reservation.message || "";
-  const initialUserNotes = reservation.housekeeping_user_notes || reservation.housekeepingUserNotes || "";
-  const isExternalOnlyReservation = Boolean(reservation.is_external_reservation && reservation.uid);
-  const canSaveUserNotes = isExternalOnlyReservation ? Boolean(reservation.uid) : Boolean(reservation?.id);
-  const [userNotes, setUserNotes] = useState(initialUserNotes);
-  const [savingNotes, setSavingNotes] = useState(false);
-  const [notesMessage, setNotesMessage] = useState("");
+export default function HousekeepingReservationView({
+  reservation,
+  onEmail,
+  onPhone,
+  onSms,
+  onCreateNote,
+  onReservationUpdated,
+}) {
+  const guest = reservation.guest || {};
+  const occupancy = reservation.occupancy || {};
+  const stay = reservation.stay || {};
+  const communications = reservation.communications || {};
+  const internalNotes = reservation.internalNotes || {};
+  const notes = Array.isArray(internalNotes.housekeeping) ? internalNotes.housekeeping : [];
+  const [housekeepingNote, setHousekeepingNote] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
-    setUserNotes(initialUserNotes);
-    setNotesMessage("");
-  }, [reservation.id, reservation.uid, initialUserNotes]);
+    setHousekeepingNote("");
+    setStatusMessage("");
+  }, [reservation.id]);
 
-  async function getAdminFetchHeaders() {
-    const { data: { session } } = await supabase.auth.getSession();
-    return {
-      "Content-Type": "application/json",
-      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-    };
-  }
-
-  async function saveUserNotes() {
-    if (!canSaveUserNotes) {
-      setNotesMessage("Cette réservation n’est pas encore enregistrée dans la base : note utilisateur impossible à sauvegarder.");
-      return;
-    }
-
+  async function saveNote() {
     try {
-      setSavingNotes(true);
-      setNotesMessage("");
-
-      const endpoint = isExternalOnlyReservation
-        ? "/.netlify/functions/update-external-reservation-client"
-        : "/.netlify/functions/update-booking-request";
-
-      const payload = isExternalOnlyReservation
-        ? {
-            updateMode: "housekeeping_user_notes",
-            uid: reservation.uid,
-            source: reservation.source,
-            startDate: reservation.start_date,
-            endDate: reservation.end_date,
-            housekeepingUserNotes: userNotes,
-          }
-        : {
-            bookingId: reservation.id,
-            updateMode: "housekeeping_user_notes",
-            housekeepingUserNotes: userNotes,
-          };
-
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: await getAdminFetchHeaders(),
-        body: JSON.stringify(payload),
-      });
-
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Erreur enregistrement note utilisateur.");
-
-      setNotesMessage("Note utilisateur enregistrée.");
+      setSavingNote(true);
+      setStatusMessage("");
+      await onCreateNote?.(reservation.id, housekeepingNote);
+      setHousekeepingNote("");
+      setStatusMessage("Note ménage ajoutée.");
       await onReservationUpdated?.();
     } catch (error) {
-      setNotesMessage("Erreur : " + error.message);
+      setStatusMessage(`Erreur : ${error.message}`);
     } finally {
-      setSavingNotes(false);
+      setSavingNote(false);
     }
   }
 
@@ -113,8 +63,8 @@ export default function HousekeepingReservationView({ reservation, onEmail, onPh
       <div style={styles.detailHeader}>
         <div>
           <p style={styles.kicker}>Fiche séjour ménage</p>
-          <h3 style={styles.detailTitle}>{customer.fullName || reservation.displayName || "Séjour"}</h3>
-          <p style={styles.muted}>{reservation.sourceLabel || reservation.source || "-"} · {formatDateValue(reservation.start_date)} → {formatDateValue(reservation.end_date)}</p>
+          <h3 style={styles.detailTitle}>{[guest.firstName, guest.lastName].filter(Boolean).join(" ") || "Séjour"}</h3>
+          <p style={styles.muted}>{formatDateValue(reservation.startDate)} → {formatDateValue(reservation.endDate)}</p>
         </div>
       </div>
 
@@ -122,61 +72,70 @@ export default function HousekeepingReservationView({ reservation, onEmail, onPh
         <section style={styles.card}>
           <h3 style={styles.subTitle}>Client</h3>
           <div style={styles.detailGrid}>
-            <HousekeepingInfo label="Nom" value={lastName} />
-            <HousekeepingInfo label="Prénom" value={firstName} />
-            <HousekeepingInfo label="Téléphone" value={phone || "-"} />
-            <HousekeepingInfo label="Email" value={email || "-"} />
+            <HousekeepingInfo label="Nom" value={guest.lastName} />
+            <HousekeepingInfo label="Prénom" value={guest.firstName} />
+            <HousekeepingInfo label="Téléphone" value={guest.phone} />
+            <HousekeepingInfo label="Email" value={guest.email} />
           </div>
           <div style={styles.contactButtons}>
-            {phone && <button style={styles.smallButton} onClick={() => onPhone?.(phone)}>Téléphoner</button>}
-            {phone && <button style={styles.smallButton} onClick={() => onSms?.(phone)}>SMS</button>}
-            {email && <button style={styles.smallButton} onClick={() => onEmail?.(email)}>Email</button>}
+            {guest.phone && <button style={styles.smallButton} onClick={() => onPhone?.(guest.phone)}>Téléphoner</button>}
+            {guest.phone && <button style={styles.smallButton} onClick={() => onSms?.(guest.phone)}>SMS</button>}
+            {guest.email && <button style={styles.smallButton} onClick={() => onEmail?.(guest.email)}>Email</button>}
           </div>
         </section>
 
         <section style={styles.card}>
           <h3 style={styles.subTitle}>Séjour</h3>
           <div style={styles.detailGrid}>
-            <HousekeepingInfo label="Arrivée" value={formatDateValue(reservation.start_date)} />
-            <HousekeepingInfo label="Départ" value={formatDateValue(reservation.end_date)} />
-            <HousekeepingInfo label="Heure d'arrivée" value={arrival} />
-            <HousekeepingInfo label="Adultes" value={adults} />
-            <HousekeepingInfo label="Enfants" value={children} />
-            <HousekeepingInfo label="Lit bébé" value={formatBool(babyBed)} />
+            <HousekeepingInfo label="Arrivée" value={formatDateValue(reservation.startDate)} />
+            <HousekeepingInfo label="Départ" value={formatDateValue(reservation.endDate)} />
+            <HousekeepingInfo label="Adultes" value={occupancy.adults} />
+            <HousekeepingInfo label="Enfants" value={occupancy.children} />
+            <HousekeepingInfo label="Âges enfants" value={occupancy.childrenAges} />
+            <HousekeepingInfo label="Lit bébé" value={formatBool(occupancy.babyBedNeeded)} />
           </div>
         </section>
       </div>
 
-      <ReadOnlyNoteBox title="Messages clients">
-        {clientMessage}
-      </ReadOnlyNoteBox>
-
-      <ReadOnlyNoteBox title="Notes admin">
-        {adminNotes}
-      </ReadOnlyNoteBox>
-
       <section style={styles.card}>
-        <h3 style={styles.subTitle}>Note utilisateur</h3>
-        <p style={styles.muted}>Zone modifiable par l’utilisateur ménage pour ajouter ses informations personnelles de suivi.</p>
-        <textarea
-          style={textareaStyle}
-          value={userNotes}
-          placeholder="Exemples : ampoule à remplacer, linge manquant, objet oublié, consigne pour le prochain passage..."
-          disabled={!canSaveUserNotes}
-          onChange={(event) => {
-            setUserNotes(event.target.value);
-            setNotesMessage("");
-          }}
-        />
-        {notesMessage && (
-          <p style={notesMessage.startsWith("Erreur") ? styles.error : styles.info}>{notesMessage}</p>
-        )}
-        <div style={{ ...styles.contactButtons, marginTop: "10px" }}>
-          <button type="button" style={styles.addButton} onClick={saveUserNotes} disabled={savingNotes || !canSaveUserNotes}>
-            {savingNotes ? "Enregistrement..." : "Enregistrer la note utilisateur"}
-          </button>
+        <h3 style={styles.subTitle}>Horaires opérationnels</h3>
+        <div style={styles.detailGrid}>
+          <HousekeepingInfo label="Heure d’arrivée" value={stay.arrivalTime} />
+          <HousekeepingInfo label="Heure de départ particulière" value={stay.departureTime} />
         </div>
       </section>
+
+      <ReadOnlyBox title="Informations pratiques du séjour">{stay.practicalInformation}</ReadOnlyBox>
+      <ReadOnlyBox title="Message du client">{communications.clientMessage}</ReadOnlyBox>
+      <ReadOnlyBox title="Note du propriétaire destinée au ménage">{internalNotes.ownerForHousekeeping}</ReadOnlyBox>
+
+      <section style={styles.card}>
+        <h3 style={styles.subTitle}>Notes opérationnelles du ménage</h3>
+        {notes.length === 0 && <p style={styles.muted}>Aucune note ménage.</p>}
+        {notes.map((note) => (
+          <div key={note.id} style={styles.noteBox}>
+            <strong>{note.authorDisplayName || "Compte ménage"}</strong>
+            <p>{note.note}</p>
+            <small style={styles.muted}>{note.createdAt ? new Date(note.createdAt).toLocaleString("fr-FR") : ""}</small>
+          </div>
+        ))}
+        <h4>Ajouter une note</h4>
+        <p style={styles.muted}>Cette note append-only reste interne et n’est jamais envoyée au client.</p>
+        <textarea
+          style={{ ...styles.largeTextarea, width: "100%", minHeight: "130px", boxSizing: "border-box" }}
+          value={housekeepingNote}
+          maxLength={2000}
+          onChange={(event) => setHousekeepingNote(event.target.value)}
+        />
+        <button
+          type="button"
+          style={styles.addButton}
+          disabled={savingNote || !housekeepingNote.trim()}
+          onClick={saveNote}
+        >Ajouter la note ménage</button>
+      </section>
+
+      {statusMessage && <p style={statusMessage.startsWith("Erreur") ? styles.error : styles.info}>{statusMessage}</p>}
     </div>
   );
 }

@@ -28,8 +28,6 @@ export function useAdminUsers({ session } = {}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const currentEmail = session?.user?.email?.toLowerCase() || "";
-
   const loadUsers = useCallback(async () => {
     if (!session) {
       setUsers([]);
@@ -40,49 +38,49 @@ export function useAdminUsers({ session } = {}) {
     setLoading(true);
     setError("");
     try {
-      const data = await callAdminUsersApi({ action: "list" });
-      const nextUsers = data.users || [];
-      setUsers(nextUsers);
-      setCurrentAdminUser(
-        data.currentUser || nextUsers.find((user) => String(user.email || "").toLowerCase() === currentEmail) || null
-      );
+      const profileData = await callAdminUsersApi({ action: "me" });
+      const currentUser = profileData.currentUser || null;
+      setCurrentAdminUser(currentUser);
+      if (profileData.canListUsers) {
+        const listData = await callAdminUsersApi({ action: "list" });
+        setUsers(listData.users || []);
+      } else {
+        setUsers([]);
+      }
     } catch (error) {
+      setUsers([]);
+      setCurrentAdminUser(null);
       setError(error.message || "Erreur chargement utilisateurs.");
     } finally {
       setLoading(false);
     }
-  }, [session, currentEmail]);
+  }, [session]);
 
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
 
-  async function createUser(values) {
-    await callAdminUsersApi({ action: "create", user: values });
+  async function createHousekeeping(values) {
+    await callAdminUsersApi({ action: "create_housekeeping", user: values });
     await loadUsers();
   }
 
-  async function updateUser(userId, values) {
-    await callAdminUsersApi({ action: "update", userId, updates: values });
+  async function updateHousekeeping(userId, values) {
+    await callAdminUsersApi({ action: "update_housekeeping", userId, updates: values });
     await loadUsers();
   }
 
-  async function resetPassword(userId, temporaryPassword) {
-    await callAdminUsersApi({ action: "reset_password", userId, temporaryPassword });
-    await loadUsers();
-  }
-
-  async function transferOwnership(userId) {
-    await callAdminUsersApi({ action: "transfer_owner", userId });
+  async function resetHousekeepingPassword(userId, temporaryPassword) {
+    await callAdminUsersApi({ action: "reset_housekeeping_password", userId, temporaryPassword });
     await loadUsers();
   }
 
   async function toggleActive(user) {
-    await updateUser(user.id, { is_active: !user.is_active });
+    await updateHousekeeping(user.id, { is_active: !user.is_active });
   }
 
-  async function deleteUser(userId) {
-    await callAdminUsersApi({ action: "delete", userId });
+  async function deleteHousekeeping(userId) {
+    await callAdminUsersApi({ action: "delete_housekeeping", userId });
     await loadUsers();
   }
 
@@ -97,12 +95,11 @@ export function useAdminUsers({ session } = {}) {
     loading,
     error,
     reload: loadUsers,
-    createUser,
-    updateUser,
-    resetPassword,
-    transferOwnership,
+    createHousekeeping,
+    updateHousekeeping,
+    resetHousekeepingPassword,
     toggleActive,
-    deleteUser,
+    deleteHousekeeping,
     changeOwnPassword,
   }), [users, currentAdminUser, loading, error, loadUsers]);
 }

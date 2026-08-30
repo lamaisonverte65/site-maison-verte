@@ -1,4 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
+import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
+import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -7,13 +9,6 @@ const supabase = createClient(
 
 function json(statusCode, body) {
   return { statusCode, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
-}
-
-function getAdminEmails() {
-  return String(process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
 }
 
 function cleanText(value) {
@@ -34,38 +29,6 @@ function nightsBetween(startDate, endDate) {
   const start = new Date(`${startDate}T12:00:00`);
   const end = new Date(`${endDate}T12:00:00`);
   return Math.max(Math.round((end - start) / (1000 * 60 * 60 * 24)), 0);
-}
-
-async function requireAdmin(event) {
-  const authHeader = event.headers.authorization || event.headers.Authorization || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  if (!token) return { ok: false, statusCode: 401, error: "Session admin manquante." };
-
-  const { data, error } = await supabase.auth.getUser(token);
-  const email = data?.user?.email?.toLowerCase();
-  if (error || !email) return { ok: false, statusCode: 401, error: "Session admin invalide." };
-
-  const allowed = getAdminEmails();
-  const isEnvAdmin = allowed.length === 0 || allowed.includes(email);
-
-  const { data: adminUser, error: adminError } = await supabase
-    .from("admin_users")
-    .select("*")
-    .eq("email", email)
-    .maybeSingle();
-
-  if (adminError && adminError.code !== "PGRST116") {
-    return { ok: false, statusCode: 500, error: adminError.message };
-  }
-
-  if (!isEnvAdmin && (!adminUser || adminUser.is_active === false)) {
-    return { ok: false, statusCode: 403, error: "Compte admin non autorisé." };
-  }
-
-  const canManage = isEnvAdmin || adminUser?.is_owner || adminUser?.role === "owner" || adminUser?.role === "admin" || (Array.isArray(adminUser?.permissions) && adminUser.permissions.includes("manage:reservations"));
-  if (!canManage) return { ok: false, statusCode: 403, error: "Droit gestion réservations requis." };
-
-  return { ok: true, user: data.user, adminUser };
 }
 
 function buildCustomerNotes(existingCustomer, item, email, phone) {
@@ -271,8 +234,8 @@ export async function handler(event) {
   if (event.httpMethod !== "POST") return json(405, { error: "Method Not Allowed" });
 
   try {
-    const admin = await requireAdmin(event);
-    if (!admin.ok) return json(admin.statusCode, { error: admin.error });
+    const admin = await authorizeAdminRequest(event, supabase, { anyOf: [ADMIN_PERMISSIONS.manageReservations, ADMIN_PERMISSIONS.manageCalendar] });
+    if (!admin.ok) return authorizationResponse(admin);
 
     const body = JSON.parse(event.body || "{}");
     const action = "manual_periods";

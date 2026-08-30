@@ -1,4 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
+import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
+import { canMutateClientData } from "./_lib/business-mutation-policy.js";
+import { normalizeEmail } from "./_lib/normalize.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -14,63 +17,13 @@ function cleanText(value) {
   return text || null;
 }
 
-function normalizeEmail(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function getOwnerEmails() {
-  return String(process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-async function getRequester(event) {
-  const authHeader = event.headers.authorization || event.headers.Authorization || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  if (!token) return { ok: false, statusCode: 401, error: "Session admin manquante." };
-
-  const { data, error } = await supabase.auth.getUser(token);
-  const user = data?.user;
-  const email = normalizeEmail(user?.email);
-  if (error || !email) return { ok: false, statusCode: 401, error: "Session admin invalide." };
-
-  const ownerEmails = getOwnerEmails();
-  const isEnvOwner = ownerEmails.includes(email);
-
-  const { data: adminUser, error: adminError } = await supabase
-    .from("admin_users")
-    .select("*")
-    .eq("email", email)
-    .maybeSingle();
-
-  if (adminError && adminError.code !== "PGRST116") {
-    return { ok: false, statusCode: 500, error: adminError.message };
+export function normalizeExternalCustomerPayload(payload = {}) {
+  const normalized = { ...payload };
+  for (const field of ["uid", "source", "firstName", "lastName", "phone", "startDate", "endDate"]) {
+    if (Object.prototype.hasOwnProperty.call(payload, field)) normalized[field] = cleanText(payload[field]);
   }
-
-  if (!adminUser && isEnvOwner) {
-    return { ok: true, authUser: user, adminUser: { email, role: "owner", is_owner: true, is_active: true, permissions: [] } };
-  }
-
-  if (!adminUser || adminUser.is_active === false) {
-    return { ok: false, statusCode: 403, error: "Compte admin non autorisé ou désactivé." };
-  }
-
-  return { ok: true, authUser: user, adminUser: { ...adminUser, is_owner: adminUser.is_owner || isEnvOwner } };
-}
-
-function hasPermission(adminUser, permission) {
-  if (adminUser?.is_owner || adminUser?.role === "owner" || adminUser?.role === "admin") return true;
-  return Array.isArray(adminUser?.permissions) && adminUser.permissions.includes(permission);
-}
-
-function canUpdateExternalClient(adminUser) {
-  return hasPermission(adminUser, "manage:customers") || hasPermission(adminUser, "manage:reservations") || hasPermission(adminUser, "manage:calendar");
-}
-
-function canUpdateHousekeepingUserNotes(adminUser) {
-  const role = String(adminUser?.role || "").toLowerCase();
-  return canUpdateExternalClient(adminUser) || role === "housekeeping";
+  normalized.email = normalizeEmail(payload.email) || null;
+  return normalized;
 }
 
 async function findExistingCustomer({ customerId, email, phone, firstName, lastName }) {
@@ -116,12 +69,9 @@ function buildNotes({ notes, arrivalTime, childrenCount, babyBedNeeded }) {
   return lines.join("\n") || null;
 }
 
-async function upsertExternalReservation(payload, customer) {
-  const uid = cleanText(payload.uid);
-  if (!uid) return { data: null, warning: "UID réservation externe manquant : client mis à jour, lien externe non créé." };
-
-  const baseRow = {
-    uid,
+export function buildExternalReservationRow(payload, customer, updatedAt = new Date().toISOString()) {
+  return {
+    uid: cleanText(payload.uid),
     source: cleanText(payload.source) || "external",
     start_date: cleanText(payload.startDate),
     end_date: cleanText(payload.endDate),
@@ -132,50 +82,31 @@ async function upsertExternalReservation(payload, customer) {
     guest_phone: cleanText(payload.phone),
     notes: buildNotes(payload),
     housekeeping_notes: cleanText(payload.notes),
-    housekeeping_user_notes: cleanText(payload.housekeepingUserNotes),
-    updated_at: new Date().toISOString(),
+    updated_at: updatedAt,
   };
+}
 
-  const optionalRow = {
-    ...baseRow,
-    arrival_time: cleanText(payload.arrivalTime),
-    children_count: payload.childrenCount === null || payload.childrenCount === undefined || payload.childrenCount === "" ? null : Number(payload.childrenCount),
-    baby_bed_needed: typeof payload.babyBedNeeded === "boolean" ? payload.babyBedNeeded : null,
-  };
+async function upsertExternalReservation(payload, customer) {
+  const uid = cleanText(payload.uid);
+  if (!uid) return { data: null, warning: "UID réservation externe manquant : client mis à jour, lien externe non créé." };
 
   const { data, error } = await supabase
     .from("external_reservation_clients")
-    .upsert(optionalRow, { onConflict: "uid" })
+    .upsert(buildExternalReservationRow(payload, customer), { onConflict: "uid" })
     .select()
     .single();
-
-  if (!error) return { data };
-
-  // Compatibilité avec la table actuelle si les colonnes optionnelles n'existent pas encore.
-  if (String(error.message || "").includes("arrival_time") || String(error.message || "").includes("children_count") || String(error.message || "").includes("baby_bed_needed") || String(error.message || "").includes("housekeeping_notes") || String(error.message || "").includes("housekeeping_user_notes")) {
-    const legacyRow = { ...baseRow };
-    delete legacyRow.housekeeping_notes;
-    delete legacyRow.housekeeping_user_notes;
-
-    const retry = await supabase
-      .from("external_reservation_clients")
-      .upsert(legacyRow, { onConflict: "uid" })
-      .select()
-      .single();
-    if (retry.error) throw retry.error;
-    return { data: retry.data, warning: "Colonnes optionnelles absentes : certaines infos restent stockées dans les notes." };
-  }
-
-  throw error;
+  if (error) throw error;
+  return { data };
 }
 
 async function createOrUpdateCustomer(payload) {
-  const firstName = cleanText(payload.firstName);
-  const lastName = cleanText(payload.lastName);
-  const email = normalizeEmail(payload.email) || null;
-  const phone = cleanText(payload.phone);
-  const source = cleanText(payload.source) || "external";
-  const notes = buildNotes(payload);
+  const normalized = normalizeExternalCustomerPayload(payload);
+  const firstName = normalized.firstName;
+  const lastName = normalized.lastName;
+  const email = normalized.email;
+  const phone = normalized.phone;
+  const source = normalized.source || "external";
+  const notes = buildNotes(normalized);
 
   const existing = await findExistingCustomer({
     customerId: cleanText(payload.customerId),
@@ -193,7 +124,7 @@ async function createOrUpdateCustomer(payload) {
       phone: phone || existing.phone,
       source: source || existing.source,
       notes: notes || existing.notes,
-      last_stay: cleanText(payload.endDate) || existing.last_stay,
+      last_stay: normalized.endDate || existing.last_stay,
       updated_at: new Date().toISOString(),
     };
 
@@ -216,8 +147,8 @@ async function createOrUpdateCustomer(payload) {
       phone,
       source,
       notes,
-      first_stay: cleanText(payload.startDate),
-      last_stay: cleanText(payload.endDate),
+      first_stay: normalized.startDate,
+      last_stay: normalized.endDate,
       booking_count: 1,
     }])
     .select()
@@ -233,53 +164,24 @@ export async function handler(event) {
   }
 
   try {
-    const requester = await getRequester(event);
-    if (!requester.ok) return json(requester.statusCode, { error: requester.error });
+    const requester = await authorizeAdminRequest(event, supabase);
+    if (!requester.ok) return authorizationResponse(requester);
+    const canUpdateExternalClient = canMutateClientData(requester);
+    if (!canUpdateExternalClient) {
+      return json(403, { error: "Droit propriétaire requis." });
+    }
 
     const payload = JSON.parse(event.body || "{}");
 
-    if (payload.updateMode === "housekeeping_user_notes") {
-      if (!canUpdateHousekeepingUserNotes(requester.adminUser)) {
-        return json(403, { error: "Droit ménage insuffisant." });
-      }
-
-      const uid = cleanText(payload.uid);
-      if (!uid) return json(400, { error: "UID réservation externe manquant." });
-
-      const row = {
-        uid,
-        source: cleanText(payload.source) || "external",
-        start_date: cleanText(payload.startDate),
-        end_date: cleanText(payload.endDate),
-        housekeeping_user_notes: cleanText(payload.housekeepingUserNotes),
-        updated_at: new Date().toISOString(),
-      };
-
-      const { data, error } = await supabase
-        .from("external_reservation_clients")
-        .upsert(row, { onConflict: "uid" })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return json(200, { ok: true, externalReservationClient: data });
-    }
-
-    if (!canUpdateExternalClient(requester.adminUser)) {
-      return json(403, { error: "Droit modification client/réservation requis." });
-    }
-
-    const email = normalizeEmail(payload.email) || null;
-    const phone = cleanText(payload.phone);
-    const firstName = cleanText(payload.firstName);
-    const lastName = cleanText(payload.lastName);
+    const normalizedPayload = normalizeExternalCustomerPayload(payload);
+    const { email, phone, firstName, lastName } = normalizedPayload;
 
     if (!firstName && !lastName && !email && !phone) {
       return json(400, { error: "Renseigne au moins un nom, un email ou un téléphone." });
     }
 
-    const customer = await createOrUpdateCustomer({ ...payload, email });
-    const external = await upsertExternalReservation({ ...payload, email }, customer);
+    const customer = await createOrUpdateCustomer(normalizedPayload);
+    const external = await upsertExternalReservation(normalizedPayload, customer);
 
     return json(200, {
       ok: true,

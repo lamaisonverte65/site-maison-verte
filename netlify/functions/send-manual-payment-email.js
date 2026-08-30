@@ -1,160 +1,37 @@
+import { createClient } from "@supabase/supabase-js";
+import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
+import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
+import { buildStoredManualPaymentEmail, validateAdminEmailRequest } from "./_lib/admin-email.js";
+
+const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const json = (statusCode, body) => ({ statusCode, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
 export async function handler(event) {
-  if (event.httpMethod !== "POST") {
-    return {
-      statusCode: 405,
-      body: "Method Not Allowed",
-    };
-  }
-
+  if (event.httpMethod !== "POST") return { statusCode: 405, body: "Method Not Allowed" };
+  const auth = await authorizeAdminRequest(event, supabase, { anyOf: [ADMIN_PERMISSIONS.managePayments] });
+  if (!auth.ok) return authorizationResponse(auth);
   try {
-    const data = JSON.parse(event.body || "{}");
-
-    const {
-      guestEmail,
-      guestFirstName,
-      guestLastName,
-      amount,
-      reason,
-      message,
-      paymentLink,
-      startDate,
-      endDate,
-    } = data;
-
-    if (!guestEmail || !amount || !paymentLink) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({
-          error: "guestEmail, amount et paymentLink sont obligatoires.",
-        }),
-      };
-    }
-
-    const reasonLabel = reason || "Paiement complémentaire";
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-        
-<h2 style="color:#14532d;">Paiement demandé — La Maison Verte</h2>
-
-<p>
-  Bonjour,
-</p>
-
-<p>
-  Merci encore pour votre réservation à <strong>La Maison Verte à Arreau</strong>.
-</p>
-
-<p>
-  Vous trouverez ci-dessous les informations concernant ce règlement.
-</p>
-
-
-        <p>
-          Bonjour ${guestFirstName || ""} ${guestLastName || ""},
-        </p>
-
-        <p>
-          Un règlement est actuellement nécessaire pour votre réservation à
-          <strong>La Maison Verte à Arreau</strong>.
-        </p>
-
-        ${
-          startDate || endDate
-            ? `
-          <p>
-            <strong>Arrivée :</strong> ${startDate || "-"}<br />
-            <strong>Départ :</strong> ${endDate || "-"}
-          </p>
-        `
-            : ""
-        }
-
-        <p>
-          <strong>Motif :</strong> ${reasonLabel}<br />
-          <strong>Montant à régler :</strong> ${amount} €
-        </p>
-
-        ${
-          message
-            ? `
-          <p>
-            <strong>Message :</strong><br />
-            ${message}
-          </p>
-        `
-            : ""
-        }
-
-        <p style="margin-top:30px;">
-          <a
-            href="${paymentLink}"
-            style="
-              background:#16a34a;
-              color:white;
-              padding:14px 22px;
-              border-radius:12px;
-              text-decoration:none;
-              font-weight:bold;
-              display:inline-block;
-            "
-          >
-            Procéder au paiement
-          </a>
-        </p>
-
-        <p>
-          Le paiement s’effectue via Stripe par lien sécurisé.
-        </p>
-
-        <p style="margin-top:30px;font-size:13px;color:#666;">
-          Pensez à vérifier vos courriers indésirables / spams
-          si vous ne recevez pas nos prochains messages,
-          puis ajoutez contact@lamaisonverte65.fr à vos contacts.
-        </p>
-      </div>
-    `;
-
+    const request = validateAdminEmailRequest(JSON.parse(event.body || "{}"));
+    if (!request.ok) return json(request.statusCode, { error: request.error });
+    const { data: booking, error } = await supabase.from("booking_requests").select("*").eq("id", request.bookingId).single();
+    if (error || !booking) return json(404, { error: "Réservation introuvable." });
+    const email = buildStoredManualPaymentEmail(booking);
+    if (!email.ok) return json(email.statusCode, { error: email.error });
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         from: "La Maison Verte <contact@lamaisonverte65.fr>",
-        to: [guestEmail],
+        to: [email.to],
         reply_to: "contact@lamaisonverte65.fr",
-        subject: `Paiement demandé - La Maison Verte`,
-        html,
+        subject: email.subject,
+        html: email.html,
       }),
     });
-
-    if (!response.ok) {
-      const error = await response.text();
-
-      console.error("Erreur Resend paiement manuel :", error);
-
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error }),
-      };
-    }
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify({
-        success: true,
-      }),
-    };
+    if (!response.ok) throw new Error("Envoi Resend refusé.");
+    return json(200, { success: true });
   } catch (error) {
-    console.error(error);
-
-    return {
-      statusCode: 500,
-      body: JSON.stringify({
-        error: error.message,
-      }),
-    };
+    console.error("Erreur email paiement manuel:", error);
+    return json(500, { error: "Envoi impossible." });
   }
 }

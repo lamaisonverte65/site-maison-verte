@@ -147,7 +147,7 @@ function EditableReservationForm({ request, form, onChange, onCancel, onSave, sa
         </div>
         <label style={fieldStyle}><span style={labelStyle}>Message client</span><textarea style={textareaStyle} value={form.clientMessage} onChange={(event) => update("clientMessage", event.target.value)} /></label>
         <label style={fieldStyle}><span style={labelStyle}>Notes admin</span><textarea style={textareaStyle} value={form.housekeepingNotes} onChange={(event) => update("housekeepingNotes", event.target.value)} placeholder="Consignes propriétaire / administration visibles par le ménage, modifiables seulement par l’admin..." /></label>
-        <label style={fieldStyle}><span style={labelStyle}>Notes internes administration</span><textarea style={textareaStyle} value={form.internalNotes} onChange={(event) => update("internalNotes", event.target.value)} /></label>
+        <label style={fieldStyle}><span style={labelStyle}>Valeur historique propriétaire — provenance non qualifiée</span><textarea style={textareaStyle} value={form.internalNotes} onChange={(event) => update("internalNotes", event.target.value)} /></label>
       </div>
     </section>
   );
@@ -172,6 +172,7 @@ export default function ReservationPanel({
   payments = [],
   events = [],
   emailLogs = [],
+  housekeepingNotes = [],
   permissions,
   mode = "admin",
 }) {
@@ -344,7 +345,7 @@ export default function ReservationPanel({
       )}
 
       <DocumentsBlock request={reservation} />
-      <MessagesBlock request={reservation} />
+      <MessagesBlock request={reservation} housekeepingNotes={housekeepingNotes} />
 
       {!isReadOnly && (
         <PermissionGate permissions={permissions} permission={ADMIN_PERMISSIONS.viewCommunication}>

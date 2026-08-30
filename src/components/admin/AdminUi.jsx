@@ -79,7 +79,7 @@ export function ActionModal({ modal, onClose, onSubmit }) {
           </>
         )}
 
-        <label style={styles.label}>Message envoyé au client / note interne<textarea style={styles.largeTextarea} value={message} onChange={(event) => setMessage(event.target.value)} /></label>
+        <label style={styles.label}>Message envoyé au client<textarea style={styles.largeTextarea} value={message} onChange={(event) => setMessage(event.target.value)} /></label>
 
         {(modal.type === "cancel" || modal.type === "refund_only") && (
           <>

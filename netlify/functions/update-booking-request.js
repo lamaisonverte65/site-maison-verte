@@ -1,60 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
+import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
+import { canMutateReservationData } from "./_lib/business-mutation-policy.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
-function getAdminEmails() {
-  return String(process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-async function getAdminUserProfile(user) {
-  const email = user?.email?.toLowerCase();
-  const userId = user?.id;
-
-  const queries = [];
-  if (email) queries.push(() => supabase.from("admin_users").select("*").eq("email", email).maybeSingle());
-  if (userId) queries.push(() => supabase.from("admin_users").select("*").eq("user_id", userId).maybeSingle());
-  if (userId) queries.push(() => supabase.from("admin_users").select("*").eq("auth_user_id", userId).maybeSingle());
-
-  for (const query of queries) {
-    try {
-      const { data, error } = await query();
-      if (!error && data) return data;
-    } catch {
-      // Si la table ou une colonne n'existe pas, on garde la compatibilité avec ADMIN_EMAILS.
-    }
-  }
-
-  return null;
-}
-
-async function requireAdminUser(event, supabaseClient) {
-  const authHeader = event.headers.authorization || event.headers.Authorization || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-
-  if (!token) return { ok: false, statusCode: 401, error: "Session admin manquante." };
-
-  const { data, error } = await supabaseClient.auth.getUser(token);
-  const email = data?.user?.email?.toLowerCase();
-  const allowed = getAdminEmails();
-
-  if (error || !email) return { ok: false, statusCode: 401, error: "Session admin invalide." };
-
-  const profile = await getAdminUserProfile(data.user);
-  const role = String(profile?.role || "").toLowerCase();
-  const isListedAdmin = allowed.length === 0 || allowed.includes(email);
-  const canUseAdmin = isListedAdmin || ["admin", "owner", "manager"].includes(role);
-  const canUseHousekeepingNotes = canUseAdmin || role === "housekeeping";
-
-  if (!canUseHousekeepingNotes) return { ok: false, statusCode: 403, error: "Compte non autorisé." };
-
-  return { ok: true, user: data.user, profile, role, canUseAdmin, canUseHousekeepingNotes };
-}
 
 function cleanText(value) {
   const text = String(value || "").trim();
@@ -211,12 +162,14 @@ export async function handler(event) {
   if (event.httpMethod !== "POST") return { statusCode: 405, body: "Method Not Allowed" };
 
   try {
-    const admin = await requireAdminUser(event, supabase);
-    if (!admin.ok) return { statusCode: admin.statusCode, body: JSON.stringify({ error: admin.error }) };
+    const admin = await authorizeAdminRequest(event, supabase);
+    if (!admin.ok) return authorizationResponse(admin);
+    admin.user = admin.authUser;
+    admin.canUseAdmin = canMutateReservationData(admin);
+    if (!admin.canUseAdmin) return { statusCode: 403, body: JSON.stringify({ error: "Droit propriétaire requis." }) };
 
     const body = JSON.parse(event.body || "{}");
     const bookingId = body.bookingId;
-    const isHousekeepingUserNotesUpdate = body.updateMode === "housekeeping_user_notes";
     const startDate = String(body.startDate || "").slice(0, 10);
     const endDate = String(body.endDate || "").slice(0, 10);
 
@@ -231,33 +184,6 @@ export async function handler(event) {
     if (fetchError) throw fetchError;
     if (!existingBooking) return { statusCode: 404, body: JSON.stringify({ error: "Réservation introuvable." }) };
 
-    if (isHousekeepingUserNotesUpdate) {
-      if (!admin.canUseHousekeepingNotes) return { statusCode: 403, body: JSON.stringify({ error: "Droit ménage insuffisant." }) };
-
-      const housekeepingUserNotes = cleanText(body.housekeepingUserNotes) || "";
-      const now = new Date().toISOString();
-      const { data: booking, error } = await supabase
-        .from("booking_requests")
-        .update({
-          housekeeping_user_notes: housekeepingUserNotes,
-          updated_at: now,
-        })
-        .eq("id", bookingId)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      await logBookingEvent({
-        bookingId,
-        userEmail: admin.user?.email,
-        metadata: { source: "housekeeping", updateMode: "housekeeping_user_notes" },
-      });
-
-      return { statusCode: 200, body: JSON.stringify({ success: true, booking }) };
-    }
-
-    if (!admin.canUseAdmin) return { statusCode: 403, body: JSON.stringify({ error: "Droit admin insuffisant." }) };
     if (!startDate || !endDate || endDate <= startDate) return { statusCode: 400, body: JSON.stringify({ error: "Période invalide." }) };
 
     const bookingKind = normalizeBookingKind(body.bookingKind);

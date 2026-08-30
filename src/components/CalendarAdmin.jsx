@@ -89,7 +89,15 @@ function updateHalfDayEdge(info) {
   info.el.style.setProperty("--reservation-edge", `${dayWidth / 2}px`);
 }
 
-export default function CalendarAdmin({ mode = "admin", onSelectReservation, onCalendarUpdated, reservationToEdit, onReservationEditHandled }) {
+export default function CalendarAdmin({
+  mode = "admin",
+  onSelectReservation,
+  onCalendarUpdated,
+  reservationToEdit,
+  onReservationEditHandled,
+  housekeepingReservations = [],
+  onHousekeepingNoteCreate,
+}) {
   const [events, setEvents] = useState([]);
   const [blocks, setBlocks] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -107,9 +115,41 @@ export default function CalendarAdmin({ mode = "admin", onSelectReservation, onC
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    if (mode === "housekeeping") return;
     loadCalendar();
     loadCustomers();
-  }, []);
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "housekeeping") return;
+    const safeEvents = housekeepingReservations.map((reservation) => {
+      const firstName = reservation.guest?.firstName || "";
+      const lastName = reservation.guest?.lastName || "";
+      const displayName = [firstName, lastName].filter(Boolean).join(" ") || "Séjour";
+      const calendarReservation = {
+        ...reservation,
+        start_date: reservation.startDate,
+        end_date: reservation.endDate,
+        displayName,
+      };
+      return {
+        id: reservation.id,
+        title: displayName,
+        start: reservation.startDate,
+        end: reservation.endDate,
+        backgroundColor: "#0f766e",
+        borderColor: "#0f766e",
+        extendedProps: { type: "booking_request", reservation: calendarReservation },
+      };
+    });
+    setEvents(safeEvents);
+    setSelectedCalendarReservation((current) => {
+      if (!current?.id) return current;
+      return safeEvents.find((event) => event.id === current.id)?.extendedProps?.reservation || current;
+    });
+    setBlocks([]);
+    setCalendarRenderKey((previous) => previous + 1);
+  }, [mode, housekeepingReservations]);
 
   useEffect(() => {
     const reservation = reservationToEdit?.request || reservationToEdit;
@@ -127,6 +167,7 @@ export default function CalendarAdmin({ mode = "admin", onSelectReservation, onC
   }
 
   async function loadCustomers() {
+    if (mode === "housekeeping") return;
     const { data, error } = await supabase
       .from("customers")
       .select("*")
@@ -168,6 +209,10 @@ export default function CalendarAdmin({ mode = "admin", onSelectReservation, onC
   }
 
   async function loadCalendar() {
+    if (mode === "housekeeping") {
+      await onCalendarUpdated?.();
+      return;
+    }
     setLoading(true);
 
     try {
@@ -755,7 +800,9 @@ export default function CalendarAdmin({ mode = "admin", onSelectReservation, onC
     };
   }, [events, seasonPrices, priceOverrides]);
 
-  const legendItems = [
+  const legendItems = mode === "housekeeping" ? [
+    { color: "#0f766e", label: "Séjour" },
+  ] : [
     { color: COLORS.pending, label: "Demande en attente" },
     { color: COLORS.accepted, label: "Acceptée — attente paiement" },
     { color: COLORS.deposit_paid, label: "Acompte payé" },
@@ -775,7 +822,7 @@ export default function CalendarAdmin({ mode = "admin", onSelectReservation, onC
         summary={calendarSummary}
         selectedPeriod={selectedPeriod}
         pendingRangeStart={pendingRangeStart}
-        onRefresh={loadCalendar}
+        onRefresh={mode === "housekeeping" ? onCalendarUpdated : loadCalendar}
         onClearSelection={() => {
           clearEditionAndSelection();
         }}
@@ -837,9 +884,11 @@ export default function CalendarAdmin({ mode = "admin", onSelectReservation, onC
               return (
                 <div style={cellStyle}>
                   <div>{arg.dayNumberText}</div>
-                  <div style={pillStyle}>
-                    {isPastDay ? "Passé" : (isPendingStart ? "Début" : (isSelectedRangeDay ? "Sélection" : (getPriceForDate(key) === null ? "..." : `${getPriceForDate(key)}€`)))}
-                  </div>
+                  {mode !== "housekeeping" && (
+                    <div style={pillStyle}>
+                      {isPastDay ? "Passé" : (isPendingStart ? "Début" : (isSelectedRangeDay ? "Sélection" : (getPriceForDate(key) === null ? "..." : `${getPriceForDate(key)}€`)))}
+                    </div>
+                  )}
                 </div>
               );
             }}
@@ -877,10 +926,7 @@ export default function CalendarAdmin({ mode = "admin", onSelectReservation, onC
                   onEmail={contactEmail}
                   onPhone={contactPhone}
                   onSms={contactSms}
-                  onReservationUpdated={async () => {
-                    await loadCalendar();
-                    onCalendarUpdated?.();
-                  }}
+                  onCreateNote={onHousekeepingNoteCreate}
                 />
               ) : (
                 <ReservationSummaryPanel
@@ -925,7 +971,7 @@ export default function CalendarAdmin({ mode = "admin", onSelectReservation, onC
       </div>
 
 
-      <section style={styles.blockList}>
+      {mode !== "housekeeping" && <section style={styles.blockList}>
         <h3>Blocages admin</h3>
         {blocks.length === 0 ? (
           <p style={styles.muted}>Aucun blocage admin enregistré.</p>
@@ -941,7 +987,7 @@ export default function CalendarAdmin({ mode = "admin", onSelectReservation, onC
             </div>
           ))
         )}
-      </section>
+      </section>}
     </div>
   );
 }

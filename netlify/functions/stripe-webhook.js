@@ -1,5 +1,7 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { createArrivalToken } from "./_lib/arrival-token.js";
+import { escapeHtml } from "./_lib/html.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -296,7 +298,20 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
   const total = Number(booking.owner_price || booking.estimated_total || 0);
   const deposit = Number(booking.deposit_amount || Math.round(total * 0.3));
   const balance = Number(booking.balance_amount || Math.max(total - deposit, 0));
-  const arrivalUrl = `https://lamaisonverte65.fr/arrival?booking=${booking.id}`;
+  let arrivalUrl = null;
+  try {
+    const capability = createArrivalToken(booking);
+    const { error: tokenError } = await supabase.from("booking_requests").update({
+      arrival_token_hash: capability.hash,
+      arrival_token_expires_at: capability.expiresAt,
+      arrival_token_created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", booking.id);
+    if (tokenError) throw tokenError;
+    arrivalUrl = `https://lamaisonverte65.fr/arrival?booking=${encodeURIComponent(booking.id)}&token=${encodeURIComponent(capability.token)}`;
+  } catch (error) {
+    console.error("Lien d'arrivée sécurisé indisponible; email de paiement envoyé sans lien:", error.message);
+  }
 
   const isFull = paymentType === "full";
   const isBalance = paymentType === "balance";
@@ -332,7 +347,7 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
     <div style="font-family: Arial, sans-serif; line-height: 1.6;">
       <h2>${title}</h2>
 
-      <p>Bonjour ${booking.guest_first_name || ""} ${booking.guest_last_name || ""},</p>
+      <p>Bonjour ${escapeHtml(booking.guest_first_name)} ${escapeHtml(booking.guest_last_name)},</p>
 
       <p>${intro}</p>
 
@@ -350,11 +365,7 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
         Merci de nous communiquer votre heure d’arrivée estimée afin d’organiser votre accueil dans les meilleures conditions.
       </p>
 
-      <p style="margin-top:24px;">
-        <a href="${arrivalUrl}" style="background:#2f4f35;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;">
-          Renseigner mon heure d’arrivée
-        </a>
-      </p>
+      ${arrivalUrl ? `<p style="margin-top:24px;"><a href="${escapeHtml(arrivalUrl)}" style="background:#2f4f35;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;">Renseigner mon heure d’arrivée</a></p>` : ""}
 
       <p>Nous avons hâte de vous accueillir dans les Pyrénées 🌿</p>
 

@@ -1,65 +1,10 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
+import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-async function requireAdmin(event) {
-  const rawHeader =
-    event.headers?.authorization ||
-    event.headers?.Authorization ||
-    "";
-
-  const token = rawHeader.startsWith("Bearer ")
-    ? rawHeader.slice("Bearer ".length)
-    : null;
-
-  if (!token) {
-    return {
-      error: {
-        statusCode: 401,
-        body: JSON.stringify({ error: "Unauthorized" }),
-      },
-    };
-  }
-
-  const { data, error } = await supabase.auth.getUser(token);
-
-  if (error || !data?.user) {
-    return {
-      error: {
-        statusCode: 401,
-        body: JSON.stringify({ error: "Invalid admin session" }),
-      },
-    };
-  }
-
-  const allowedRaw =
-    process.env.ADMIN_EMAILS ||
-    process.env.ADMIN_EMAIL ||
-    "";
-
-  const allowedEmails = allowedRaw
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
-
-  if (
-    allowedEmails.length > 0 &&
-    !allowedEmails.includes(String(data.user.email || "").toLowerCase())
-  ) {
-    return {
-      error: {
-        statusCode: 403,
-        body: JSON.stringify({ error: "Forbidden" }),
-      },
-    };
-  }
-
-  return { user: data.user };
-}
-
-
 
 function formatDate(value) {
   if (!value) return "-";
@@ -169,8 +114,8 @@ async function createBalanceSession(booking, amount) {
 export async function handler(event) {
   if (event.httpMethod !== "POST") return { statusCode: 405, body: "Method Not Allowed" };
 
-  const adminAuth = await requireAdmin(event);
-  if (adminAuth.error) return adminAuth.error;
+  const adminAuth = await authorizeAdminRequest(event, supabase, { anyOf: [ADMIN_PERMISSIONS.managePayments] });
+  if (!adminAuth.ok) return authorizationResponse(adminAuth);
 
   try {
     const { bookingId, step = "request" } = JSON.parse(event.body || "{}");

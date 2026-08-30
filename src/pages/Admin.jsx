@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { fetchAdminData } from "../services/adminDataService";
 import {
+  fetchAdminDataForRole,
+  fetchHousekeepingData,
+  createHousekeepingNote,
+  fetchHousekeepingNotes,
+} from "../services/housekeepingService";
+import {
   createCheckoutSession,
   createManualPayment,
   refundBookingPayment,
@@ -60,6 +66,8 @@ export default function Admin() {
   const [confirmedReservations, setConfirmedReservations] = useState([]);
   const [stripePayouts, setStripePayouts] = useState([]);
   const [stripeBalanceTransactions, setStripeBalanceTransactions] = useState([]);
+  const [housekeepingReservations, setHousekeepingReservations] = useState([]);
+  const [ownerHousekeepingNotes, setOwnerHousekeepingNotes] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [calendarEditRequest, setCalendarEditRequest] = useState(null);
   const [activeTab, setActiveTab] = useState("requests");
@@ -101,8 +109,8 @@ export default function Admin() {
   }, []);
 
   useEffect(() => {
-    if (session) loadAdminData();
-  }, [session]);
+    if (session && adminUsersData.currentAdminUser) loadAdminData();
+  }, [session, adminUsersData.currentAdminUser]);
 
   async function checkSession() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -120,7 +128,14 @@ export default function Admin() {
     setError("");
 
     try {
-      const adminData = await fetchAdminData(supabase);
+      const adminData = await fetchAdminDataForRole(adminUsersData.currentAdminUser?.role, {
+        loadHousekeeping: () => fetchHousekeepingData({ accessToken: session?.access_token }),
+        loadOwner: () => fetchAdminData(supabase),
+      });
+      if (isHousekeepingUser) {
+        setHousekeepingReservations(adminData.reservations || []);
+        return;
+      }
       const nextRequests = adminData.bookingRequests;
 
       setBookingRequests(nextRequests);
@@ -139,6 +154,11 @@ export default function Admin() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function saveHousekeepingNote(reservationId, note) {
+    await createHousekeepingNote({ accessToken: session?.access_token, reservationId, note });
+    await loadAdminData();
   }
 
   function selectReservation(request) {
@@ -673,6 +693,21 @@ export default function Admin() {
   const openedReservationEmailLogs = selectedReservationData?.emailLogs || emailLogs.filter((log) => log.booking_request_id === openedReservationId || log.booking_id === openedReservationId);
   const canManageOpenedReservation = Boolean(openedReservationId) && !openedReservation?.uid;
 
+  useEffect(() => {
+    let active = true;
+    if (!session?.access_token || !openedReservation) {
+      setOwnerHousekeepingNotes([]);
+      return () => { active = false; };
+    }
+    const reservationId = openedReservation.uid
+      ? `external:${openedReservation.source}:${openedReservation.uid}`
+      : openedReservation.id;
+    fetchHousekeepingNotes({ accessToken: session.access_token, reservationId })
+      .then((notes) => { if (active) setOwnerHousekeepingNotes(notes); })
+      .catch(() => { if (active) setOwnerHousekeepingNotes([]); });
+    return () => { active = false; };
+  }, [session?.access_token, openedReservation?.id, openedReservation?.uid, openedReservation?.source]);
+
   if (authLoading) return <p style={{ padding: 30 }}>Chargement...</p>;
   if (!session) return <AdminLogin onLogin={checkSession} />;
 
@@ -697,6 +732,8 @@ export default function Admin() {
         {!loading && !error && (
           <CalendarAdmin
             mode="housekeeping"
+            housekeepingReservations={housekeepingReservations}
+            onHousekeepingNoteCreate={saveHousekeepingNote}
             onCalendarUpdated={loadAdminData}
           />
         )}
@@ -866,6 +903,7 @@ export default function Admin() {
             payments={openedReservationPayments}
             events={openedReservationEvents}
             emailLogs={openedReservationEmailLogs}
+            housekeepingNotes={ownerHousekeepingNotes}
             onAccept={openAcceptModal}
             onRefuse={openRefuseModal}
             onConfirm={openConfirmModal}

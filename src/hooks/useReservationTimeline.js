@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { formatMoney } from "../utils/adminFormatters";
+import { formatMoney } from "../utils/adminFormatters.js";
 
 function pushTimelineItem(items, date, type, title, description = "", data = {}) {
   if (!date) return;
@@ -13,8 +13,7 @@ function pushTimelineItem(items, date, type, title, description = "", data = {})
   });
 }
 
-export function useReservationTimeline({ reservation, payments = [], events = [], emailLogs = [] }) {
-  return useMemo(() => {
+export function buildReservationTimeline({ reservation, payments = [], events = [], emailLogs = [] }) {
     if (!reservation) return [];
 
     const items = [];
@@ -32,7 +31,7 @@ export function useReservationTimeline({ reservation, payments = [], events = []
       reservation.accepted_at,
       "reservation",
       "Demande acceptée",
-      reservation.owner_message || "La demande a été acceptée."
+      "La demande a été acceptée."
     );
 
     pushTimelineItem(
@@ -40,7 +39,7 @@ export function useReservationTimeline({ reservation, payments = [], events = []
       reservation.refused_at,
       "reservation",
       "Demande refusée",
-      reservation.owner_message || "La demande a été refusée."
+      "La demande a été refusée."
     );
 
     pushTimelineItem(
@@ -117,5 +116,11 @@ export function useReservationTimeline({ reservation, payments = [], events = []
     }
 
     return items.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
-  }, [reservation, payments, events, emailLogs]);
+}
+
+export function useReservationTimeline({ reservation, payments = [], events = [], emailLogs = [] }) {
+  return useMemo(
+    () => buildReservationTimeline({ reservation, payments, events, emailLogs }),
+    [reservation, payments, events, emailLogs],
+  );
 }

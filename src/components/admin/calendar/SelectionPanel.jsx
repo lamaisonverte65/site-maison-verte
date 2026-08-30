@@ -186,7 +186,7 @@ export default function SelectionPanel({ selection, form, setForm, total, custom
               />
               <textarea
                 style={styles.textarea}
-                placeholder="Notes internes administration"
+                placeholder="Message ou réponse du propriétaire au client"
                 value={form.internalNotes}
                 onChange={(event) => setForm({ ...form, internalNotes: event.target.value })}
               />
@@ -273,7 +273,7 @@ export default function SelectionPanel({ selection, form, setForm, total, custom
               />
               <textarea
                 style={styles.textarea}
-                placeholder="Notes internes administration"
+                placeholder="Message ou réponse du propriétaire au client"
                 value={form.internalNotes}
                 onChange={(event) => setForm({ ...form, internalNotes: event.target.value })}
               />

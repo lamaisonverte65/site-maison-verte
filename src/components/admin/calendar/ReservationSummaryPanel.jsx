@@ -37,14 +37,6 @@ function getAdultsChildren(reservation = {}) {
   return parts.join(" · ");
 }
 
-function getUsefulNotes(reservation = {}) {
-  return (
-    reservation.housekeeping_notes ||
-    reservation.owner_message ||
-    ""
-  );
-}
-
 function compactButtonStyle(kind = "neutral") {
   const base = {
     border: "none",
@@ -74,7 +66,8 @@ export default function ReservationSummaryPanel({
   const email = reservation.guest_email || reservation.email || "";
   const occupancy = getAdultsChildren(reservation);
   const arrivalTime = reservation.arrival_time || reservation.arrivalTime || "";
-  const notes = getUsefulNotes(reservation);
+  const ownerHistoricalValue = reservation.owner_message || "";
+  const housekeepingNotes = reservation.housekeeping_notes || "";
   const babyBedNeeded = Boolean(reservation.baby_bed_needed || reservation.babyBedNeeded);
 
   return (
@@ -111,10 +104,17 @@ export default function ReservationSummaryPanel({
         </div>
       )}
 
-      {notes && (
+      {ownerHistoricalValue && (
         <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "14px", padding: "12px" }}>
-          <strong>Notes admin</strong>
-          <p style={{ ...styles.muted, marginTop: "6px", whiteSpace: "pre-wrap" }}>{notes}</p>
+          <strong>Valeur historique propriétaire — provenance non qualifiée</strong>
+          <p style={{ ...styles.muted, marginTop: "6px", whiteSpace: "pre-wrap" }}>{ownerHistoricalValue}</p>
+        </div>
+      )}
+
+      {housekeepingNotes && (
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "14px", padding: "12px" }}>
+          <strong>Note du propriétaire destinée au ménage</strong>
+          <p style={{ ...styles.muted, marginTop: "6px", whiteSpace: "pre-wrap" }}>{housekeepingNotes}</p>
         </div>
       )}
 

@@ -10,12 +10,12 @@ function MessageCard({ title, children }) {
   );
 }
 
-export default function MessagesBlock({ request }) {
+export default function MessagesBlock({ request, housekeepingNotes = [] }) {
   const clientMessage = request.message || "";
   const ownerMessage = request.owner_message || "";
   const adminReservationNotes = request.housekeeping_notes || "";
   const manualPaymentMessage = request.manual_payment_message || "";
-  const hasAnyMessage = Boolean(clientMessage || ownerMessage || adminReservationNotes || manualPaymentMessage);
+  const hasAnyMessage = Boolean(clientMessage || ownerMessage || adminReservationNotes || manualPaymentMessage || housekeepingNotes.length);
 
   return (
     <section style={{ marginTop: 22 }}>
@@ -25,9 +25,16 @@ export default function MessagesBlock({ request }) {
       ) : (
         <>
           <MessageCard title="Message client">{clientMessage}</MessageCard>
-          <MessageCard title="Message propriétaire / admin">{ownerMessage}</MessageCard>
-          <MessageCard title="Notes admin réservation">{adminReservationNotes}</MessageCard>
+          <MessageCard title="Valeur historique propriétaire — provenance non qualifiée">{ownerMessage}</MessageCard>
+          <MessageCard title="Note du propriétaire destinée au ménage">{adminReservationNotes}</MessageCard>
           <MessageCard title="Dernier message paiement manuel">{manualPaymentMessage}</MessageCard>
+          {housekeepingNotes.map((note) => (
+            <div key={note.id} style={styles.noteBox}>
+              <strong>Note ménage · {note.author_display_name || "Compte ménage"}</strong>
+              <p style={{ whiteSpace: "pre-wrap" }}>{note.note}</p>
+              <small style={styles.muted}>{note.created_at ? new Date(note.created_at).toLocaleString("fr-FR") : ""}</small>
+            </div>
+          ))}
         </>
       )}
     </section>
