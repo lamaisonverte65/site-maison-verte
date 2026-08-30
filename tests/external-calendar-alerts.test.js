@@ -20,9 +20,9 @@ test("the external calendar checker is wired as a native scheduled-only function
   const source = readFileSync("netlify/functions/check-external-calendar-alerts.js", "utf8");
   const netlifyConfig = readFileSync("netlify.toml", "utf8");
 
-  assert.match(source, /export const handler = schedule\("30 7 \* \* \*"/);
+  assert.match(source, /export const handler = schedule\("\*\/5 \* \* \* \*"/);
   assert.doesNotMatch(source, /export async function handler/);
-  assert.match(netlifyConfig, /\[functions\."check-external-calendar-alerts"\][\s\S]*schedule = "30 7 \* \* \*"/);
+  assert.match(netlifyConfig, /\[functions\."check-external-calendar-alerts"\][\s\S]*schedule = "\*\/5 \* \* \* \*"/);
 });
 
 test("no scheduler credential is exposed by the browser sources", () => {

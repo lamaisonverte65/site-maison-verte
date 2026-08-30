@@ -28,6 +28,7 @@ import {
   nightsBetween,
   parseLocalDate,
   selectionStartsBeforeToday,
+  shouldShowAdminCalendarToolbar,
 } from "./admin/calendar/calendarHelpers";
 
 const COLORS = {
@@ -817,16 +818,18 @@ export default function CalendarAdmin({
   return (
     <div style={styles.wrapper}>
       <style>{calendarCss}</style>
-      <CalendarToolbar
-        loading={loading}
-        summary={calendarSummary}
-        selectedPeriod={selectedPeriod}
-        pendingRangeStart={pendingRangeStart}
-        onRefresh={mode === "housekeeping" ? onCalendarUpdated : loadCalendar}
-        onClearSelection={() => {
-          clearEditionAndSelection();
-        }}
-      />
+      {shouldShowAdminCalendarToolbar(mode) && (
+        <CalendarToolbar
+          loading={loading}
+          summary={calendarSummary}
+          selectedPeriod={selectedPeriod}
+          pendingRangeStart={pendingRangeStart}
+          onRefresh={mode === "housekeeping" ? onCalendarUpdated : loadCalendar}
+          onClearSelection={() => {
+            clearEditionAndSelection();
+          }}
+        />
+      )}
 
       <CalendarLegend items={legendItems} />
 

@@ -6,9 +6,19 @@ import {
   fetchHousekeepingData,
 } from "../src/services/housekeepingService.js";
 
+const calendarHelpers = await import("../src/components/admin/calendar/calendarHelpers.js");
+
 function response(body, ok = true) {
   return { ok, async json() { return body; } };
 }
+
+test("calendar admin toolbar is hidden only for housekeeping mode", () => {
+  const shouldShow = calendarHelpers.shouldShowAdminCalendarToolbar;
+  assert.equal(shouldShow?.("housekeeping"), false);
+  assert.equal(shouldShow?.("admin"), true);
+  assert.equal(shouldShow?.("owner"), true);
+  assert.equal(shouldShow?.(), true);
+});
 
 test("housekeeping data uses only the dedicated authenticated backend endpoint", async () => {
   const calls = [];

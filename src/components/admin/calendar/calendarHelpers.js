@@ -110,6 +110,10 @@ export function isDateInSelectedPeriod(key, selectedPeriod) {
   return key >= selectedPeriod.startStr && key < selectedPeriod.endStr;
 }
 
+export function shouldShowAdminCalendarToolbar(mode = "admin") {
+  return mode !== "housekeeping";
+}
+
 export function isClosedExternalReservation(reservation = {}) {
   const marker = [reservation.title, reservation.guest_name, reservation.summary]
     .filter(Boolean)
