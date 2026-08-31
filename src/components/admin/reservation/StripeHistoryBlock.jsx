@@ -6,13 +6,15 @@ export default function StripeHistoryBlock({ request, payments = [] }) {
   const stripePayments = (payments || []).filter((payment) =>
     payment.stripe_payment_intent_id || payment.stripe_checkout_session_id || payment.stripe_refund_id || payment.provider === "stripe"
   );
+  const financialLedger = request.financial_ledger;
+  const stripeFinancialsComplete = financialLedger?.stripe_financials_complete === true;
 
   return (
     <section style={{ marginTop: 22 }}>
       <h3 style={styles.subTitle}>Stripe / banque</h3>
       <div style={styles.detailGrid}>
-        <Info label="Frais Stripe" value={formatMoney(request.stripe_fee_amount || 0)} />
-        <Info label="Net Stripe" value={request.stripe_net_amount ? formatMoney(request.stripe_net_amount) : "À récupérer Stripe"} />
+        <Info label="Frais Stripe" value={stripeFinancialsComplete ? formatMoney(financialLedger.stripe_fee_amount || 0) : "À rapprocher Stripe"} />
+        <Info label="Net Stripe après remboursements" value={stripeFinancialsComplete ? formatMoney(financialLedger.stripe_net_amount || 0) : "À rapprocher Stripe"} />
         <Info label="Payout Stripe" value={request.stripe_payout_status || "-"} />
         <Info label="Date payout / virement" value={formatDateTime(request.stripe_payout_arrival_date || request.transfer_date)} />
         <Info label="Total remboursé" value={formatMoney(request.refunded_amount || 0)} />

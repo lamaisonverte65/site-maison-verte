@@ -20,7 +20,7 @@ function getRowSearchText(row) {
 }
 
 function isMissingStripeNet(row) {
-  return Number(row.paidClientAmount || 0) > 0 && !row.stripeNetAmount;
+  return Number(row.paidClientAmount || 0) > 0 && row.stripeFinancialsComplete !== true;
 }
 
 function isMissingPayout(row) {

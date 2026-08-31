@@ -9,8 +9,12 @@ import {
 } from "../services/housekeepingService";
 import {
   createCheckoutSession,
+  prepareInitialCheckoutBooking,
+  buildInitialCheckoutAcceptanceContext,
   createManualPayment,
   refundBookingPayment,
+  createRefundOperationId,
+  buildRefundSubmission,
   sendDecisionEmail,
   logBookingEvent,
 } from "../services/bookingActionsService";
@@ -34,7 +38,6 @@ import UsersPanel from "../components/admin/users/UsersPanel";
 import { ActionModal } from "../components/admin/AdminUi";
 import {
   formatMoney,
-  addHours,
   daysUntil,
   getAmounts,
 } from "../utils/adminFormatters";
@@ -136,7 +139,13 @@ export default function Admin() {
         setHousekeepingReservations(adminData.reservations || []);
         return;
       }
-      const nextRequests = adminData.bookingRequests;
+      const financialAggregatesByBooking = new Map(
+        (adminData.bookingFinancialAggregates || []).map((aggregate) => [aggregate.booking_request_id, aggregate]),
+      );
+      const nextRequests = adminData.bookingRequests.map((request) => ({
+        ...request,
+        financial_ledger: financialAggregatesByBooking.get(request.id) || null,
+      }));
 
       setBookingRequests(nextRequests);
       setCustomers(adminData.customers);
@@ -276,6 +285,7 @@ export default function Admin() {
       cancellationType: "client",
       refundMode: "policy",
       refundAmount: "",
+      refundOperationId: createRefundOperationId(),
     });
   }
 
@@ -326,6 +336,7 @@ export default function Admin() {
       confirmText: "Je confirme ce remboursement Stripe sans annulation de la réservation.",
       refundMode: "custom",
       refundAmount: "",
+      refundOperationId: createRefundOperationId(),
     });
   }
 
@@ -341,45 +352,31 @@ export default function Admin() {
         const proposedPrice = Number(values.price || 0);
         if (!proposedPrice || proposedPrice <= 0) return alert("Tarif invalide.");
 
-        const acceptanceExpiresAt = addHours(24);
-        const checkoutSession = await createCheckoutSession(supabase, request, proposedPrice);
-        const paymentLink = checkoutSession.url;
-        const paymentType = checkoutSession.paymentType || (daysUntil(request.start_date) !== null && daysUntil(request.start_date) <= 30 ? "full" : "deposit");
-        const paymentAmount = checkoutSession.amount;
+        if (request.status === "pending") {
+          await prepareInitialCheckoutBooking(supabase, request, proposedPrice, values.message);
+        }
+
+        const checkoutSession = await createCheckoutSession(supabase, request);
         const daysBeforeArrival = daysUntil(request.start_date);
+        const acceptanceContext = buildInitialCheckoutAcceptanceContext(checkoutSession, daysBeforeArrival);
 
-        await sendDecisionEmail(supabase, request, "accepted", proposedPrice, values.message, {
-          paymentLink,
-          acceptanceExpiresAt,
-          paymentType,
-          paymentAmount,
-          daysBeforeArrival,
-        });
+        await sendDecisionEmail(
+          supabase,
+          request,
+          "accepted",
+          acceptanceContext.totalPrice,
+          values.message,
+          acceptanceContext.emailExtras,
+        );
 
-        const discountAmount = Number(request.estimated_total || 0) - proposedPrice;
-        const total = Number(proposedPrice);
-        const deposit = Math.round(total * 0.3);
-        const balance = Math.max(total - deposit, 0);
-        const isLateBooking = paymentType === "full";
-
-        const { error } = await supabase.from("booking_requests").update({
-          status: "accepted",
-          owner_price: proposedPrice,
-          payment_link: paymentLink,
-          acceptance_expires_at: acceptanceExpiresAt,
-          discount_amount: discountAmount > 0 ? discountAmount : 0,
-          discount_reason: discountAmount > 0 ? "Tarif spécial propriétaire" : null,
-          owner_message: values.message,
-          accepted_at: new Date().toISOString(),
-          deposit_amount: isLateBooking ? 0 : deposit,
-          balance_amount: isLateBooking ? total : balance,
-          deposit_status: isLateBooking ? "non applicable" : "à payer",
-          balance_status: isLateBooking ? "à payer" : "en attente",
-          updated_at: new Date().toISOString(),
-        }).eq("id", request.id);
-
-        if (error) throw error;
-        await logBookingEvent(supabase, request.id, "booking_accepted", "Demande acceptée", `Lien de paiement envoyé. Tarif proposé : ${proposedPrice} €`, { price: proposedPrice, paymentLink, paymentType });
+        await logBookingEvent(
+          supabase,
+          request.id,
+          "booking_accepted",
+          "Demande acceptée",
+          acceptanceContext.eventMessage,
+          acceptanceContext.eventMetadata,
+        );
         alert("Demande acceptée, lien Stripe créé et email envoyé.");
       }
 
@@ -416,7 +413,7 @@ export default function Admin() {
       }
 
       if (modal.type === "cancel") {
-        const result = await refundBookingPayment(supabase, request, values);
+        const result = await refundBookingPayment(supabase, request, buildRefundSubmission(modal, values));
         const refunded = Number(result.refundedAmount || 0);
         alert(refunded > 0
           ? `Réservation annulée et remboursement Stripe effectué : ${formatMoney(refunded)}.`
@@ -424,7 +421,7 @@ export default function Admin() {
       }
 
       if (modal.type === "refund_only") {
-        const result = await refundBookingPayment(supabase, request, { ...values, action: "refund_only", refundOnly: true });
+        const result = await refundBookingPayment(supabase, request, buildRefundSubmission(modal, values, { action: "refund_only", refundOnly: true }));
         const refunded = Number(result.refundedAmount || 0);
         alert(refunded > 0
           ? `Remboursement Stripe effectué sans annulation : ${formatMoney(refunded)}.`

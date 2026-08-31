@@ -65,6 +65,14 @@ export async function fetchAdminData(supabase) {
     .select("*")
     .order("created_at_stripe", { ascending: false });
 
+  const { data: bookingFinancialAggregatesData, error: bookingFinancialAggregatesError } = await supabase
+    .from("booking_financial_ledger_aggregates")
+    .select("*");
+
+  if (bookingFinancialAggregatesError) {
+    throw bookingFinancialAggregatesError;
+  }
+
   return {
     bookingRequests: requestsData || [],
     customers: customersData || [],
@@ -77,5 +85,6 @@ export async function fetchAdminData(supabase) {
     confirmedReservations: reservationsData || [],
     stripePayouts: stripePayoutsData || [],
     stripeBalanceTransactions: stripeBalanceTransactionsData || [],
+    bookingFinancialAggregates: bookingFinancialAggregatesData || [],
   };
 }

@@ -56,7 +56,7 @@ export default function PaymentsPanel({ paymentRows }) {
               <th style={styles.th}>Payé client</th>
               <th style={styles.th}>Reste</th>
               <th style={styles.th}>Frais Stripe</th>
-              <th style={styles.th}>Net Stripe théorique</th>
+              <th style={styles.th}>Net Stripe après remboursements</th>
               <th style={styles.th}>Acompte</th>
               <th style={styles.th}>Solde</th>
               <th style={styles.th}>Statut virement</th>
@@ -83,10 +83,10 @@ export default function PaymentsPanel({ paymentRows }) {
                   <td style={styles.td}>{formatMoney(remaining)}</td>
                   <td style={styles.td}>{formatMoney(row.stripeFeeAmount)}</td>
                   <td style={styles.td}>
-                    {row.stripeNetAmount ? (
+                    {row.stripeFinancialsComplete ? (
                       formatMoney(row.stripeNetAmount)
                     ) : (
-                      <span style={styles.muted}>À récupérer Stripe</span>
+                      <span style={styles.muted}>À rapprocher Stripe</span>
                     )}
                   </td>
                   <td style={styles.td}>

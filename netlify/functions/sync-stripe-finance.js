@@ -1,6 +1,7 @@
 import { schedule } from "@netlify/functions";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { listAllBalanceTransactions } from "./_lib/stripe-balance-transactions.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(
@@ -74,6 +75,15 @@ async function upsertStripePayout(payout, transactions = []) {
   return payload;
 }
 
+async function recomputeBookingFinancialAggregates(bookingId) {
+  if (!bookingId) return null;
+  const { data, error } = await supabase.rpc("recompute_booking_financial_aggregates", {
+    p_booking_id: bookingId,
+  });
+  if (error) throw error;
+  return data;
+}
+
 async function upsertStripeBalanceTransaction(transaction, payout = null) {
   if (!transaction?.id) return null;
 
@@ -117,25 +127,16 @@ async function upsertStripeBalanceTransaction(transaction, payout = null) {
   const { error } = await supabase.from("stripe_balance_transactions").upsert(payload, { onConflict: "id" });
   if (error) throw error;
 
-  if (payload.booking_request_id && transaction.type === "charge") {
-    const bookingUpdate = {
-      stripe_fee_amount: payload.fee,
-      stripe_net_amount: payload.net,
-      commission_amount: payload.fee,
-      owner_net_amount: payload.net,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (payload.payout_id) {
-      bookingUpdate.stripe_payout_id = payload.payout_id;
-      bookingUpdate.stripe_payout_status = payoutStatus || "paid";
-      bookingUpdate.stripe_payout_arrival_date = stripeTimestampToIso(payout?.arrival_date || null);
-      bookingUpdate.transfer_date = stripeTimestampToIso(payout?.arrival_date || null);
-    }
-
+  if (payload.booking_request_id && payload.payout_id) {
     const { error: bookingError } = await supabase
       .from("booking_requests")
-      .update(bookingUpdate)
+      .update({
+        stripe_payout_id: payload.payout_id,
+        stripe_payout_status: payoutStatus || "paid",
+        stripe_payout_arrival_date: stripeTimestampToIso(payout?.arrival_date || null),
+        transfer_date: stripeTimestampToIso(payout?.arrival_date || null),
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", payload.booking_request_id);
 
     if (bookingError) throw bookingError;
@@ -187,6 +188,7 @@ async function syncPaymentIntentsWithoutPayout() {
       }
 
       const row = await upsertStripeBalanceTransaction(balanceTransaction, payout);
+      await recomputeBookingFinancialAggregates(row?.booking_request_id);
       results.push({ id: booking.id, status: "synced", balanceTransaction: row?.id, payout: row?.payout_id || null });
     } catch (error) {
       console.error("Erreur sync Stripe réservation:", booking.id, error.message);
@@ -202,18 +204,23 @@ async function syncRecentPayouts() {
   const results = [];
 
   for (const payout of payouts.data || []) {
-    const transactions = await stripe.balanceTransactions.list({
+    const transactions = await listAllBalanceTransactions(stripe, {
       payout: payout.id,
-      limit: 100,
       expand: ["data.source"],
     });
 
-    await upsertStripePayout(payout, transactions.data || []);
+    await upsertStripePayout(payout, transactions);
 
     const transactionResults = [];
-    for (const transaction of transactions.data || []) {
+    const affectedBookingIds = new Set();
+    for (const transaction of transactions) {
       const row = await upsertStripeBalanceTransaction(transaction, payout);
+      if (row?.booking_request_id) affectedBookingIds.add(row.booking_request_id);
       transactionResults.push({ id: transaction.id, bookingRequestId: row?.booking_request_id || null, net: row?.net || 0, status: row?.reconciliation_status });
+    }
+
+    for (const bookingId of affectedBookingIds) {
+      await recomputeBookingFinancialAggregates(bookingId);
     }
 
     results.push({ payoutId: payout.id, amount: centsToEuros(payout.amount), status: payout.status, transactions: transactionResults });

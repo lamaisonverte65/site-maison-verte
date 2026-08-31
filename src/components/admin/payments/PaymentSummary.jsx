@@ -20,7 +20,7 @@ export default function PaymentSummary({ stats }) {
         <SummaryCard label="Payé par les clients" value={formatMoney(stats.paidTotal)} />
         <SummaryCard label="Reste à encaisser" value={formatMoney(stats.remainingTotal)} />
         <SummaryCard label="Frais Stripe" value={formatMoney(stats.stripeFeesTotal)} />
-        <SummaryCard label="Net Stripe récupéré" value={formatMoney(stats.stripeNetTotal)} />
+        <SummaryCard label="Net Stripe après remboursements" value={formatMoney(stats.stripeNetTotal)} />
         <SummaryCard label="Lignes filtrées" value={`${stats.filteredCount} / ${stats.count}`} />
       </div>
     </section>

@@ -7,9 +7,8 @@ import {
   isCancelledFinancialStatus,
   isConfirmedFinancialStatus,
   getRealPaidAmount,
-  getStripeFeeAmount,
-  getStripeNetAmount,
-  getRefundedAmount,
+  getHistoricalGrossPaidAmount,
+  getStripeBankExpectedNet,
   getConfirmedStayAmount,
 } from "../utils/adminFormatters";
 
@@ -46,11 +45,33 @@ export function useAdminStats({
     // Synthèse bancaire Stripe : toutes les transactions réelles comptent,
     // y compris les réservations annulées/remboursées, car elles génèrent
     // des frais et doivent expliquer le montant réellement viré par Stripe.
-    const stripeGrossPaymentTotal = bookingRequests.reduce((sum, request) => sum + Number(request.amount_paid || 0), 0);
-    const stripeRefundTotal = bookingRequests.reduce((sum, request) => sum + getRefundedAmount(request), 0);
-    const stripeFeeTotal = bookingRequests.reduce((sum, request) => sum + getStripeFeeAmount(request), 0);
-    const stripeNetTotal = bookingRequests.reduce((sum, request) => sum + getStripeNetAmount(request), 0);
-    const stripeBankExpectedNetTotal = stripeNetTotal - stripeRefundTotal;
+    const stripeGrossPaymentTotal = bookingRequests.reduce((sum, request) => {
+      const cents = request.financial_ledger?.gross_paid_cents;
+      return sum + (cents === null || cents === undefined
+        ? getHistoricalGrossPaidAmount(request)
+        : Number(cents) / 100);
+    }, 0);
+    const stripeRefundTotal = bookingRequests.reduce((sum, request) => {
+      const cents = request.financial_ledger?.refunded_cents;
+      return sum + (cents === null || cents === undefined
+        ? Number(request.refunded_amount || 0)
+        : Number(cents) / 100);
+    }, 0);
+    const completeFinancialRows = bookingRequests.filter(
+      (request) => request.financial_ledger?.stripe_financials_complete === true,
+    );
+    const stripeFeeTotal = completeFinancialRows.reduce(
+      (sum, request) => sum + Number(request.financial_ledger.stripe_fee_amount || 0),
+      0,
+    );
+    const stripeNetTotal = completeFinancialRows.reduce(
+      (sum, request) => sum + Number(request.financial_ledger.stripe_net_amount || 0),
+      0,
+    );
+    const stripeBankExpectedNetTotal = getStripeBankExpectedNet(stripeNetTotal);
+    const stripeFinancialsIncompleteCount = bookingRequests.filter(
+      (request) => request.financial_ledger?.stripe_financials_complete === false,
+    ).length;
     const stripePayoutTotal = (stripePayouts || []).reduce((sum, payout) => sum + Number(payout.amount || 0), 0);
     const stripeReconciledNetTotal = (stripeBalanceTransactions || [])
       .filter((transaction) => transaction.reconciliation_status === "viré" && transaction.booking_request_id)
@@ -84,6 +105,7 @@ export function useAdminStats({
       stripeFeeTotal,
       stripeNetTotal,
       stripeBankExpectedNetTotal,
+      stripeFinancialsIncompleteCount,
       stripePayoutTotal,
       stripeReconciledNetTotal,
       stripePayoutDifference: stripePayoutTotal - stripeBankExpectedNetTotal,

@@ -28,11 +28,12 @@ export default function SummaryPanel({
         <StatCard label="Paiements Stripe bruts" value={formatMoney(stats.stripeGrossPaymentTotal)} onClick={() => goTo("payments")} />
         <StatCard label="Remboursements Stripe" value={formatMoney(stats.stripeRefundTotal)} onClick={() => goTo("payments")} />
         <StatCard label="Frais Stripe réels" value={formatMoney(stats.stripeFeeTotal)} onClick={() => goTo("payments")} />
-        <StatCard label="Net Stripe avant remboursements" value={formatMoney(stats.stripeNetTotal)} onClick={() => goTo("payments")} />
+        <StatCard label="Net Stripe après remboursements" value={formatMoney(stats.stripeNetTotal)} onClick={() => goTo("payments")} />
         <StatCard label="Net bancaire attendu" value={formatMoney(stats.stripeBankExpectedNetTotal)} onClick={() => goTo("stripe_payouts")} />
         <StatCard label="Net réellement viré" value={formatMoney(stats.stripeReconciledNetTotal)} onClick={() => goTo("stripe_payouts")} />
         <StatCard label="Payouts Stripe rapprochés" value={formatMoney(stats.stripePayoutTotal)} onClick={() => goTo("stripe_payouts")} />
         <StatCard label="Écart bancaire Stripe" value={formatMoney(stats.stripePayoutDifference)} onClick={() => goTo("stripe_payouts")} />
+        <StatCard label="À rapprocher Stripe" value={stats.stripeFinancialsIncompleteCount} onClick={() => goTo("payments")} />
       </section>
 
       <h3 style={styles.subTitle}>Réservations confirmées</h3>

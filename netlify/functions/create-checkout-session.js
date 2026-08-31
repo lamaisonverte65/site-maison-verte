@@ -2,18 +2,67 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
+import { createInitialCheckout, InitialCheckoutError } from "./_lib/initial-checkout.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-function daysUntil(dateString) {
-  if (!dateString) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(dateString);
-  target.setHours(0, 0, 0, 0);
-  return Math.ceil((target - today) / (1000 * 60 * 60 * 24));
+function repositoryFor(client) {
+  return {
+    async getBooking(bookingId) {
+      const { data, error } = await client
+        .from("booking_requests")
+        .select("*")
+        .eq("id", bookingId)
+        .maybeSingle();
+      if (error) {
+        throw new InitialCheckoutError("supabase_read_error", `Lecture Supabase impossible : ${error.message}`, 500);
+      }
+      return data;
+    },
+
+    async saveCurrentSession({ bookingId, expectedStatus, expectedUpdatedAt, values }) {
+      let query = client
+        .from("booking_requests")
+        .update({ ...values, updated_at: new Date().toISOString() })
+        .eq("id", bookingId)
+        .eq("status", expectedStatus);
+      if (expectedUpdatedAt) query = query.eq("updated_at", expectedUpdatedAt);
+
+      const { data, error } = await query.select("*").maybeSingle();
+      if (error) {
+        throw new InitialCheckoutError("supabase_write_error", `Enregistrement Supabase impossible : ${error.message}`, 500);
+      }
+      if (!data) {
+        throw new InitialCheckoutError(
+          "booking_changed_concurrently",
+          "La réservation a changé pendant la création du paiement. Rechargez la page.",
+          409,
+        );
+      }
+      return data;
+    },
+  };
 }
+
+const stripeGateway = {
+  async createSession(parameters, options) {
+    try {
+      return await stripe.checkout.sessions.create(parameters, options);
+    } catch (error) {
+      throw new InitialCheckoutError("stripe_create_error", `Création Stripe impossible : ${error.message}`, 502);
+    }
+  },
+
+  async retrieveSession(sessionId) {
+    try {
+      return await stripe.checkout.sessions.retrieve(sessionId);
+    } catch (error) {
+      if (error?.code === "resource_missing") return null;
+      throw new InitialCheckoutError("stripe_retrieve_error", `Lecture Stripe impossible : ${error.message}`, 502);
+    }
+  },
+};
 
 export async function handler(event) {
   if (event.httpMethod !== "POST") {
@@ -24,54 +73,24 @@ export async function handler(event) {
   if (!adminAuth.ok) return authorizationResponse(adminAuth);
 
   try {
-    const data = JSON.parse(event.body || "{}");
-    const { bookingId, guestFirstName, guestLastName, guestEmail, startDate, endDate, ownerPrice } = data;
-
-    const totalPrice = Number(ownerPrice || 0);
-    if (!totalPrice || totalPrice <= 0) {
-      return { statusCode: 400, body: JSON.stringify({ error: "Montant invalide" }) };
-    }
-
-    const arrivalInDays = daysUntil(startDate);
-    const paymentType = arrivalInDays !== null && arrivalInDays <= 30 ? "full" : "deposit";
-    const depositAmount = Math.round(totalPrice * 0.3);
-    const amountToPay = paymentType === "full" ? totalPrice : depositAmount;
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      mode: "payment",
-      customer_email: guestEmail,
-      metadata: {
-        booking_id: bookingId,
-        payment_type: paymentType,
-        total_price: String(totalPrice),
-        deposit_amount: String(depositAmount),
-        balance_amount: String(Math.max(totalPrice - depositAmount, 0)),
-        guest_first_name: guestFirstName || "",
-        guest_last_name: guestLastName || "",
-        start_date: startDate || "",
-        end_date: endDate || "",
+    const { bookingId } = JSON.parse(event.body || "{}");
+    const result = await createInitialCheckout({
+      bookingId,
+      dependencies: {
+        repository: repositoryFor(supabase),
+        stripeGateway,
       },
-      line_items: [
-        {
-          price_data: {
-            currency: "eur",
-            product_data: {
-              name: paymentType === "full" ? "Paiement séjour - La Maison Verte" : "Acompte réservation - La Maison Verte",
-              description: `${startDate} → ${endDate}`,
-            },
-            unit_amount: Math.round(amountToPay * 100),
-          },
-          quantity: 1,
-        },
-      ],
-      success_url: "https://lamaisonverte65.fr/success?session_id={CHECKOUT_SESSION_ID}",
-      cancel_url: "https://lamaisonverte65.fr/cancel",
     });
-
-    return { statusCode: 200, body: JSON.stringify({ url: session.url, paymentType, amount: amountToPay }) };
+    return { statusCode: 200, body: JSON.stringify(result) };
   } catch (error) {
-    console.error("Stripe error:", error);
-    return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
+    if (error instanceof SyntaxError) {
+      return { statusCode: 400, body: JSON.stringify({ code: "invalid_json", error: "Corps JSON invalide." }) };
+    }
+    if (error instanceof InitialCheckoutError) {
+      console.error(`Initial Checkout ${error.code}:`, error.message);
+      return { statusCode: error.statusCode, body: JSON.stringify({ code: error.code, error: error.message }) };
+    }
+    console.error("Initial Checkout error:", error);
+    return { statusCode: 500, body: JSON.stringify({ code: "internal_error", error: "Erreur interne inattendue." }) };
   }
 }

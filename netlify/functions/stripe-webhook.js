@@ -1,22 +1,11 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import { createArrivalToken } from "./_lib/arrival-token.js";
 import { escapeHtml } from "./_lib/html.js";
+import { processCheckoutSessionCompleted } from "./_lib/stripe-checkout-completed.js";
+import { listAllBalanceTransactions } from "./_lib/stripe-balance-transactions.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-async function logBookingEvent({ bookingId, eventType, label, message, metadata = {} }) {
-  if (!bookingId) return;
-  const { error } = await supabase.from("booking_events").insert([{
-    booking_request_id: bookingId,
-    event_type: eventType,
-    label,
-    message,
-    metadata,
-  }]);
-  if (error) console.error("Erreur log booking_events:", error.message);
-}
 
 async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null }) {
   const { error } = await supabase.from("email_logs").insert([{
@@ -30,25 +19,6 @@ async function logEmail({ bookingId, emailType, toEmail, subject, status, errorM
     sent_at: new Date().toISOString(),
   }]);
   if (error) console.error("Erreur log email_logs:", error.message);
-}
-
-async function upsertPayment({ bookingId, session, paymentType, amount, manualReason = null }) {
-  if (!bookingId || !session?.id) return;
-  const { error } = await supabase.from("payments").upsert({
-    booking_request_id: bookingId,
-    payment_type: paymentType,
-    manual_reason: manualReason,
-    amount: Number(amount || 0),
-    currency: session.currency || "eur",
-    status: "paid",
-    stripe_checkout_session_id: session.id,
-    stripe_payment_intent_id: session.payment_intent || null,
-    customer_email: session.customer_email || session.customer_details?.email || null,
-    paid_at: new Date().toISOString(),
-    metadata: session.metadata || {},
-  }, { onConflict: "stripe_checkout_session_id" });
-
-  if (error) console.error("Erreur upsert payments:", error.message);
 }
 
 function formatDate(value) {
@@ -179,6 +149,15 @@ async function upsertStripePayout(payout, transactions = []) {
   return payload;
 }
 
+async function recomputeBookingFinancialAggregates(bookingId) {
+  if (!bookingId) return null;
+  const { data, error } = await supabase.rpc("recompute_booking_financial_aggregates", {
+    p_booking_id: bookingId,
+  });
+  if (error) throw error;
+  return data;
+}
+
 async function upsertStripeBalanceTransaction(transaction, payout = null) {
   if (!transaction?.id) return null;
 
@@ -223,25 +202,16 @@ async function upsertStripeBalanceTransaction(transaction, payout = null) {
   const { error } = await supabase.from("stripe_balance_transactions").upsert(payload, { onConflict: "id" });
   if (error) throw error;
 
-  if (payload.booking_request_id && transaction.type === "charge") {
-    const bookingUpdate = {
-      stripe_fee_amount: payload.fee,
-      stripe_net_amount: payload.net,
-      commission_amount: payload.fee,
-      owner_net_amount: payload.net,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (payload.payout_id) {
-      bookingUpdate.stripe_payout_id = payload.payout_id;
-      bookingUpdate.stripe_payout_status = payoutStatus || "paid";
-      bookingUpdate.stripe_payout_arrival_date = stripeTimestampToIso(payout?.arrival_date || null);
-      bookingUpdate.transfer_date = stripeTimestampToIso(payout?.arrival_date || null);
-    }
-
+  if (payload.booking_request_id && payload.payout_id) {
     const { error: bookingError } = await supabase
       .from("booking_requests")
-      .update(bookingUpdate)
+      .update({
+        stripe_payout_id: payload.payout_id,
+        stripe_payout_status: payoutStatus || "paid",
+        stripe_payout_arrival_date: stripeTimestampToIso(payout?.arrival_date || null),
+        transfer_date: stripeTimestampToIso(payout?.arrival_date || null),
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", payload.booking_request_id);
 
     if (bookingError) throw bookingError;
@@ -257,23 +227,30 @@ async function reconcilePayout(payout) {
   let skipped = 0;
 
   try {
-    const balanceTransactions = await stripe.balanceTransactions.list({
+    const balanceTransactions = await listAllBalanceTransactions(stripe, {
       payout: payout.id,
-      limit: 100,
       expand: ["data.source"],
     });
 
-    await upsertStripePayout(payout, balanceTransactions.data || []);
+    await upsertStripePayout(payout, balanceTransactions);
+    const affectedBookingIds = new Set();
 
-    for (const transaction of balanceTransactions.data || []) {
+    for (const transaction of balanceTransactions) {
       try {
         const row = await upsertStripeBalanceTransaction(transaction, payout);
-        if (row?.booking_request_id) updated += 1;
+        if (row?.booking_request_id) {
+          affectedBookingIds.add(row.booking_request_id);
+          updated += 1;
+        }
         else skipped += 1;
       } catch (error) {
         console.error("Erreur transaction payout Stripe:", transaction.id, error.message);
         skipped += 1;
       }
+    }
+
+    for (const bookingId of affectedBookingIds) {
+      await recomputeBookingFinancialAggregates(bookingId);
     }
   } catch (error) {
     console.error("Erreur rapprochement payout Stripe:", error.message);
@@ -282,36 +259,13 @@ async function reconcilePayout(payout) {
   return { updated, skipped };
 }
 
-function getTotalDueAfterPayment(booking, paymentType, manualReason, paidAmount) {
-  const currentTotal = Number(booking.owner_price || booking.estimated_total || 0);
-
-  // Cas métier important : paiement manuel "total" = tarif final convenu.
-  // Exemple : séjour affiché 240 €, tarif promo accepté 200 €, paiement 200 € => séjour soldé.
-  if (paymentType === "manual" && manualReason === "total") {
-    return paidAmount;
-  }
-
-  return currentTotal;
-}
-
 async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
   const total = Number(booking.owner_price || booking.estimated_total || 0);
   const deposit = Number(booking.deposit_amount || Math.round(total * 0.3));
   const balance = Number(booking.balance_amount || Math.max(total - deposit, 0));
-  let arrivalUrl = null;
-  try {
-    const capability = createArrivalToken(booking);
-    const { error: tokenError } = await supabase.from("booking_requests").update({
-      arrival_token_hash: capability.hash,
-      arrival_token_expires_at: capability.expiresAt,
-      arrival_token_created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }).eq("id", booking.id);
-    if (tokenError) throw tokenError;
-    arrivalUrl = `https://lamaisonverte65.fr/arrival?booking=${encodeURIComponent(booking.id)}&token=${encodeURIComponent(capability.token)}`;
-  } catch (error) {
-    console.error("Lien d'arrivée sécurisé indisponible; email de paiement envoyé sans lien:", error.message);
-  }
+  const arrivalUrl = extra.arrivalToken && booking?.id
+    ? `https://lamaisonverte65.fr/arrival?booking=${encodeURIComponent(booking.id)}&token=${encodeURIComponent(extra.arrivalToken)}`
+    : null;
 
   const isFull = paymentType === "full";
   const isBalance = paymentType === "balance";
@@ -420,216 +374,59 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
   });
 }
 
+async function applyCheckoutPayment(payload) {
+  const { data, error } = await supabase.rpc("apply_stripe_checkout_payment", {
+    p_booking_id: payload.bookingId,
+    p_checkout_session_id: payload.checkoutSessionId,
+    p_payment_intent_id: payload.paymentIntentId,
+    p_payment_type: payload.paymentType,
+    p_manual_reason: payload.manualReason,
+    p_amount: payload.amount,
+    p_currency: payload.currency,
+    p_customer_email: payload.customerEmail,
+    p_metadata: payload.metadata,
+    p_stripe_paid_at: payload.stripePaidAt,
+    p_stripe_fee_amount: payload.stripeFeeAmount,
+    p_stripe_net_amount: payload.stripeNetAmount,
+    p_balance_transaction_id: payload.balanceTransactionId,
+    p_charge_id: payload.chargeId,
+    p_arrival_token_hash: payload.arrivalTokenHash,
+  }).single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function handler(event) {
+  let stripeEvent;
   try {
     const signature = event.headers["stripe-signature"];
-    const stripeEvent = stripe.webhooks.constructEvent(event.body, signature, process.env.STRIPE_WEBHOOK_SECRET);
+    stripeEvent = stripe.webhooks.constructEvent(event.body, signature, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (error) {
+    console.error(error);
+    return { statusCode: 400, body: `Webhook Error: ${error.message}` };
+  }
 
+  try {
     if (stripeEvent.type === "checkout.session.completed") {
-      const session = stripeEvent.data.object;
-      const bookingId = session.metadata?.booking_id;
-      const paymentType = session.metadata?.payment_type || "deposit";
-
-      if (!bookingId) return { statusCode: 400, body: "Missing booking_id" };
-
-      const { data: booking, error: readError } = await supabase.from("booking_requests").select("*").eq("id", bookingId).single();
-      if (readError) return { statusCode: 500, body: readError.message };
-
-      const now = new Date().toISOString();
-      const manualReason = session.metadata?.manual_reason || booking.manual_payment_reason || "complement";
-      const manualAmountFromMetadata = Number(session.metadata?.manual_amount || booking.manual_payment_amount || 0);
-      const paidAmount = getCheckoutAmount(session, manualAmountFromMetadata);
-      const stripeFinancialDetails = await getStripeFinancialDetails(session);
-      const stripeFeeAmount = stripeFinancialDetails.stripeFeeAmount;
-      const stripeNetAmount = stripeFinancialDetails.stripeNetAmount;
-
-      const currentTotal = Number(booking.owner_price || booking.estimated_total || session.metadata?.total_price || 0);
-      const totalDue = getTotalDueAfterPayment(booking, paymentType, manualReason, paidAmount);
-      const deposit = Number(booking.deposit_amount || session.metadata?.deposit_amount || Math.round(totalDue * 0.3));
-      const balance = Number(booking.balance_amount || session.metadata?.balance_amount || Math.max(totalDue - deposit, 0));
-      const previousPaid = Number(booking.amount_paid || booking.total_paid || 0);
-      const newTotalPaid = paymentType === "full" ? totalDue : previousPaid + paidAmount;
-      const fullyPaid = totalDue > 0 && newTotalPaid >= totalDue;
-
-      let updatePayload = {};
-
-      if (paymentType === "full") {
-        updatePayload = {
-          status: "fully_paid",
-          payment_status: "paid",
-          deposit_amount: 0,
-          balance_amount: totalDue,
-          deposit_status: "non applicable",
-          balance_status: "paid",
-          balance_paid_at: now,
-          amount_paid: totalDue,
-          stripe_checkout_session_id: session.id,
-          stripe_payment_intent_id: session.payment_intent,
-          last_payment_type: "full",
-          last_payment_amount: totalDue,
-          last_payment_paid_at: now,
-          confirmed_at: now,
-          updated_at: now,
-        };
-      }
-
-      if (paymentType === "deposit") {
-        updatePayload = {
-          status: "deposit_paid",
-          payment_status: "paid",
-          deposit_amount: paidAmount || deposit,
-          balance_amount: Math.max(totalDue - (paidAmount || deposit), 0),
-          deposit_status: "paid",
-          deposit_paid_at: now,
-          balance_status: "en attente",
-          amount_paid: paidAmount || deposit,
-          stripe_checkout_session_id: session.id,
-          stripe_payment_intent_id: session.payment_intent,
-          last_payment_type: "deposit",
-          last_payment_amount: paidAmount || deposit,
-          last_payment_paid_at: now,
-          confirmed_at: now,
-          updated_at: now,
-        };
-      }
-
-      if (paymentType === "balance") {
-        updatePayload = {
-          status: fullyPaid ? "fully_paid" : "paid",
-          payment_status: "paid",
-          balance_status: fullyPaid ? "paid" : "partiellement payé",
-          balance_paid_at: fullyPaid ? now : booking.balance_paid_at || null,
-          amount_paid: newTotalPaid,
-          stripe_checkout_session_id: session.id,
-          stripe_payment_intent_id: session.payment_intent,
-          last_payment_type: "balance",
-          last_payment_amount: paidAmount || balance,
-          last_payment_paid_at: now,
-          confirmed_at: now,
-          updated_at: now,
-        };
-      }
-
-      if (paymentType === "manual") {
-        const manualPayload = {
-          manual_payment_status: "paid",
-          manual_payment_paid_at: now,
-          manual_payment_amount: paidAmount,
-          manual_payment_reason: manualReason,
-          amount_paid: newTotalPaid,
-          stripe_checkout_session_id: session.id,
-          stripe_payment_intent_id: session.payment_intent,
-          last_payment_type: `manual:${manualReason}`,
-          last_payment_amount: paidAmount,
-          last_payment_paid_at: now,
-          updated_at: now,
-        };
-
-        if (manualReason === "total") {
-          const discountAmount = Number(booking.estimated_total || currentTotal || 0) - paidAmount;
-          updatePayload = {
-            ...manualPayload,
-            status: "fully_paid",
-            payment_status: "paid",
-            owner_price: paidAmount,
-            amount_paid: paidAmount,
-            deposit_amount: 0,
-            balance_amount: paidAmount,
-            deposit_status: "non applicable",
-            balance_status: "paid",
-            balance_paid_at: now,
-            discount_amount: discountAmount > 0 ? discountAmount : booking.discount_amount || 0,
-            discount_reason: discountAmount > 0 ? "Paiement total manuel / tarif promo" : booking.discount_reason || null,
-            confirmed_at: now,
-          };
-        } else if (manualReason === "acompte") {
-          updatePayload = {
-            ...manualPayload,
-            status: fullyPaid ? "fully_paid" : "deposit_paid",
-            payment_status: "paid",
-            deposit_amount: paidAmount,
-            deposit_status: "paid",
-            deposit_paid_at: now,
-            balance_amount: Math.max(totalDue - newTotalPaid, 0),
-            balance_status: fullyPaid ? "paid" : "en attente",
-            balance_paid_at: fullyPaid ? now : booking.balance_paid_at || null,
-            confirmed_at: now,
-          };
-        } else if (manualReason === "solde") {
-          updatePayload = {
-            ...manualPayload,
-            status: fullyPaid ? "fully_paid" : "paid",
-            payment_status: "paid",
-            balance_status: fullyPaid ? "paid" : "partiellement payé",
-            balance_amount: Math.max(totalDue - Number(booking.deposit_amount || 0), 0),
-            balance_paid_at: fullyPaid ? now : booking.balance_paid_at || null,
-            confirmed_at: now,
-          };
-        } else if (manualReason === "complement") {
-          updatePayload = {
-            ...manualPayload,
-            status: fullyPaid ? "fully_paid" : "paid",
-            payment_status: "paid",
-            balance_status: fullyPaid ? "paid" : (booking.balance_status || "partiellement payé"),
-            balance_paid_at: fullyPaid ? now : booking.balance_paid_at || null,
-            confirmed_at: now,
-          };
-        }
-      }
-
-      updatePayload = {
-        ...updatePayload,
-        stripe_fee_amount: stripeFeeAmount,
-        stripe_net_amount: stripeNetAmount,
-        commission_amount: stripeFeeAmount,
-        owner_net_amount: stripeNetAmount ?? updatePayload.owner_net_amount ?? null,
-      };
-
-      const { error: updateError } = await supabase.from("booking_requests").update(updatePayload).eq("id", bookingId);
-      if (updateError) return { statusCode: 500, body: updateError.message };
-
-      await upsertPayment({
-        bookingId,
-        session,
-        paymentType,
-        manualReason: paymentType === "manual" ? manualReason : null,
-        amount: updatePayload.last_payment_amount || paidAmount,
-      });
-
-      await logBookingEvent({
-        bookingId,
-        eventType: "payment_received",
-        label: paymentType === "manual" ? `Paiement manuel reçu : ${getReasonLabel(manualReason)}` : `Paiement reçu : ${paymentType}`,
-        message: `Montant reçu : ${formatCurrency(updatePayload.last_payment_amount || paidAmount)}`,
-        metadata: {
-          paymentType,
-          manualReason,
-          sessionId: session.id,
-          paymentIntentId: session.payment_intent,
-          amount: updatePayload.last_payment_amount || paidAmount,
-          stripeFeeAmount,
-          stripeNetAmount,
-          stripeBalanceTransactionId: stripeFinancialDetails.stripeBalanceTransactionId,
-          stripeChargeId: stripeFinancialDetails.stripeChargeId,
+      const result = await processCheckoutSessionCompleted({
+        session: stripeEvent.data.object,
+        stripeEventCreated: stripeEvent.created,
+        dependencies: {
+          getFinancialDetails: getStripeFinancialDetails,
+          applyPayment: applyCheckoutPayment,
+          sendConfirmationEmail: async ({ booking, paymentType, manualReason, amount, arrivalToken }) => {
+            await sendPaymentConfirmationEmail(booking, paymentType, {
+              manualReason,
+              manualAmount: amount,
+              arrivalToken,
+            });
+          },
         },
       });
 
-      if (["deposit", "full", "balance", "manual"].includes(paymentType)) {
-        await supabase.from("booking_requests").update({ status: "expired", updated_at: now })
-          .neq("id", bookingId)
-          .in("status", ["pending", "accepted"])
-          .lt("start_date", booking.end_date)
-          .gt("end_date", booking.start_date);
-      }
-
-      await sendPaymentConfirmationEmail({ ...booking, ...updatePayload }, paymentType, {
-        manualReason,
-        manualAmount: paidAmount,
-      });
-
-      console.log("Paiement Stripe validé :", bookingId, paymentType, manualReason, paidAmount, { stripeFeeAmount, stripeNetAmount });
+      console.log("Traitement Checkout Stripe :", stripeEvent.data.object.id, result.outcome, result.reviewReason || null);
     }
-
 
     if (stripeEvent.type === "payout.paid" || stripeEvent.type === "payout.reconciliation_completed") {
       const payout = stripeEvent.data.object;
@@ -642,6 +439,6 @@ export async function handler(event) {
     return { statusCode: 200, body: JSON.stringify({ received: true }) };
   } catch (error) {
     console.error(error);
-    return { statusCode: 400, body: `Webhook Error: ${error.message}` };
+    return { statusCode: 500, body: "Webhook processing failed" };
   }
 }

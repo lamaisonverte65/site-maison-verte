@@ -6,8 +6,6 @@ import {
   getBalanceStatus,
   getConfirmedStayAmount,
   getRealPaidAmount,
-  getStripeFeeAmount,
-  getStripeNetAmount,
 } from "../utils/adminFormatters";
 
 export function usePaymentData({
@@ -21,12 +19,15 @@ export function usePaymentData({
       const reconciledTransactions = relatedTransactions.filter((transaction) => transaction.reconciliation_status === "viré" || transaction.payout_id);
       const payoutIds = [...new Set(reconciledTransactions.map((transaction) => transaction.payout_id).filter(Boolean))];
       const payoutDates = reconciledTransactions.map((transaction) => transaction.available_on || transaction.created_at_stripe).filter(Boolean);
-      const stripeNetAmount = getStripeNetAmount(r);
+      const financialLedger = r.financial_ledger;
+      const stripeFinancialsComplete = financialLedger?.stripe_financials_complete === true;
+      const stripeNetAmount = stripeFinancialsComplete ? Number(financialLedger.stripe_net_amount || 0) : null;
+      const stripeFeeAmount = stripeFinancialsComplete ? Number(financialLedger.stripe_fee_amount || 0) : null;
       const stripeTransferStatus = reconciledTransactions.length > 0
         ? "réellement viré"
-        : stripeNetAmount > 0
+        : stripeFinancialsComplete
           ? "net théorique / en attente payout"
-          : "en attente paiement";
+          : "À rapprocher Stripe";
 
       return {
         id: r.id,
@@ -42,8 +43,9 @@ export function usePaymentData({
         expiresAt: r.acceptance_expires_at,
         confirmedAmount: getConfirmedStayAmount(r),
         paidClientAmount: getRealPaidAmount(r),
-        stripeFeeAmount: getStripeFeeAmount(r),
+        stripeFeeAmount,
         stripeNetAmount,
+        stripeFinancialsComplete,
         stripeTransferStatus,
         payoutStatus: r.stripe_payout_status,
         payoutArrivalDate: r.stripe_payout_arrival_date || payoutDates[0] || null,

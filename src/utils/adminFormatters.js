@@ -186,11 +186,13 @@ export function getAmounts(request) {
   const total = Number(request?.owner_price || request?.estimated_total || 0);
   const deposit = Number(request?.deposit_amount || Math.round(total * 0.3) || 0);
   const balance = Number(request?.balance_amount || Math.max(total - deposit, 0));
-  const amountPaid = Number(request?.amount_paid || request?.total_paid || 0);
+  const storedPaid = request?.amount_paid ?? request?.total_paid;
+  const hasStoredPaid = storedPaid !== null && storedPaid !== undefined && storedPaid !== "";
+  const amountPaid = Number(hasStoredPaid ? storedPaid : 0);
 
   let derivedPaid = amountPaid;
-  if (!derivedPaid && ["deposit_paid", "paid"].includes(request?.status)) derivedPaid = deposit;
-  if (!derivedPaid && ["fully_paid", "confirmed"].includes(request?.status)) derivedPaid = total;
+  if (!hasStoredPaid && ["deposit_paid", "paid"].includes(request?.status)) derivedPaid = deposit;
+  if (!hasStoredPaid && ["fully_paid", "confirmed"].includes(request?.status)) derivedPaid = total;
 
   return { total, deposit, balance, paid: derivedPaid };
 }
@@ -222,7 +224,15 @@ export function isConfirmedFinancialStatus(status) {
 
 export function getRealPaidAmount(request) {
   if (isCancelledFinancialStatus(request?.status)) return 0;
-  return Math.max(Number(request?.amount_paid || 0) - Number(request?.refunded_amount || 0), 0);
+  return Math.max(Number(request?.amount_paid || 0), 0);
+}
+
+export function getHistoricalGrossPaidAmount(request) {
+  return Math.max(Number(request?.amount_paid || 0) + Number(request?.refunded_amount || 0), 0);
+}
+
+export function getStripeBankExpectedNet(stripeNetAmount) {
+  return Number(stripeNetAmount || 0);
 }
 
 export function getStripeFeeAmount(request) {
@@ -232,9 +242,7 @@ export function getStripeFeeAmount(request) {
 }
 
 export function getStripeNetAmount(request) {
-  // Le net Stripe correspond à la transaction bancaire avant éventuel remboursement.
-  // On ne le neutralise pas selon le statut de réservation, pour que la synthèse
-  // bancaire reste raccord avec les payouts Stripe et le compte bancaire.
+  // Net Stripe cumulé signé, remboursements inclus, issu du ledger rapproché.
   return Number(request?.stripe_net_amount || 0);
 }
 
