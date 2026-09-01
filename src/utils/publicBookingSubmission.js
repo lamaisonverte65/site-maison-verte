@@ -41,6 +41,13 @@ export async function submitPublicBooking(payload, {
       };
     }
     if (response.status === 400) return failure("validation", "Certaines informations sont invalides. Vérifiez le formulaire puis réessayez.");
+    if (response.status === 409 && body?.code === "DATE_CONFLICT") {
+      return {
+        ...failure("date_conflict", "Une réservation vient d’être enregistrée sur tout ou partie de ces dates. Merci de choisir d’autres dates."),
+        resetDates: true,
+        refreshCalendar: true,
+      };
+    }
     if (response.status === 409) return failure("duplicate", "Cette demande semble avoir déjà été envoyée. Aucun nouvel envoi n’a été créé.");
     if (response.status === 429) return failure("rate_limit", "Trop de tentatives ont été effectuées. Patientez quelques minutes avant de réessayer.");
     return failure("server_error", "Nous n’avons pas pu confirmer l’enregistrement de votre demande. Vos informations sont conservées ; réessayez ou contactez-nous.");

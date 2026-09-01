@@ -2,6 +2,7 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
+import { DATE_CONFLICT_MESSAGE, isBookingDateConflictError } from "./_lib/public-booking-request.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(
@@ -507,6 +508,9 @@ export async function handler(event) {
     return { statusCode: 200, body: JSON.stringify({ success: true, booking }) };
   } catch (error) {
     console.error("Erreur create-personal-booking :", error);
+    if (isBookingDateConflictError(error)) {
+      return { statusCode: 409, body: JSON.stringify({ code: "DATE_CONFLICT", error: DATE_CONFLICT_MESSAGE }) };
+    }
     return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
   }
 }

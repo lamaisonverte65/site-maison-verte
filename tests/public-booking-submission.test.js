@@ -53,6 +53,25 @@ test("400, duplicate, rate-limit, and server failures preserve the form with dis
   }
 });
 
+test("a date conflict has its own public outcome and asks the form to refresh only the dates", async () => {
+  const result = await submitPublicBooking({}, {
+    fetchImpl: async () => response(409, {
+      code: "DATE_CONFLICT",
+      error: "internal detail must not override the fixed public copy",
+    }),
+  });
+
+  assert.deepEqual(result, {
+    kind: "date_conflict",
+    success: false,
+    clearForm: false,
+    reload: false,
+    resetDates: true,
+    refreshCalendar: true,
+    message: "Une réservation vient d’être enregistrée sur tout ou partie de ces dates. Merci de choisir d’autres dates.",
+  });
+});
+
 test("a network failure never becomes a recorded-booking success", async () => {
   assert.equal(typeof submitPublicBooking, "function");
   const result = await submitPublicBooking({}, { fetchImpl: async () => { throw new Error("socket detail"); } });

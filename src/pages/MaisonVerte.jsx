@@ -265,25 +265,25 @@ export default function MaisonVerte() {
     };
   }, []);
 
-  useEffect(() => {
-    async function fetchCalendar() {
-      try {
-        const response = await fetch("/.netlify/functions/calendar");
+  async function fetchCalendar() {
+    try {
+      const response = await fetch("/.netlify/functions/calendar");
 
-        const data = await response.json();
+      const data = await response.json();
 
-        setUnavailableDates(data.unavailableDates || []);
+      setUnavailableDates(data.unavailableDates || []);
 
-        setPricingRules({
-          defaultNightPrice: Number(data.defaultNightPrice ?? 80),
-          seasonPrices: data.seasonPrices || [],
-          priceOverrides: data.priceOverrides || [],
-        });
-      } catch (error) {
-        console.error("Erreur calendrier :", error);
-      }
+      setPricingRules({
+        defaultNightPrice: Number(data.defaultNightPrice ?? 80),
+        seasonPrices: data.seasonPrices || [],
+        priceOverrides: data.priceOverrides || [],
+      });
+    } catch (error) {
+      console.error("Erreur calendrier :", error);
     }
+  }
 
+  useEffect(() => {
     fetchCalendar();
   }, []);
 
@@ -642,6 +642,11 @@ export default function MaisonVerte() {
       });
 
       if (!outcome.success) {
+        if (outcome.kind === "date_conflict") {
+          setSelectedDates([]);
+          setContractAccepted(false);
+          if (outcome.refreshCalendar) await fetchCalendar();
+        }
         setBookingValidationErrors([outcome.message]);
         setTimeout(() => bookingErrorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
         return;

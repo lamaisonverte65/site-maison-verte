@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { createHmac } from "node:crypto";
-import { buildPublicBookingEmails, claimPublicBookingSubmission, isDuplicatePublicBooking, validatePublicBookingPayload } from "./_lib/public-booking.js";
+import { buildPublicBookingEmails, validatePublicBookingPayload } from "./_lib/public-booking.js";
+import { createSupabaseAtomicBookingRepository, DATE_CONFLICT_MESSAGE, runAtomicPublicBookingWorkflow } from "./_lib/public-booking-request.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const json = (statusCode, body) => new Response(JSON.stringify(body), {
@@ -44,7 +45,6 @@ async function sendEmail(email, bookingId, emailType) {
 
 export default async function handler(request, context) {
   if (request.method !== "POST") return json(405, { error: "Method Not Allowed" });
-  let recordedBookingId = null;
   try {
     const { data: ipAllowed, error: ipLimitError } = await supabase.rpc("claim_public_rate_limit", {
       p_scope: "public_booking_ip",
@@ -65,54 +65,32 @@ export default async function handler(request, context) {
     const validated = validatePublicBookingPayload(input);
     if (!validated.ok) return json(validated.statusCode, { error: validated.error });
 
-    const claimed = await claimPublicBookingSubmission({
-      async claimFingerprint(fingerprint) {
-        const { data, error } = await supabase.rpc("claim_public_rate_limit", {
-          p_scope: "public_booking_duplicate",
-          p_key_hash: fingerprint,
-          p_window_seconds: 300,
-          p_limit: 1,
-          p_now: new Date().toISOString(),
-        });
-        if (error) throw error;
-        return data === true;
-      },
-    }, validated.booking);
-    if (!claimed) return json(409, { error: "Une demande identique a déjà été reçue récemment." });
-
-    const duplicateSince = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const { data: duplicates, error: duplicateError } = await supabase
-      .from("booking_requests")
-      .select("id,created_at,guest_first_name,guest_last_name,guest_email,guest_phone,adults_count,children_count,children_ages,baby_bed_needed,marketing_consent,message,start_date,end_date,nights,estimated_total,contract_accepted,contract_version")
-      .eq("guest_email", validated.booking.guest_email)
-      .eq("start_date", validated.booking.start_date)
-      .eq("end_date", validated.booking.end_date)
-      .gte("created_at", duplicateSince)
-      .limit(10);
-    if (duplicateError) throw duplicateError;
-    if (isDuplicatePublicBooking(duplicates, validated.booking)) {
-      return json(409, { error: "Une demande identique a déjà été reçue récemment." });
-    }
-
-    const { data: booking, error: insertError } = await supabase
-      .from("booking_requests")
-      .insert([validated.booking])
-      .select("id")
-      .single();
-    if (insertError || !booking?.id) throw insertError || new Error("Création de la demande impossible.");
-    recordedBookingId = booking.id;
-
     const ownerEmail = String(process.env.BOOKING_NOTIFICATION_EMAIL || "lamaisonverte65@gmail.com").trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) throw new Error("Configuration destinataire invalide.");
-    const emails = buildPublicBookingEmails(validated.emailModel, { ownerEmail });
-    await sendEmail(emails.owner, booking.id, "booking_request:owner");
-    await sendEmail(emails.guest, booking.id, "booking_request:guest");
-    return json(200, { success: true, bookingId: booking.id });
+    const result = await runAtomicPublicBookingWorkflow({
+      validated,
+      repository: createSupabaseAtomicBookingRepository(supabase),
+      buildEmails(emailModel) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) throw new Error("Configuration destinataire invalide.");
+        return buildPublicBookingEmails(emailModel, { ownerEmail });
+      },
+      deliverEmail: sendEmail,
+    });
+
+    if (result.outcome === "duplicate") {
+      return json(409, { code: "DUPLICATE_REQUEST", error: "Une demande identique a déjà été reçue récemment." });
+    }
+    if (result.outcome === "date_conflict") {
+      return json(409, {
+        code: "DATE_CONFLICT",
+        error: DATE_CONFLICT_MESSAGE,
+      });
+    }
+    if (result.confirmationPending) {
+      return json(202, { success: true, bookingId: result.bookingId, confirmationPending: true });
+    }
+    return json(200, { success: true, bookingId: result.bookingId });
   } catch (error) {
     console.error("Erreur demande publique:", error);
-    if (recordedBookingId) {
-      return json(202, { success: true, bookingId: recordedBookingId, confirmationPending: true });
-    }
-    return json(500, { error: "La demande a été enregistrée ou traitée partiellement. Contactez-nous si vous ne recevez pas de confirmation." });
+    return json(500, { error: "La demande n’a pas pu être enregistrée. Réessayez ou contactez-nous." });
   }
 }

@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
 import { canMutateReservationData } from "./_lib/business-mutation-policy.js";
+import { DATE_CONFLICT_MESSAGE, isBookingDateConflictError } from "./_lib/public-booking-request.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -284,6 +285,9 @@ export async function handler(event) {
     return { statusCode: 200, body: JSON.stringify({ success: true, booking }) };
   } catch (error) {
     console.error("Erreur update-booking-request :", error);
+    if (isBookingDateConflictError(error)) {
+      return { statusCode: 409, body: JSON.stringify({ code: "DATE_CONFLICT", error: DATE_CONFLICT_MESSAGE }) };
+    }
     return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
   }
 }
