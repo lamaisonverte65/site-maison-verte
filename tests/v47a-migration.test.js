@@ -46,9 +46,25 @@ test("atomic RPC checks known blockers before claiming and inserting", () => {
   assert.match(sql, /'date_conflict'/i);
 });
 
-test("atomic RPC preserves CLOSED Booking one-night convention and is service-role only", () => {
+test("atomic RPC ignores one-night technical blocks from both Booking and Airbnb", () => {
   const sql = readFileSync(migrationPath, "utf8");
-  assert.match(sql, /source\s*=\s*'booking'[\s\S]*end_date\s*=\s*start_date\s*\+\s*1/i);
+  assert.match(
+    sql,
+    /not\s*\(\s*source\s+in\s*\(\s*'booking'\s*,\s*'airbnb'\s*\)\s+and\s+end_date\s*=\s*start_date\s*\+\s*1\s*\)/i,
+  );
+});
+
+test("atomic RPC keeps multi-night Booking and Airbnb occupancies as date conflicts", () => {
+  const sql = readFileSync(migrationPath, "utf8");
+  const rpcSql = sql.slice(sql.search(/create\s+or\s+replace\s+function\s+public\.create_public_booking_request_atomic/i));
+
+  assert.match(rpcSql, /from\s+public\.external_occupancies[\s\S]*is_current\s+is\s+true/i);
+  assert.match(rpcSql, /daterange\s*\(\s*start_date\s*,\s*end_date\s*,\s*'\[\)'\s*\)\s*&&\s*v_period/i);
+  assert.match(rpcSql, /return\s+query\s+select\s+'date_conflict'/i);
+});
+
+test("atomic RPC is service-role only", () => {
+  const sql = readFileSync(migrationPath, "utf8");
   assert.match(sql, /revoke\s+all\s+on\s+function\s+public\.create_public_booking_request_atomic[\s\S]*from\s+public\s*,\s*anon\s*,\s*authenticated/i);
   assert.match(sql, /grant\s+execute\s+on\s+function\s+public\.create_public_booking_request_atomic[\s\S]*to\s+service_role/i);
 });

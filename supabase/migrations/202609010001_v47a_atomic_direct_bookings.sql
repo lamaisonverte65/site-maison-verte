@@ -141,7 +141,7 @@ begin
     select 1
     from public.external_occupancies
     where is_current is true
-      and not (source = 'booking' and end_date = start_date + 1)
+      and not (source in ('booking', 'airbnb') and end_date = start_date + 1)
       and daterange(start_date, end_date, '[)') && v_period
   ) then
     return query select 'date_conflict'::text, null::uuid;
