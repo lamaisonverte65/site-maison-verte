@@ -15,6 +15,11 @@ import {
   getUniqueSessionCount,
   groupVisitsByDay,
 } from "../utils/adminFormatters";
+import {
+  getPageViewDurationSamples,
+  getVisitSessionDuration,
+  mergePageViewsWithEngagement,
+} from "../services/siteAnalyticsService";
 
 export function useVisitsData({ siteVisits, ownVisitorId }) {
   const visibleSiteVisits = useMemo(
@@ -22,9 +27,14 @@ export function useVisitsData({ siteVisits, ownVisitorId }) {
     [siteVisits, ownVisitorId]
   );
 
-  const pageViewVisits = useMemo(
+  const storedPageViewVisits = useMemo(
     () => visibleSiteVisits.filter(isPageView),
     [visibleSiteVisits]
+  );
+
+  const pageViewVisits = useMemo(
+    () => mergePageViewsWithEngagement(storedPageViewVisits, visibleSiteVisits),
+    [storedPageViewVisits, visibleSiteVisits]
   );
 
   const clickEvents = useMemo(
@@ -52,24 +62,29 @@ export function useVisitsData({ siteVisits, ownVisitorId }) {
         referrerDomain: visit.referrer_domain,
         country: getCountryLabel(visit),
         device: getDeviceLabel(visit),
-        duration: 0,
+        pageViewRows: [],
         maxScroll: 0,
       };
       existing.firstAt = new Date(visit.created_at) < new Date(existing.firstAt) ? visit.created_at : existing.firstAt;
       existing.lastAt = new Date(visit.created_at) > new Date(existing.lastAt) ? visit.created_at : existing.lastAt;
       existing.pages.push(getVisitPageLabel(visit));
-      existing.duration += Number(visit.duration_seconds || getVisitMetadata(visit).duration_seconds || 0);
+      existing.pageViewRows.push(visit);
       existing.maxScroll = Math.max(existing.maxScroll, Number(visit.max_scroll_percent || getVisitMetadata(visit).max_scroll_percent || 0));
       map.set(key, existing);
     }
-    return [...map.values()].sort((a, b) => new Date(b.lastAt || 0) - new Date(a.lastAt || 0));
-  }, [pageViewVisits]);
+    return [...map.values()]
+      .map(({ pageViewRows, ...session }) => ({
+        ...session,
+        duration: getVisitSessionDuration(pageViewRows, visibleSiteVisits),
+      }))
+      .sort((a, b) => new Date(b.lastAt || 0) - new Date(a.lastAt || 0));
+  }, [pageViewVisits, visibleSiteVisits]);
 
   const analyticsStats = useMemo(() => {
     const uniqueVisitors = uniqueVisitorCount(pageViewVisits);
     const sessions = getUniqueSessionCount(pageViewVisits);
     const pagesPerSession = sessions ? pageViewVisits.length / sessions : 0;
-    const avgDuration = average(pageViewVisits.map((visit) => visit.duration_seconds || getVisitMetadata(visit).duration_seconds));
+    const avgDuration = average(getPageViewDurationSamples(pageViewVisits));
     const mobileShare = pageViewVisits.length
       ? (pageViewVisits.filter((visit) => String(visit.device_type || getVisitMetadata(visit).device_type || "").toLowerCase() === "mobile").length / pageViewVisits.length) * 100
       : 0;

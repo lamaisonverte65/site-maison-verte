@@ -1,5 +1,10 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
+import {
+  createPageEngagementWriter,
+  writeAnalyticsEvent,
+  writePageViewOnce,
+} from "../services/siteAnalyticsService";
 
 const INTERNAL_STORAGE_KEY = "lmv_admin_browser";
 const VISITOR_STORAGE_KEY = "lmv_visitor_id";
@@ -119,44 +124,8 @@ function getCommonData(visitorId, sessionId) {
   };
 }
 
-async function insertAnalyticsEvent(payload) {
-  const enrichedPayload = {
-    ...payload,
-    metadata: {
-      ...(payload.metadata || {}),
-      event_type: payload.event_type,
-      page: payload.page,
-      session_id: payload.session_id,
-    },
-  };
-
-  const { data, error } = await supabase
-    .from("site_visits")
-    .insert([enrichedPayload])
-    .select("id")
-    .single();
-
-  if (!error) return data?.id || null;
-
-  // Sécurité : si la base n'a pas encore les nouvelles colonnes,
-  // on garde l'ancien compteur au lieu de casser le site.
-  console.warn("Analytics enrichi non enregistré, fallback simple :", error.message);
-  await supabase.from("site_visits").insert([
-    {
-      page: payload.page,
-      visitor_id: payload.visitor_id,
-      referrer: payload.referrer,
-      referrer_domain: payload.referrer_domain,
-      source: payload.source,
-      country: payload.country,
-    },
-  ]);
-
-  return null;
-}
-
 export default function SiteAnalyticsTracker() {
-  const pageViewIdRef = useRef(null);
+  const pageViewWriteStateRef = useRef(false);
   const startedAtRef = useRef(Date.now());
   const maxScrollRef = useRef(0);
   const scrollMilestonesRef = useRef(new Set());
@@ -187,51 +156,57 @@ export default function SiteAnalyticsTracker() {
     }
 
     const commonData = getCommonData(visitorId, sessionId);
-    let cancelled = false;
+    const writePageEngagement = createPageEngagementWriter({ supabase, commonData });
 
-    async function trackPageView() {
-      const id = await insertAnalyticsEvent({
-        ...commonData,
-        event_type: "page_view",
-        max_scroll_percent: 0,
-        duration_seconds: 0,
-      });
-      if (!cancelled) pageViewIdRef.current = id;
+    function reportAnalyticsError(eventType, error) {
+      console.warn(`Analytics ${eventType} non enregistré :`, error?.message || error);
     }
 
-    async function updatePageView() {
-      const id = pageViewIdRef.current;
-      if (!id) return;
+    async function trackPageView() {
+      try {
+        await writePageViewOnce({
+          writeState: pageViewWriteStateRef,
+          supabase,
+          payload: {
+            ...commonData,
+            event_type: "page_view",
+            max_scroll_percent: 0,
+            duration_seconds: 0,
+          },
+        });
+      } catch (error) {
+        reportAnalyticsError("page_view", error);
+      }
+    }
+
+    async function trackPageEngagement() {
       const duration = Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000));
       const maxScroll = Math.max(maxScrollRef.current, getScrollPercent());
-      await supabase
-        .from("site_visits")
-        .update({
-          duration_seconds: duration,
-          max_scroll_percent: maxScroll,
-          metadata: {
-            ...commonData.metadata,
-            event_type: "page_view",
-            duration_seconds: duration,
-            max_scroll_percent: maxScroll,
-            last_update_at: new Date().toISOString(),
-          },
-        })
-        .eq("id", id);
+      try {
+        await writePageEngagement({
+          durationSeconds: duration,
+          maxScrollPercent: maxScroll,
+        });
+      } catch (error) {
+        reportAnalyticsError("page_engagement", error);
+      }
     }
 
     function trackEvent(eventType, extra = {}) {
-      insertAnalyticsEvent({
-        ...commonData,
-        ...extra,
-        event_type: eventType,
-        max_scroll_percent: Math.max(maxScrollRef.current, getScrollPercent()),
-        duration_seconds: Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000)),
-        metadata: {
-          ...commonData.metadata,
-          ...(extra.metadata || {}),
+      writeAnalyticsEvent({
+        supabase,
+        payload: {
+          ...commonData,
+          ...extra,
+          event_type: eventType,
+          max_scroll_percent: Math.max(maxScrollRef.current, getScrollPercent()),
+          duration_seconds: Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000)),
+          metadata: {
+            ...commonData.metadata,
+            ...(extra.metadata || {}),
+          },
         },
-      });
+      }).catch((error) => reportAnalyticsError(eventType, error));
     }
 
     function handleScroll() {
@@ -287,7 +262,7 @@ export default function SiteAnalyticsTracker() {
     document.addEventListener("click", handleClick, true);
     document.addEventListener("focusin", handleFormStart, true);
 
-    const updateTimer = window.setInterval(updatePageView, 10000);
+    const engagementTimer = window.setInterval(trackPageEngagement, 10000);
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -312,21 +287,20 @@ export default function SiteAnalyticsTracker() {
     });
 
     function handleVisibilityChange() {
-      if (document.visibilityState === "hidden") updatePageView();
+      if (document.visibilityState === "hidden") trackPageEngagement();
     }
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("beforeunload", updatePageView);
+    window.addEventListener("beforeunload", trackPageEngagement);
 
     return () => {
-      cancelled = true;
-      updatePageView();
-      window.clearInterval(updateTimer);
+      trackPageEngagement();
+      window.clearInterval(engagementTimer);
       window.removeEventListener("scroll", handleScroll);
       document.removeEventListener("click", handleClick, true);
       document.removeEventListener("focusin", handleFormStart, true);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("beforeunload", updatePageView);
+      window.removeEventListener("beforeunload", trackPageEngagement);
       observer.disconnect();
     };
   }, []);
