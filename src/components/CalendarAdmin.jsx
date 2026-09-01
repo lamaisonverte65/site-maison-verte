@@ -5,12 +5,18 @@ import interactionPlugin from "@fullcalendar/interaction";
 import { supabase } from "../supabaseClient";
 import CalendarToolbar from "./calendar/CalendarToolbar";
 import CalendarLegend from "./calendar/CalendarLegend";
+import CalendarConflictDialog from "./calendar/CalendarConflictDialog";
 import CalendarHomePanel from "./admin/calendar/CalendarHomePanel";
 import EventPanel from "./admin/calendar/EventPanel";
 import SelectionPanel from "./admin/calendar/SelectionPanel";
 import ReservationSummaryPanel from "./admin/calendar/ReservationSummaryPanel";
 import HousekeepingReservationView from "./admin/reservation/HousekeepingReservationView";
 import { calendarCss, styles } from "./admin/calendar/calendarStyles";
+import {
+  findLocalBookingForConflict,
+  normalizeOpenExternalConflicts,
+  shouldLoadExternalConflicts,
+} from "./admin/calendar/externalConflictPresentation";
 import {
   buildExternalReservation,
   contactEmail,
@@ -114,6 +120,9 @@ export default function CalendarAdmin({
   const [pendingRangeStart, setPendingRangeStart] = useState(null);
   const [selectionForm, setSelectionForm] = useState(emptySelectionForm());
   const [loading, setLoading] = useState(false);
+  const [externalConflicts, setExternalConflicts] = useState([]);
+  const [externalConflictError, setExternalConflictError] = useState("");
+  const [externalConflictsDismissed, setExternalConflictsDismissed] = useState(false);
 
   useEffect(() => {
     if (mode === "housekeeping") return;
@@ -149,6 +158,8 @@ export default function CalendarAdmin({
       return safeEvents.find((event) => event.id === current.id)?.extendedProps?.reservation || current;
     });
     setBlocks([]);
+    setExternalConflicts([]);
+    setExternalConflictError("");
     setCalendarRenderKey((previous) => previous + 1);
   }, [mode, housekeepingReservations]);
 
@@ -180,6 +191,29 @@ export default function CalendarAdmin({
     }
 
     setCustomers(data || []);
+  }
+
+  async function loadExternalConflicts() {
+    if (!shouldLoadExternalConflicts(mode)) {
+      setExternalConflicts([]);
+      setExternalConflictError("");
+      return;
+    }
+    try {
+      const response = await fetch("/.netlify/functions/get-external-occupancy-conflicts", {
+        method: "GET",
+        headers: await getAdminFetchHeaders(),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Chargement des alertes impossible.");
+      setExternalConflicts(normalizeOpenExternalConflicts(body.conflicts || []));
+      setExternalConflictError("");
+      setExternalConflictsDismissed(false);
+    } catch (error) {
+      setExternalConflicts([]);
+      setExternalConflictError(error.message || "Alertes de chevauchement indisponibles.");
+      setExternalConflictsDismissed(false);
+    }
   }
 
 
@@ -305,6 +339,7 @@ export default function CalendarAdmin({
 
       setEvents([...externalEvents, ...directEvents, ...blockEvents]);
       setCalendarRenderKey((previous) => previous + 1);
+      await loadExternalConflicts();
     } catch (error) {
       alert("Erreur calendrier : " + error.message);
     }
@@ -827,6 +862,22 @@ export default function CalendarAdmin({
           onRefresh={mode === "housekeeping" ? onCalendarUpdated : loadCalendar}
           onClearSelection={() => {
             clearEditionAndSelection();
+          }}
+        />
+      )}
+
+      {shouldLoadExternalConflicts(mode) && !externalConflictsDismissed && (
+        <CalendarConflictDialog
+          conflicts={externalConflicts}
+          error={externalConflictError}
+          onClose={() => setExternalConflictsDismissed(true)}
+          onOpenLocal={(conflict) => {
+            const reservation = findLocalBookingForConflict(conflict, events);
+            if (!reservation) return;
+            setSelectedExternalEvent(null);
+            setSelectedPeriod(null);
+            setEditingReservation(null);
+            setSelectedCalendarReservation(reservation);
           }}
         />
       )}

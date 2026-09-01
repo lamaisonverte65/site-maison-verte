@@ -1,3 +1,5 @@
+import { isTechnicalExternalOneNight } from "./external-calendar-rules.js";
+
 const NOTE_INPUT_FIELDS = new Set(["reservationId", "note"]);
 
 const fail = (error) => ({ ok: false, statusCode: 400, error });
@@ -35,6 +37,11 @@ export function filterVisibleExternalOccupations(occupations = [], actions = [])
   );
   return occupations.filter((occupation) => (
     occupation?.is_current === true
+    && !isTechnicalExternalOneNight(
+      occupation.source,
+      occupation.start_date,
+      occupation.end_date,
+    )
     && !resolvedTargets.has(externalKey(occupation.source, occupation.external_uid))
   ));
 }

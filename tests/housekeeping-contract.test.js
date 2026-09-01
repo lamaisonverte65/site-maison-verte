@@ -160,6 +160,16 @@ test("only current unresolved external occupations remain visible to housekeepin
   assert.deepEqual(filterVisibleExternalOccupations(occupations, actions), [occupations[0]]);
 });
 
+test("one-night Booking and Airbnb technical blocks are never displayed as housekeeping stays", () => {
+  const occupations = [
+    { id: "occ-booking-closed", source: "booking", external_uid: "closed-b", start_date: "2026-10-10", end_date: "2026-10-11", is_current: true },
+    { id: "occ-airbnb-closed", source: "airbnb", external_uid: "closed-a", start_date: "2026-10-12", end_date: "2026-10-13", is_current: true },
+    { id: "occ-booking-real", source: "booking", external_uid: "stay-b", start_date: "2026-10-14", end_date: "2026-10-16", is_current: true },
+  ];
+
+  assert.deepEqual(filterVisibleExternalOccupations(occupations, []), [occupations[2]]);
+});
+
 test("pending, inactive, or empty actions do not hide a current external occupation", () => {
   const occupation = { id: "occ-1", source: "booking", external_uid: "uid-1", is_current: true };
   const actions = [

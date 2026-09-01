@@ -5,6 +5,70 @@ export async function claimMissingAlerts(repository, actions) {
   return results.filter(Boolean);
 }
 
+export async function collectExternalCalendarFeeds(
+  sources,
+  fetchEvents,
+  toDateString,
+  onSourceError = () => {},
+) {
+  const uids = new Set();
+  const occupations = [];
+  const successfulSources = [];
+
+  for (const sourceConfig of sources || []) {
+    try {
+      const events = await fetchEvents(sourceConfig.url);
+      const sourceUids = [];
+      const sourceOccupations = [];
+      for (const key in events) {
+        const event = events[key];
+        if (!event || event.type !== "VEVENT" || !event.uid) continue;
+        const startDate = toDateString(event.start);
+        const endDate = toDateString(event.end);
+        if (!startDate || !endDate || endDate <= startDate) continue;
+        sourceUids.push(`${sourceConfig.source}\u0000${event.uid}`);
+        sourceOccupations.push({
+          source: sourceConfig.source,
+          external_uid: event.uid,
+          start_date: startDate,
+          end_date: endDate,
+        });
+      }
+      sourceUids.forEach((uid) => uids.add(uid));
+      occupations.push(...sourceOccupations);
+      successfulSources.push(sourceConfig.source);
+    } catch (error) {
+      onSourceError(error, sourceConfig.source);
+    }
+  }
+
+  return { uids, occupations, successfulSources };
+}
+
+export async function runIndependentAlertPaths(runConflictChecks, runMissingChecks) {
+  const errors = [];
+  let conflictResult;
+  let missingResult;
+
+  try {
+    conflictResult = await runConflictChecks();
+  } catch (error) {
+    errors.push(error);
+  }
+
+  try {
+    missingResult = await runMissingChecks();
+  } catch (error) {
+    errors.push(error);
+  }
+
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) {
+    throw new AggregateError(errors, "External calendar alert checks failed.");
+  }
+  return { conflictResult, missingResult };
+}
+
 export async function persistExternalOccupancies(repository, occupations, seenAt, successfulSources = null) {
   const timestamp = String(seenAt || "").trim();
   const byTarget = new Map();

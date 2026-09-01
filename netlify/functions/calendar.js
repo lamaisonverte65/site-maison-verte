@@ -1,5 +1,6 @@
 import ical from "node-ical";
 import { createClient } from "@supabase/supabase-js";
+import { isTechnicalExternalOneNight } from "./_lib/external-calendar-rules.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -81,17 +82,13 @@ export async function handler() {
 
           const startDate = toDateString(event.start);
           const endDate = toDateString(event.end);
-          const durationInNights = Math.round(
-            (parseLocalDate(endDate) - parseLocalDate(startDate)) /
-              (1000 * 60 * 60 * 24)
-          );
 
-          // Booking peut envoyer des blocages ICS isolés d'une seule nuit,
-          // alors que les vraies réservations Booking ne peuvent pas être d'une nuit.
+          // Booking et Airbnb peuvent envoyer des blocages ICS isolés d'une seule nuit,
+          // alors que le logement n'accepte aucune réservation d'une nuit.
           // On les ignore à la source pour ne pas bloquer inutilement le calendrier public/admin.
-          // Si Booking rattache ce jour à un événement plus long, on conserve l'événement entier
+          // Si la plateforme rattache ce jour à un événement plus long, on conserve l'événement entier
           // pour éviter de casser une vraie réservation.
-          if (sourceConfig.source === "booking" && durationInNights === 1) {
+          if (isTechnicalExternalOneNight(sourceConfig.source, startDate, endDate)) {
             continue;
           }
 

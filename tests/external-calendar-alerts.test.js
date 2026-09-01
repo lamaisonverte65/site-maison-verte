@@ -4,7 +4,9 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   claimMissingAlerts,
+  collectExternalCalendarFeeds,
   persistExternalOccupancies,
+  runIndependentAlertPaths,
 } from "../netlify/functions/_lib/external-calendar-alerts.js";
 
 function readJavaScriptTree(directory) {
@@ -23,6 +25,17 @@ test("the external calendar checker is wired as a native scheduled-only function
   assert.match(source, /export const handler = schedule\("\*\/5 \* \* \* \*"/);
   assert.doesNotMatch(source, /export async function handler/);
   assert.match(netlifyConfig, /\[functions\."check-external-calendar-alerts"\][\s\S]*schedule = "\*\/5 \* \* \* \*"/);
+});
+
+test("persisted occupations are reconciled and conflict alerts processed after a successful sync", () => {
+  const source = readFileSync("netlify/functions/check-external-calendar-alerts.js", "utf8");
+  assert.match(source, /reconcileSuccessfulExternalSources/);
+  assert.match(source, /processExternalConflictAlerts/);
+  const persist = source.indexOf("await persistExternalOccupancies(");
+  const reconcile = source.indexOf("await reconcileSuccessfulExternalSources(");
+  const alerts = source.indexOf("await processExternalConflictAlerts(");
+  assert.ok(persist >= 0 && reconcile > persist && alerts > reconcile);
+  assert.match(source.slice(reconcile, alerts), /current\.successfulSources/);
 });
 
 test("no scheduler credential is exposed by the browser sources", () => {
@@ -144,4 +157,52 @@ test("an unsuccessful source is never retired", async () => {
 
   assert.deepEqual(operations.map((operation) => operation.kind), ["upsert", "retire"]);
   assert.equal(operations.some((operation) => operation.source === "airbnb"), false);
+});
+
+test("a source that fails after a partial parse contributes no rows and is not reconciled", async () => {
+  const events = {
+    valid: {
+      type: "VEVENT",
+      uid: "partial-booking",
+      start: "2026-10-10",
+      end: "2026-10-15",
+    },
+  };
+  Object.defineProperty(events, "broken", {
+    enumerable: true,
+    get() { throw new Error("parser entry failure"); },
+  });
+  const errors = [];
+
+  const result = await collectExternalCalendarFeeds(
+    [{ source: "booking", url: "booking.test" }],
+    async () => events,
+    (value) => String(value).slice(0, 10),
+    (error, source) => errors.push({ message: error.message, source }),
+  );
+
+  assert.deepEqual(result.occupations, []);
+  assert.deepEqual(result.successfulSources, []);
+  assert.deepEqual([...result.uids], []);
+  assert.deepEqual(errors, [{ message: "parser entry failure", source: "booking" }]);
+});
+
+test("a conflict alert failure does not suppress the existing missing-ICS alert path", async () => {
+  const calls = [];
+
+  await assert.rejects(
+    runIndependentAlertPaths(
+      async () => {
+        calls.push("conflicts");
+        throw new Error("Resend conflict failure");
+      },
+      async () => {
+        calls.push("missing-ics");
+        return { checked: 2, missing: 1 };
+      },
+    ),
+    /Resend conflict failure/,
+  );
+
+  assert.deepEqual(calls, ["conflicts", "missing-ics"]);
 });
