@@ -1,9 +1,9 @@
 -- V4.7-A: enforce non-overlapping local blocking occupations and create
 -- public booking requests through one service-role-only transaction.
 --
--- Local booking sources are a closed allowlist. Public requests historically
--- have a NULL source; `direct` is the legacy direct label; admin-created local
--- occupations use `admin_client` or `admin_personal`.
+-- Local booking sources are a closed allowlist. Public requests inherit the
+-- observed `website` table default; NULL and `direct` remain compatible. Local
+-- admin occupations use `admin_client` or `admin_personal`.
 --
 -- Rollback, after reverting the matching application code:
 --   drop function public.create_public_booking_request_atomic(jsonb, text, timestamptz);
@@ -23,7 +23,7 @@ begin
     from public.booking_requests
     where source is not null
       and source::text not in (
-        'direct', 'admin_client', 'admin_personal',
+        'website', 'direct', 'admin_client', 'admin_personal',
         'booking', 'airbnb', 'booking_import', 'airbnb_import'
       )
   ) classified_sources;
@@ -38,7 +38,7 @@ begin
   into v_invalid_periods
   from public.booking_requests
   where status in ('pending', 'accepted', 'deposit_paid', 'paid', 'fully_paid', 'confirmed')
-    and (source is null or source in ('direct', 'admin_client', 'admin_personal'))
+    and (source is null or source in ('website', 'direct', 'admin_client', 'admin_personal'))
     and (start_date is null or end_date is null or end_date <= start_date);
 
   if v_invalid_periods > 0 then
@@ -56,8 +56,8 @@ begin
        && daterange(right_booking.start_date, right_booking.end_date, '[)')
   where left_booking.status in ('pending', 'accepted', 'deposit_paid', 'paid', 'fully_paid', 'confirmed')
     and right_booking.status in ('pending', 'accepted', 'deposit_paid', 'paid', 'fully_paid', 'confirmed')
-    and (left_booking.source is null or left_booking.source in ('direct', 'admin_client', 'admin_personal'))
-    and (right_booking.source is null or right_booking.source in ('direct', 'admin_client', 'admin_personal'));
+    and (left_booking.source is null or left_booking.source in ('website', 'direct', 'admin_client', 'admin_personal'))
+    and (right_booking.source is null or right_booking.source in ('website', 'direct', 'admin_client', 'admin_personal'));
 
   if v_historical_overlaps > 0 then
     raise exception
@@ -74,7 +74,7 @@ alter table public.booking_requests
   )
   where (
     status in ('pending', 'accepted', 'deposit_paid', 'paid', 'fully_paid', 'confirmed')
-    and (source is null or source in ('direct', 'admin_client', 'admin_personal'))
+    and (source is null or source in ('website', 'direct', 'admin_client', 'admin_personal'))
   );
 
 create or replace function public.create_public_booking_request_atomic(
@@ -129,7 +129,7 @@ begin
     select 1
     from public.booking_requests
     where status in ('pending', 'accepted', 'deposit_paid', 'paid', 'fully_paid', 'confirmed')
-      and (source is null or source in ('direct', 'admin_client', 'admin_personal'))
+      and (source is null or source in ('website', 'direct', 'admin_client', 'admin_personal'))
       and daterange(start_date, end_date, '[)') && v_period
   ) or exists (
     select 1

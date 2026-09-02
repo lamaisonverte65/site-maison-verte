@@ -23,7 +23,7 @@ External candidates are current `booking` or `airbnb` rows. Every one-night exte
 
 Local candidates are:
 
-- `booking_requests` in `pending`, `accepted`, `deposit_paid`, `paid`, `fully_paid`, or `confirmed`, whose source is `NULL`, `direct`, `admin_client`, or `admin_personal`;
+- `booking_requests` in `pending`, `accepted`, `deposit_paid`, `paid`, `fully_paid`, or `confirmed`, whose source is `NULL`, `website`, `direct`, `admin_client`, or `admin_personal`;
 - every valid `calendar_blocks` row, matching its existing blocking semantics.
 
 Adjacent periods are not conflicts. Refused, expired, and cancelled booking requests are excluded by the closed status allowlist.

@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Sources locales fermées : `NULL`, `direct`, `admin_client`, `admin_personal`.
+- Sources locales fermées : `NULL`, `website`, `direct`, `admin_client`, `admin_personal`.
 - Sources externes connues et hors contrainte : `booking_import`, `airbnb_import`.
 - Statuts bloquants : `pending`, `accepted`, `deposit_paid`, `paid`, `fully_paid`, `confirmed`.
 - Sémantique des périodes : `[start_date, end_date)`.

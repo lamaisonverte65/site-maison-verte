@@ -16,7 +16,7 @@ select
   end_date
 from public.booking_requests
 where status in ('pending', 'accepted', 'deposit_paid', 'paid', 'fully_paid', 'confirmed')
-  and (source is null or source in ('direct', 'admin_client', 'admin_personal'))
+  and (source is null or source in ('website', 'direct', 'admin_client', 'admin_personal'))
   and (start_date is null or end_date is null or end_date <= start_date)
 order by start_date, id;
 
@@ -24,7 +24,7 @@ with local_blocking as (
   select id, source, status, start_date, end_date
   from public.booking_requests
   where status in ('pending', 'accepted', 'deposit_paid', 'paid', 'fully_paid', 'confirmed')
-    and (source is null or source in ('direct', 'admin_client', 'admin_personal'))
+    and (source is null or source in ('website', 'direct', 'admin_client', 'admin_personal'))
 )
 select
   left_booking.id as left_booking_id,
@@ -44,7 +44,7 @@ with local_blocking as (
   select id, start_date, end_date
   from public.booking_requests
   where status in ('pending', 'accepted', 'deposit_paid', 'paid', 'fully_paid', 'confirmed')
-    and (source is null or source in ('direct', 'admin_client', 'admin_personal'))
+    and (source is null or source in ('website', 'direct', 'admin_client', 'admin_personal'))
 )
 select
   booking.id as booking_request_id,
@@ -63,7 +63,7 @@ with local_blocking as (
   select id, start_date, end_date
   from public.booking_requests
   where status in ('pending', 'accepted', 'deposit_paid', 'paid', 'fully_paid', 'confirmed')
-    and (source is null or source in ('direct', 'admin_client', 'admin_personal'))
+    and (source is null or source in ('website', 'direct', 'admin_client', 'admin_personal'))
 )
 select
   booking.id as booking_request_id,

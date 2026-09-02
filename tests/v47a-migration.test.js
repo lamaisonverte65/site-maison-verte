@@ -14,7 +14,7 @@ test("migration enforces half-open local blocking periods without btree_gist", (
   const sql = readFileSync(migrationPath, "utf8");
   assert.match(sql, /exclude\s+using\s+gist\s*\(\s*daterange\s*\(\s*start_date\s*,\s*end_date\s*,\s*'\[\)'\s*\)\s+with\s+&&\s*\)/i);
   assert.match(sql, /status\s+in\s*\(\s*'pending'\s*,\s*'accepted'\s*,\s*'deposit_paid'\s*,\s*'paid'\s*,\s*'fully_paid'\s*,\s*'confirmed'\s*\)/i);
-  assert.match(sql, /source\s+is\s+null[\s\S]*source\s+in\s*\(\s*'direct'\s*,\s*'admin_client'\s*,\s*'admin_personal'\s*\)/i);
+  assert.match(sql, /source\s+is\s+null[\s\S]*source\s+in\s*\(\s*'website'\s*,\s*'direct'\s*,\s*'admin_client'\s*,\s*'admin_personal'\s*\)/i);
   assert.doesNotMatch(sql, /create\s+extension[\s\S]*btree_gist/i);
 });
 
@@ -25,6 +25,22 @@ test("migration aborts on unclassified sources and historical local overlaps wit
   assert.match(sql, /historical[^']*overlap|chevauchement[^']*historique/i);
   assert.doesNotMatch(sql, /delete\s+from\s+public\.booking_requests/i);
   assert.doesNotMatch(sql, /update\s+public\.booking_requests\s+set/i);
+});
+
+test("website is classified and included in every local source predicate without allowing unknown sources", () => {
+  for (const path of [migrationPath, precheckPath]) {
+    const sql = readFileSync(path, "utf8");
+    const localLists = [...sql.matchAll(/source\s+in\s*\(([^)]*'admin_personal'[^)]*)\)/gi)];
+    assert.ok(localLists.length > 0);
+    for (const [, list] of localLists) {
+      assert.deepEqual([...list.matchAll(/'([^']+)'/g)].map((match) => match[1]),
+        ["website", "direct", "admin_client", "admin_personal"]);
+    }
+  }
+  const sql = readFileSync(migrationPath, "utf8");
+  const classified = sql.match(/source::text\s+not\s+in\s*\(([^)]+)\)/i)[1];
+  assert.deepEqual([...classified.matchAll(/'([^']+)'/g)].map((match) => match[1]),
+    ["website", "direct", "admin_client", "admin_personal", "booking", "airbnb", "booking_import", "airbnb_import"]);
 });
 
 test("atomic RPC checks known blockers before claiming and inserting", () => {

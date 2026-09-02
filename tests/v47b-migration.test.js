@@ -28,7 +28,7 @@ test("reconciliation uses half-open local blockers and excludes both providers' 
   assert.match(sql, /external\.start_date\s*<\s*booking\.end_date[\s\S]*external\.end_date\s*>\s*booking\.start_date/i);
   assert.match(sql, /external\.start_date\s*<\s*block\.end_date[\s\S]*external\.end_date\s*>\s*block\.start_date/i);
   assert.match(sql, /booking\.status in \('pending', 'accepted', 'deposit_paid', 'paid', 'fully_paid', 'confirmed'\)/i);
-  assert.match(sql, /booking\.source is null or booking\.source in \('direct', 'admin_client', 'admin_personal'\)/i);
+  assert.match(sql, /booking\.source is null or booking\.source in \('website', 'direct', 'admin_client', 'admin_personal'\)/i);
   assert.match(sql, /(?:from|join) public\.calendar_blocks/i);
 });
 

@@ -136,7 +136,7 @@ begin
       and external.is_current is true
       and external.end_date <> external.start_date + 1
       and booking.status in ('pending', 'accepted', 'deposit_paid', 'paid', 'fully_paid', 'confirmed')
-      and (booking.source is null or booking.source in ('direct', 'admin_client', 'admin_personal'))
+      and (booking.source is null or booking.source in ('website', 'direct', 'admin_client', 'admin_personal'))
 
     union all
 
