@@ -1,18 +1,20 @@
 import { useState } from "react";
 import { styles } from "../adminStyles";
-import { buildHousekeepingCreationPayload } from "../../../utils/adminUserForm";
+import { buildHousekeepingCreationPayload, generateHousekeepingPassword } from "../../../utils/adminUserForm";
 
 const emptyForm = () => ({ display_name: "", email: "", temporaryPassword: "" });
-
-function suggestPassword(name, email) {
-  const base = String(name || email || "MaisonVerte").split("@")[0]
-    .replace(/[^a-zA-Z0-9]/g, "").slice(0, 12) || "MaisonVerte";
-  return `${base}2026!`;
-}
 
 export default function UserCreatePanel({ onCreateHousekeeping, onCancel }) {
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
+
+  function generatePassword() {
+    try {
+      setForm({ ...form, temporaryPassword: generateHousekeepingPassword() });
+    } catch (error) {
+      alert(error.message);
+    }
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -50,10 +52,10 @@ export default function UserCreatePanel({ onCreateHousekeeping, onCancel }) {
           <label style={styles.label}>Email / identifiant
             <input style={styles.input} type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
           </label>
-          <label style={styles.label}>Mot de passe provisoire
+          <label style={styles.label}>Mot de passe généré — à copier avant création
             <div style={{ display: "flex", gap: "8px" }}>
-              <input style={styles.input} type="text" value={form.temporaryPassword} onChange={(event) => setForm({ ...form, temporaryPassword: event.target.value })} />
-              <button type="button" style={styles.smallButton} onClick={() => setForm({ ...form, temporaryPassword: suggestPassword(form.display_name, form.email) })}>Suggérer</button>
+              <input style={styles.input} type="text" readOnly autoComplete="off" value={form.temporaryPassword} onFocus={(event) => event.target.select()} />
+              <button type="button" style={styles.smallButton} disabled={loading} onClick={generatePassword}>Générer</button>
             </div>
           </label>
         </div>

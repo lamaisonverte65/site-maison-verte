@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { styles } from "../adminStyles";
 import { ADMIN_ROLES } from "../../../utils/adminPermissions";
-import { buildHousekeepingUpdatePayload } from "../../../utils/adminUserForm";
+import { buildHousekeepingUpdatePayload, generateHousekeepingPassword } from "../../../utils/adminUserForm";
 import ChangePasswordPanel from "./ChangePasswordPanel";
 import UserCreatePanel from "./UserCreatePanel";
 import UserRoleBadge from "./UserRoleBadge";
@@ -10,6 +10,8 @@ export default function UsersPanel({ data, permissions }) {
   const [showCreate, setShowCreate] = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
   const [displayName, setDisplayName] = useState("");
+  const [passwordReset, setPasswordReset] = useState(null);
+  const [resetting, setResetting] = useState(false);
   const users = data.users || [];
   const canManageUsers = permissions?.isOwner === true;
 
@@ -29,15 +31,24 @@ export default function UsersPanel({ data, permissions }) {
     }
   }
 
-  async function resetPassword(user) {
-    const temporaryPassword = window.prompt(`Nouveau mot de passe provisoire pour ${user.email} :`, "MaisonVerte2026!");
-    if (!temporaryPassword) return;
-    if (temporaryPassword.length < 8) return alert("Mot de passe trop court.");
+  function resetPassword(user) {
     try {
-      await data.resetHousekeepingPassword(user.id, temporaryPassword);
-      alert("Mot de passe provisoire mis à jour.");
+      setPasswordReset({ userId: user.id, email: user.email, password: generateHousekeepingPassword(), saved: false });
     } catch (error) {
       alert(`Erreur : ${error.message}`);
+    }
+  }
+
+  async function confirmPasswordReset() {
+    if (!passwordReset || passwordReset.saved || resetting) return;
+    setResetting(true);
+    try {
+      await data.resetHousekeepingPassword(passwordReset.userId, passwordReset.password);
+      setPasswordReset({ ...passwordReset, saved: true });
+    } catch (error) {
+      alert(`Erreur : ${error.message}`);
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -67,6 +78,15 @@ export default function UsersPanel({ data, permissions }) {
       <ChangePasswordPanel onChangePassword={data.changeOwnPassword} />
       {data.error && <p style={styles.error}>{data.error}</p>}
       {data.loading && <p style={styles.info}>Chargement des utilisateurs...</p>}
+      {canManageUsers && passwordReset && (
+        <section style={styles.card}>
+          <p>Nouveau mot de passe pour {passwordReset.email} — à copier pour le transmettre.</p>
+          <input aria-label="Nouveau mot de passe ménage" style={styles.input} type="text" readOnly autoComplete="off" value={passwordReset.password} onFocus={(event) => event.target.select()} />
+          <p>{passwordReset.saved ? "Mot de passe mis à jour. Il ne sera plus consultable après fermeture." : "L’ancien mot de passe reste actif jusqu’à confirmation."}</p>
+          {!passwordReset.saved && <button type="button" style={styles.smallButton} disabled={resetting} onClick={confirmPasswordReset}>Confirmer le reset</button>}
+          <button type="button" style={styles.smallButton} disabled={resetting} onClick={() => setPasswordReset(null)}>{passwordReset.saved ? "Fermer" : "Annuler"}</button>
+        </section>
+      )}
       {showCreate && canManageUsers && (
         <UserCreatePanel onCreateHousekeeping={data.createHousekeeping} onCancel={() => setShowCreate(false)} />
       )}
@@ -95,7 +115,7 @@ export default function UsersPanel({ data, permissions }) {
                     {!isEditing && <button style={styles.smallButton} onClick={() => startEdit(user)}>Renommer</button>}
                     {isEditing && <button style={styles.acceptButton} onClick={() => saveEdit(user)}>Enregistrer</button>}
                     {isEditing && <button style={styles.smallButton} onClick={() => setEditingUserId(null)}>Annuler</button>}
-                    <button style={styles.smallButton} onClick={() => resetPassword(user)}>Réinitialiser MDP</button>
+                    <button style={styles.smallButton} disabled={resetting} onClick={() => resetPassword(user)}>Réinitialiser MDP</button>
                     <button style={user.is_active ? styles.warningButton : styles.smallButton} onClick={() => data.toggleActive(user)}>{user.is_active ? "Désactiver" : "Réactiver"}</button>
                     <button style={styles.deleteButton} onClick={() => deleteHousekeeping(user)}>Supprimer</button>
                   </>}
