@@ -1,11 +1,12 @@
-import ical from "node-ical";
 import { createClient } from "@supabase/supabase-js";
-import { isTechnicalExternalOneNight } from "./_lib/external-calendar-rules.js";
+import { loadPersistedExternalCalendar } from "./_lib/external-calendar-display.js";
 
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY
-);
+export function createCalendarSupabaseClient(env = process.env, factory = createClient) {
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Configuration serveur manquante : SUPABASE_SERVICE_ROLE_KEY est requise pour le calendrier.");
+  }
+  return factory(env.VITE_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+}
 
 const BLOCKING_BOOKING_STATUSES = [
   "pending",
@@ -54,61 +55,25 @@ function getDatesBetween(startDate, endDate) {
 
 export async function handler() {
   try {
+    const supabase = createCalendarSupabaseClient();
     const unavailableDates = [];
-    const externalReservations = [];
-
-    const sources = [
-      {
-        url: process.env.AIRBNB_ICAL_URL,
-        source: "airbnb",
-        defaultName: "Client Airbnb",
+    const persistentCalendar = await loadPersistedExternalCalendar({
+      async getCurrentOccupancies() {
+        const { data, error } = await supabase.from("external_occupancies")
+          .select("id,source,external_uid,start_date,end_date,is_current")
+          .eq("is_current", true);
+        if (error) throw error;
+        return data || [];
       },
-      {
-        url: process.env.BOOKING_ICAL_URL,
-        source: "booking",
-        defaultName: "Client Booking",
+      async getSuccessfulSyncs() {
+        const { data, error } = await supabase.from("external_occupancy_conflict_runs")
+          .select("source,last_reconciled_at");
+        if (error) throw error;
+        return data || [];
       },
-    ];
-
-    for (const sourceConfig of sources) {
-      if (!sourceConfig.url) continue;
-
-      try {
-        const events = await ical.async.fromURL(sourceConfig.url);
-
-        for (const key in events) {
-          const event = events[key];
-          if (event.type !== "VEVENT") continue;
-
-          const startDate = toDateString(event.start);
-          const endDate = toDateString(event.end);
-
-          // Booking et Airbnb peuvent envoyer des blocages ICS isolés d'une seule nuit,
-          // alors que le logement n'accepte aucune réservation d'une nuit.
-          // On les ignore à la source pour ne pas bloquer inutilement le calendrier public/admin.
-          // Si la plateforme rattache ce jour à un événement plus long, on conserve l'événement entier
-          // pour éviter de casser une vraie réservation.
-          if (isTechnicalExternalOneNight(sourceConfig.source, startDate, endDate)) {
-            continue;
-          }
-
-          unavailableDates.push(...getDatesBetween(startDate, endDate));
-
-          externalReservations.push({
-            source: sourceConfig.source,
-            start_date: startDate,
-            end_date: endDate,
-            title: event.summary || sourceConfig.defaultName,
-            guest_name: event.summary || sourceConfig.defaultName,
-            guest_email: null,
-            guest_phone: null,
-            uid: event.uid || null,
-          });
-        }
-      } catch (error) {
-        console.error(`Erreur ${sourceConfig.source}:`, error);
-      }
-    }
+    });
+    unavailableDates.push(...persistentCalendar.unavailableDates);
+    const externalReservations = persistentCalendar.externalReservations;
 
     const { data: bookingRequests, error: bookingRequestsError } = await supabase
       .from("booking_requests")
@@ -179,6 +144,7 @@ export async function handler() {
       body: JSON.stringify({
         unavailableDates: [...new Set(unavailableDates)].sort(),
         externalReservations,
+        externalCalendarSyncStatus: persistentCalendar.syncStatus,
         defaultNightPrice: Number(pricingSettings?.default_night_price || 80),
         seasonPrices: seasonPrices || [],
         priceOverrides: priceOverrides || [],

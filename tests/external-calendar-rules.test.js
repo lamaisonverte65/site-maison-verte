@@ -17,8 +17,9 @@ test("two-night events and unknown providers are not technical one-night blocks"
   assert.equal(isTechnicalExternalOneNight("other", "2026-10-10", "2026-10-11"), false);
 });
 
-test("calendar export filtering uses the shared provider-neutral one-night rule", () => {
+test("calendar endpoint uses the persistent registry instead of fetching live iCal feeds", () => {
   const source = readFileSync("netlify/functions/calendar.js", "utf8");
-  assert.match(source, /isTechnicalExternalOneNight\(sourceConfig\.source, startDate, endDate\)/);
-  assert.doesNotMatch(source, /sourceConfig\.source === "booking" && durationInNights === 1/);
+  assert.match(source, /external_occupancies/);
+  assert.match(source, /loadPersistedExternalCalendar/);
+  assert.doesNotMatch(source, /node-ical|fromURL|AIRBNB_ICAL_URL|BOOKING_ICAL_URL/);
 });

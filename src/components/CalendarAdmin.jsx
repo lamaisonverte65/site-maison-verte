@@ -10,6 +10,7 @@ import CalendarHomePanel from "./admin/calendar/CalendarHomePanel";
 import EventPanel from "./admin/calendar/EventPanel";
 import SelectionPanel from "./admin/calendar/SelectionPanel";
 import ReservationSummaryPanel from "./admin/calendar/ReservationSummaryPanel";
+import { loadExternalCalendarForAdmin } from "./admin/calendar/loadExternalCalendar";
 import HousekeepingReservationView from "./admin/reservation/HousekeepingReservationView";
 import { calendarCss, styles } from "./admin/calendar/calendarStyles";
 import {
@@ -123,6 +124,7 @@ export default function CalendarAdmin({
   const [externalConflicts, setExternalConflicts] = useState([]);
   const [externalConflictError, setExternalConflictError] = useState("");
   const [externalConflictsDismissed, setExternalConflictsDismissed] = useState(false);
+  const [externalCalendarWarnings, setExternalCalendarWarnings] = useState([]);
 
   useEffect(() => {
     if (mode === "housekeeping") return;
@@ -251,8 +253,8 @@ export default function CalendarAdmin({
     setLoading(true);
 
     try {
-      const calendarResponse = await fetch("/.netlify/functions/calendar");
-      const calendarData = await calendarResponse.json();
+      const { calendarData, warnings } = await loadExternalCalendarForAdmin();
+      setExternalCalendarWarnings(warnings);
 
       const pricing = await loadPricing();
 
@@ -260,8 +262,9 @@ export default function CalendarAdmin({
         .from("external_reservation_clients")
         .select("*");
 
-      // Couche source brute : on affiche toujours les ICS Booking/Airbnb tels que renvoyés par calendar.js.
-      // Les créations manuelles depuis un import sont affichées ensuite via booking_requests, en parallèle.
+      // Couche externe persistée : calendar.js renvoie le dernier état Booking/Airbnb
+      // synchronisé avec succès. Les créations manuelles issues d'un import restent
+      // affichées ensuite via booking_requests, en parallèle.
       const externalEvents = (calendarData.externalReservations || []).map((reservation) => {
         const linkedClient = (externalClientLinks || []).find((item) => item.uid === reservation.uid);
         const sourceLabel = reservation.source === "airbnb" ? "Airbnb" : "Booking";
@@ -341,6 +344,7 @@ export default function CalendarAdmin({
       setCalendarRenderKey((previous) => previous + 1);
       await loadExternalConflicts();
     } catch (error) {
+      setExternalCalendarWarnings(["Impossible de vérifier les calendriers Booking/Airbnb actuellement."]);
       alert("Erreur calendrier : " + error.message);
     }
 
@@ -880,6 +884,12 @@ export default function CalendarAdmin({
             setSelectedCalendarReservation(reservation);
           }}
         />
+      )}
+
+      {mode === "admin" && externalCalendarWarnings.length > 0 && (
+        <div role="alert" style={{ marginBottom: "14px", padding: "12px 14px", borderRadius: "10px", background: "#fff7ed", border: "1px solid #fdba74", color: "#9a3412", fontWeight: 700 }}>
+          {externalCalendarWarnings.map((warning) => <div key={warning}>{warning}</div>)}
+        </div>
       )}
 
       <CalendarLegend items={legendItems} />
