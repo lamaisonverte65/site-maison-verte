@@ -5,6 +5,15 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+const BLOCKING_BOOKING_STATUSES = [
+  "pending",
+  "accepted",
+  "deposit_paid",
+  "paid",
+  "fully_paid",
+  "confirmed",
+];
+
 function formatDateForIcal(dateString) {
   return dateString.replaceAll("-", "");
 }
@@ -17,16 +26,53 @@ function escapeText(text = "") {
     .replaceAll("\n", "\\n");
 }
 
-function createEvent({ uid, start_date, end_date, title, description }) {
+function createEvent({ uid, start_date, end_date, title, description, now = new Date() }) {
   return [
     "BEGIN:VEVENT",
     `UID:${uid}`,
-    `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").split(".")[0]}Z`,
+    `DTSTAMP:${now.toISOString().replace(/[-:]/g, "").split(".")[0]}Z`,
     `DTSTART;VALUE=DATE:${formatDateForIcal(start_date)}`,
     `DTEND;VALUE=DATE:${formatDateForIcal(end_date)}`,
     `SUMMARY:${escapeText(title)}`,
     `DESCRIPTION:${escapeText(description)}`,
     "END:VEVENT",
+  ].join("\r\n");
+}
+
+export function buildIcalCalendar({ blocks = [], requests = [], now = new Date() } = {}) {
+  const blockEvents = blocks.map((block) =>
+    createEvent({
+      uid: `block-${block.id}@lamaisonverte65.fr`,
+      start_date: block.start_date,
+      end_date: block.end_date,
+      title: "Indisponible",
+      description: "Période indisponible",
+      now,
+    })
+  );
+
+  const requestEvents = requests
+    .filter((request) => BLOCKING_BOOKING_STATUSES.includes(request.status))
+    .map((request) =>
+      createEvent({
+        uid: `request-${request.id}@lamaisonverte65.fr`,
+        start_date: request.start_date,
+        end_date: request.end_date,
+        title: "Réservation directe - La Maison Verte",
+        description: "Période indisponible",
+        now,
+      })
+    );
+
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//La Maison Verte//Calendrier//FR",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    ...blockEvents,
+    ...requestEvents,
+    "END:VCALENDAR",
   ].join("\r\n");
 }
 
@@ -41,40 +87,11 @@ export async function handler() {
     const { data: requests, error: requestsError } = await supabase
       .from("booking_requests")
       .select("id,start_date,end_date,status")
-      .in("status", ["accepted", "paid", "confirmed"]);
+      .in("status", BLOCKING_BOOKING_STATUSES);
 
     if (requestsError) throw requestsError;
 
-    const blockEvents = (blocks || []).map((block) =>
-      createEvent({
-        uid: `block-${block.id}@lamaisonverte65.fr`,
-        start_date: block.start_date,
-        end_date: block.end_date,
-        title: "Indisponible",
-        description: "Période indisponible",
-      })
-    );
-
-    const requestEvents = (requests || []).map((request) =>
-      createEvent({
-        uid: `request-${request.id}@lamaisonverte65.fr`,
-        start_date: request.start_date,
-        end_date: request.end_date,
-        title: "Réservation directe - La Maison Verte",
-        description: "Période indisponible",
-      })
-    );
-
-    const calendar = [
-      "BEGIN:VCALENDAR",
-      "VERSION:2.0",
-      "PRODID:-//La Maison Verte//Calendrier//FR",
-      "CALSCALE:GREGORIAN",
-      "METHOD:PUBLISH",
-      ...blockEvents,
-      ...requestEvents,
-      "END:VCALENDAR",
-    ].join("\r\n");
+    const calendar = buildIcalCalendar({ blocks, requests });
 
     return {
       statusCode: 200,

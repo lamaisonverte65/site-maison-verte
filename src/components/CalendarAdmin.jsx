@@ -112,8 +112,6 @@ export default function CalendarAdmin({
   const [seasonPrices, setSeasonPrices] = useState([]);
   const [priceOverrides, setPriceOverrides] = useState([]);
   const [defaultNightPrice, setDefaultNightPrice] = useState(null);
-  const [pricingVersion, setPricingVersion] = useState(0);
-  const [calendarRenderKey, setCalendarRenderKey] = useState(0);
   const [selectedExternalEvent, setSelectedExternalEvent] = useState(null);
   const [selectedCalendarReservation, setSelectedCalendarReservation] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
@@ -162,7 +160,6 @@ export default function CalendarAdmin({
     setBlocks([]);
     setExternalConflicts([]);
     setExternalConflictError("");
-    setCalendarRenderKey((previous) => previous + 1);
   }, [mode, housekeepingReservations]);
 
   useEffect(() => {
@@ -236,7 +233,6 @@ export default function CalendarAdmin({
     setDefaultNightPrice(defaultPrice);
     setSeasonPrices(seasons);
     setPriceOverrides(overrides);
-    setPricingVersion((previous) => previous + 1);
 
     return {
       seasons,
@@ -341,7 +337,6 @@ export default function CalendarAdmin({
       }));
 
       setEvents([...externalEvents, ...directEvents, ...blockEvents]);
-      setCalendarRenderKey((previous) => previous + 1);
       await loadExternalConflicts();
     } catch (error) {
       setExternalCalendarWarnings(["Impossible de vérifier les calendriers Booking/Airbnb actuellement."]);
@@ -899,7 +894,6 @@ export default function CalendarAdmin({
       <div className="calendar-admin-layout" style={styles.layout}>
         <div className="calendar-admin-calendar-scroll" style={styles.calendarScroll}><div className="calendar-admin-calendar" style={styles.calendar}>
           <FullCalendar
-            key={`${calendarRenderKey}-${pricingVersion}`}
             plugins={[dayGridPlugin, interactionPlugin]}
             initialView="dayGridMonth"
             locale="fr"
