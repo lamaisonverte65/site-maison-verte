@@ -904,6 +904,11 @@ export default function MaisonVerte() {
                 },
                 {
                   "@type": "LocationFeatureSpecification",
+                  name: "Wi-Fi",
+                  value: true,
+                },
+                {
+                  "@type": "LocationFeatureSpecification",
                   name: "Parking gratuit proche",
                   value: true,
                 },
@@ -1396,6 +1401,7 @@ export default function MaisonVerte() {
             "Lave-vaisselle",
             "Mini congélateur",
             "Smart TV",
+            "Wi-Fi",
             "Cafetière italienne",
             "Cafetière à filtres",
             "Bouilloire",

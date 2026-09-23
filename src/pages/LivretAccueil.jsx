@@ -307,7 +307,7 @@ export default function LivretAccueil() {
               </div>
 
               <p>Le tableau électrique se situe derrière la porte d'entrée.</p>
-              <p>La télévision peut être connectée à Internet. Activez le partage de connexion de votre téléphone puis connectez la télévision au réseau Wi-Fi créé.</p>
+              <p>Le Wi-Fi est disponible dans le logement. La télévision est directement reliée à Internet par câble Ethernet. Les informations de connexion au Wi-Fi vous sont communiquées avant votre arrivée.</p>
               <p>Les conteneurs de tri sont situés à l'entrée du parking du Monument aux Morts. En sortant de l'impasse, tournez à droite puis continuez tout droit.</p>
               <p>De l'huile, du sel, du sucre, du café ainsi que quelques condiments sont laissés à votre disposition pour faciliter votre arrivée ou les courts séjours, merci de ne pas en abuser.</p>
               <p>Vous trouverez aussi des tablettes de lave vaisselle sous l'évier.</p>
