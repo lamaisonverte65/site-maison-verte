@@ -154,18 +154,23 @@ export default function LivretAccueil() {
                       <strong>Informations & bonnes adresses</strong>
                     </a>
 
-                    <a href="#decouvrir-vallees">
+                    <a href="#plan-acces-stationnement">
                       <span>Page 6</span>
+                      <strong>Accès & stationnement</strong>
+                    </a>
+
+                    <a href="#decouvrir-vallees">
+                      <span>Page 7</span>
                       <strong>Découvrir les vallées</strong>
                     </a>
 
                     <a href="#votre-avis">
-                      <span>Page 7</span>
+                      <span>Page 8</span>
                       <strong>Votre avis compte</strong>
                     </a>
 
                     <a href="#inventaire">
-                      <span>Page 8</span>
+                      <span>Page 9</span>
                       <strong>Inventaire complet</strong>
                     </a>
                   </nav>
@@ -175,7 +180,7 @@ export default function LivretAccueil() {
               <aside className="livret-welcome-side" aria-label="QR codes utiles">
                 <div className="livret-vertical-line" />
 
-                <div className="livret-qr-grid">
+                <div className="livret-qr-grid livret-welcome-qr-grid">
                   <div className="livret-qr-block">
                     <a href="https://lamaisonverte65.fr/" target="_blank" rel="noopener noreferrer">
                     <div className="livret-qr-icon">◎</div>
@@ -193,11 +198,21 @@ export default function LivretAccueil() {
                   </div>
 
                   <div className="livret-qr-block">
-                    <a href="tel:+33663076314">
+                    <a href="tel:+33695938315">
                     <div className="livret-qr-icon">☎</div>
                     <h2>Nous appeler</h2>
                     <img src="/livret/qr-telephone.svg" alt="QR code pour appeler La Maison Verte" />
                     </a>
+                  </div>
+
+                  <div className="livret-qr-block livret-qr-block-wifi">
+                    <div className="livret-qr-icon">⌁</div>
+                    <h2>WI-FI DU LOGEMENT</h2>
+                    <img
+                      src="/livret/qr-wifi.svg"
+                      alt="QR code de connexion au Wi-Fi de La Maison Verte"
+                    />
+                    <p className="livret-wifi-code">Code : lamaisonverte65</p>
                   </div>
 
                   <div className="livret-qr-block">
@@ -592,7 +607,84 @@ export default function LivretAccueil() {
           </div>
         </section>
 
-        {/* PAGE 6 — DÉCOUVRIR LES VALLÉES */}
+        {/* PAGE 6 - ACCES & STATIONNEMENT */}
+        <section
+          id="plan-acces-stationnement"
+          className="livret-page livret-parking-page"
+          aria-label="Accès et stationnement à La Maison Verte"
+        >
+          <div className="livret-page-inner livret-parking-inner">
+
+            <header className="livret-page-header livret-parking-header">
+              <h1>Accès & stationnement</h1>
+              <div className="livret-ornament" aria-hidden="true">&#10209;</div>
+              <p>
+                La Maison Verte se trouve au cœur d'Arreau,
+                dans une petite impasse piétonne.
+              </p>
+            </header>
+
+            <div className="livret-parking-intro">
+              <div className="livret-parking-text">
+                <h2>Arriver à Arreau</h2>
+                <p>
+                  Arreau se situe au carrefour des vallées d'Aure et du Louron,
+                  sur la route de Saint-Lary, de l'Espagne, du col d'Aspin
+                  et de Peyragudes.
+                </p>
+              </div>
+
+              <img
+                src="/livret/plan parking 4.png"
+                alt="Plan général d'accès à Arreau et aux vallées environnantes"
+              />
+            </div>
+
+            <div className="livret-parking-detail">
+              <img
+                src="/livret/plan parking 3.png"
+                alt="Plan détaillé des accès et des parkings autour de La Maison Verte"
+              />
+
+              <div className="livret-parking-notes">
+                <div>
+                  <h2>Accès à La Maison Verte</h2>
+                  <p>
+                    La maison est située dans une impasse piétonne.
+                    Pour charger ou décharger vos bagages, vous pouvez
+                    vous approcher par la rue de la Coutellerie.
+                  </p>
+                  <p>
+                    Attention : cette rue est également une impasse
+                    et il n'est pas possible d'y faire demi-tour.
+                  </p>
+                </div>
+
+                <div>
+                  <h2>Où stationner ?</h2>
+                  <p>
+                    Plusieurs parkings gratuits sont disponibles à quelques
+                    minutes à pied, notamment place du Monument aux Morts
+                    et place de l'église Notre-Dame.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <footer className="livret-page-footer">
+              <img
+                src="/livret/liseret-separateur.webp"
+                alt=""
+                aria-hidden="true"
+              />
+              <div className="livret-page-number">6</div>
+            </footer>
+
+          </div>
+        </section>
+
+
+        {/* PAGE 7 — DÉCOUVRIR LES VALLÉES */}
         <section
           id="decouvrir-vallees"
           className="livret-page livret-discover-page"
@@ -683,12 +775,12 @@ export default function LivretAccueil() {
 
             <footer className="livret-page-footer">
               <img src="/livret/liseret-separateur.webp" alt="" aria-hidden="true" />
-              <div className="livret-page-number">6</div>
+              <div className="livret-page-number">7</div>
             </footer>
           </div>
         </section>
 
-        {/* PAGE 7 — VOTRE AVIS */}
+        {/* PAGE 8 — VOTRE AVIS */}
 
         <section
           id="votre-avis"
@@ -819,14 +911,14 @@ export default function LivretAccueil() {
                 aria-hidden="true"
               />
               <div className="livret-page-number">
-                7
+                8
               </div>
             </footer>
 
           </div>
         </section>
 
-        {/* PAGE 8 — INVENTAIRE — REZ-DE-CHAUSSÉE */}
+        {/* PAGE 9 — INVENTAIRE — REZ-DE-CHAUSSÉE */}
         <section
           id="inventaire"
           className="livret-page livret-inventory-page"
@@ -968,12 +1060,12 @@ export default function LivretAccueil() {
 
             <footer className="livret-page-footer">
               <img src="/livret/liseret-separateur.webp" alt="" aria-hidden="true" />
-              <div className="livret-page-number">8</div>
+              <div className="livret-page-number">9</div>
             </footer>
           </div>
         </section>
 
-        {/* PAGE 9 — INVENTAIRE — ÉTAGES */}
+        {/* PAGE 10 — INVENTAIRE — ÉTAGES */}
         <section
           id="inventaire-etages"
           className="livret-page livret-inventory-page"
@@ -1109,7 +1201,7 @@ export default function LivretAccueil() {
 
             <footer className="livret-page-footer">
               <img src="/livret/liseret-separateur.webp" alt="" aria-hidden="true" />
-              <div className="livret-page-number">9</div>
+              <div className="livret-page-number">10</div>
             </footer>
           </div>
         </section>

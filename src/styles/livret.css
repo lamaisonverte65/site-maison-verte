@@ -571,6 +571,38 @@
   border-bottom: 1px solid rgba(47, 79, 53, 0.35);
 }
 
+.livret-welcome-qr-grid {
+  gap: 6px;
+}
+
+.livret-welcome-qr-grid .livret-qr-icon {
+  width: 22px;
+  height: 22px;
+  margin-bottom: 3px;
+  font-size: 0.72rem;
+}
+
+.livret-welcome-qr-grid .livret-qr-block h2 {
+  margin-bottom: 2px;
+  font-size: 0.86rem;
+  line-height: 0.98;
+}
+
+.livret-welcome-qr-grid .livret-qr-block img {
+  width: 82px;
+  height: 82px;
+  padding: 4px;
+  margin-bottom: 3px;
+}
+
+.livret-wifi-code {
+  margin: 0 auto !important;
+  color: var(--livret-green);
+  font-size: 0.66rem !important;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* PAGE 3 — FONCTIONNEMENT DU LOGEMENT */
 .livret-function-inner {
   padding: 38px 48px 0;
@@ -1425,4 +1457,141 @@
     color: inherit !important;
     text-decoration: none !important;
   }
+}
+
+/* =========================================================
+   PAGE ACCES & STATIONNEMENT
+   ========================================================= */
+
+.livret-parking-inner {
+  padding-top: 36px;
+}
+
+
+/* ---------- En-tête ---------- */
+
+.livret-parking-header h1 {
+  font-size: 2.85rem;
+}
+
+.livret-parking-header .livret-ornament {
+  margin: 8px auto 8px;
+}
+
+.livret-parking-header > p {
+  max-width: 520px;
+  margin: 0 auto 14px;
+  text-align: center;
+  color: var(--livret-text);
+  font-family: Georgia, serif;
+  font-size: 0.94rem;
+  line-height: 1.35;
+  font-style: italic;
+}
+
+
+/* ---------- Typographie générale ---------- */
+
+.livret-parking-page h2 {
+  margin: 0 0 5px;
+  color: var(--livret-green);
+  font-family: "Cormorant Garamond", "Playfair Display", Georgia, serif;
+  font-size: 1.18rem;
+  font-weight: 600;
+}
+
+.livret-parking-page p {
+  color: var(--livret-text);
+}
+
+
+/* ---------- Plan général + texte d'introduction ---------- */
+
+.livret-parking-intro {
+  display: grid;
+  grid-template-columns: 0.82fr 1.45fr;
+  align-items: center;
+  gap: 18px;
+
+  /* Espace après l'introduction sous le titre */
+  margin-top: 28px;
+
+  /* Espace entre le plan général et le plan détaillé */
+  margin-bottom: 44px;
+}
+
+.livret-parking-text {
+  padding: 12px 14px;
+  border-left: 2px solid var(--livret-green);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.livret-parking-text p {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.42;
+}
+
+.livret-parking-intro > img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+
+/* ---------- Plan détaillé + informations pratiques ---------- */
+
+.livret-parking-detail {
+  display: grid;
+
+  /* Environ 68 % pour le plan et 32 % pour les textes */
+  grid-template-columns: 2.05fr 0.95fr;
+
+  align-items: start;
+  gap: 16px;
+  width: 100%;
+}
+
+
+/* Plan détaillé : image originale 4:3, sans recadrage */
+
+.livret-parking-detail > img {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0;
+  border-radius: 4px;
+}
+
+
+/* Colonne de droite */
+
+.livret-parking-notes {
+  width: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.livret-parking-notes > div {
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.42);
+  border-top: 1px solid rgba(46, 88, 72, 0.32);
+}
+
+.livret-parking-notes h2 {
+  margin-bottom: 6px;
+  font-size: 1.08rem;
+  line-height: 1.05;
+}
+
+.livret-parking-notes p {
+  margin: 0 0 7px;
+  font-size: 0.72rem;
+  line-height: 1.38;
+}
+
+.livret-parking-notes p:last-child {
+  margin-bottom: 0;
 }
