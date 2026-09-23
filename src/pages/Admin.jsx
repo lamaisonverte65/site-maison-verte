@@ -35,6 +35,7 @@ import StripePayoutsPanel from "../components/admin/StripePayoutsPanel";
 import CommunicationPanel from "../components/admin/communication/CommunicationPanel";
 import CrmPanel from "../components/admin/crm/CrmPanel";
 import UsersPanel from "../components/admin/users/UsersPanel";
+import { shouldRenderAdminCalendar } from "../components/admin/calendar/calendarRefreshPolicy";
 import { ActionModal } from "../components/admin/AdminUi";
 import {
   formatMoney,
@@ -790,7 +791,7 @@ export default function Admin() {
         />
       )}
 
-      {!loading && !error && activeTab === "calendar" && (
+      {shouldRenderAdminCalendar({ activeTab, loading, error }) && (
         <section style={styles.panel}>
           <h2 style={styles.panelTitle}>Calendrier central</h2>
           <CalendarAdmin
