@@ -153,7 +153,7 @@ export default function MaisonVerte() {
         {
           question: "Les draps et serviettes sont-ils fournis ?",
           answer:
-            "Le linge de lit est fourni pour votre séjour. Les serviettes de toilette ne sont en revanche pas incluses dans la location.",
+            "Le linge de lit est fourni pour votre séjour. Les serviettes de toilette sont également fournies : une grande serviette 70 × 140 cm et une petite serviette 33 × 50 cm par personne.",
         },
         {
           question: "Les animaux sont-ils acceptés ?",

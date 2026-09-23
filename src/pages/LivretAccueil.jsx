@@ -323,7 +323,7 @@ export default function LivretAccueil() {
 
               <p>Le tableau électrique se situe derrière la porte d'entrée.</p>
               <p>Le Wi-Fi est disponible dans le logement. La télévision est directement reliée à Internet par câble Ethernet. Les informations de connexion au Wi-Fi vous sont communiquées avant votre arrivée.</p>
-              <p>Les conteneurs de tri sont situés à l'entrée du parking du Monument aux Morts. En sortant de l'impasse, tournez à droite puis continuez tout droit.</p>
+              <p>Une poubelle de tri est à votre disposition dans le logement. Les conteneurs de tri sont situés à l'entrée du parking du Monument aux Morts. En sortant de l'impasse, tournez à droite puis continuez tout droit.</p>
               <p>De l'huile, du sel, du sucre, du café ainsi que quelques condiments sont laissés à votre disposition pour faciliter votre arrivée ou les courts séjours, merci de ne pas en abuser.</p>
               <p>Vous trouverez aussi des tablettes de lave vaisselle sous l'évier.</p>
               <p>Dans le placard haut de la buanderie se trouvent de la lessive et adoussissant, des amploules, des rouleaux de papier toilette en cas de besoin.</p>
@@ -1041,6 +1041,7 @@ export default function LivretAccueil() {
                       <li><span>1</span>Pot à sucre vert ancien</li>
                       <li><span>2</span>Pots en verre vert</li>
                       <li><span>1</span>Poubelle</li>
+                      <li><span>1</span>Poubelle de tri</li>
                       <li><span>1</span>Protège robinet plastique</li>
                       <li><span>1</span>Rouleau à pâtisserie</li>
                       <li><span>1</span>Séparateur couverts bambou</li>
