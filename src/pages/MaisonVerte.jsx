@@ -57,7 +57,7 @@ export default function MaisonVerte() {
   const [openFaqCategory, setOpenFaqCategory] = useState(null);
   const googleReviewUrl = "https://g.page/r/CasA-_8IxkGjEBM/review";
   const googleProfileUrl = "https://g.page/r/CasA-_8IxkGjEBM";
-  const ENABLE_SITE_REVIEWS = false;
+  const ENABLE_SITE_REVIEWS = true;
   const galleryPhotos = [
     {
       src: "/salon-salle-a-manger-maison-verte.webp",
@@ -864,7 +864,7 @@ export default function MaisonVerte() {
               "https://lamaisonverte65.fr/balcon-plein-sud-ouest.webp",
               "https://lamaisonverte65.fr/halle-et-mairie-arreau.webp",
             ],
-            telephone: "+33663076314",
+            telephone: "+33795938315",
             email: "lamaisonverte65@gmail.com",
             address: {
               "@type": "PostalAddress",
@@ -932,7 +932,7 @@ export default function MaisonVerte() {
                 },
                 {
                   "@type": "LocationFeatureSpecification",
-                  name: "Wi-Fi",
+                  name: "Wi-Fi 7",
                   value: true,
                 },
                 {
@@ -1409,6 +1409,7 @@ export default function MaisonVerte() {
               <div>⛷️ Situation centrale stratégique </div>
               <div>🚴 Hébergement idéal pour cyclistes</div>
               <div>🏍️ Accueil pratique pour motards</div>
+              <div>📶 Wi-Fi 7</div>
               <div>🤝 Réservation directe propriétaire</div>
               <div>🐕 Animaux non acceptés</div>
             </div>
@@ -1427,9 +1428,9 @@ export default function MaisonVerte() {
             "Cuisine équipée",
             "Machine à laver",
             "Lave-vaisselle",
-            "Mini congélateur",
+            "Congélateur",
             "Smart TV",
-            "Wi-Fi",
+            "Wi-Fi 7",
             "Cafetière italienne",
             "Cafetière à filtres",
             "Bouilloire",
@@ -1440,7 +1441,8 @@ export default function MaisonVerte() {
             "Lit parapluie",
             "58 m²",
             "Balcon avec table et chaises",
-            "Linge de lit fourni",
+            "Linge de lit et serviettes fournis",
+            "Poubelle de tri",
             "Animaux non acceptés",
             "Réservation directe propriétaire",
             "Parking gratuit proche",
@@ -1989,7 +1991,7 @@ export default function MaisonVerte() {
                   9,5/10
                 </div>
 
-                <p>Basé sur 44 expériences vécues</p>
+                <p>Basé sur 50 expériences vécues</p>
 
                 <div
                   style={{
@@ -3442,7 +3444,7 @@ export default function MaisonVerte() {
             }}
           >
             <a
-              href="tel:+33663076314"
+              href="tel:+33795938315"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -3457,7 +3459,7 @@ export default function MaisonVerte() {
                 boxShadow: "0 10px 30px rgba(0,0,0,0.06)",
               }}
             >
-              📞 06 63 07 63 14
+              📞 07 95 93 83 15
             </a>
           </div>
 

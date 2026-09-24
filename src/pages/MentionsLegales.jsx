@@ -75,8 +75,8 @@ export default function MentionsLegales() {
             </a>
             <br />
             <strong>Téléphone :</strong> 
-            <a href="tel:+33663076314" style={linkStyle}>
-              +33 6 63 07 63 14
+            <a href="tel:+33795938315" style={linkStyle}>
+              +33 7 95 93 83 15
             </a>
           </p>
 

@@ -327,7 +327,7 @@ export default function LivretAccueil() {
               </div>
 
               <p>Le tableau électrique se situe derrière la porte d'entrée.</p>
-              <p>Le Wi-Fi est disponible dans le logement. La télévision est directement reliée à Internet par câble Ethernet. Les informations de connexion au Wi-Fi vous sont communiquées avant votre arrivée.</p>
+              <p>Le Wi-Fi 7 est disponible dans le logement. La télévision est directement reliée à Internet par câble Ethernet. Les informations de connexion au Wi-Fi vous sont communiquées avant votre arrivée.</p>
               <p>Une poubelle de tri est à votre disposition dans le logement. Les conteneurs de tri sont situés à l'entrée du parking du Monument aux Morts. En sortant de l'impasse, tournez à droite puis continuez tout droit.</p>
               <p>De l'huile, du sel, du sucre, du café ainsi que quelques condiments sont laissés à votre disposition pour faciliter votre arrivée ou les courts séjours, merci de ne pas en abuser.</p>
               <p>Vous trouverez aussi des tablettes de lave vaisselle sous l'évier.</p>
@@ -383,12 +383,15 @@ export default function LivretAccueil() {
               <h2>Linge de maison</h2>
             </div>
 
+            <p>Les serviettes de toilette sont fournies : une grande serviette 70 × 140 cm et une petite serviette 33 × 50 cm par personne.</p>
+
             <p>Merci de déposer le linge utilisé dans la buanderie :</p>
 
             <ul>
               <li>draps ;</li>
               <li>housses de couette ;</li>
               <li>taies d'oreiller ;</li>
+              <li>serviettes de toilette ;</li>
               <li>tapis de salle de bain ;</li>
               <li>torchons.</li>
             </ul>
@@ -401,24 +404,15 @@ export default function LivretAccueil() {
             </div>
 
             <p>
-              Aucun forfait ménage n'est inclus dans votre réservation.
+              Si vous avez choisi le forfait ménage de fin de séjour lors de votre réservation,
+              vous n'avez pas à effectuer le ménage complet avant votre départ.
             </p>
             <p>
-              Nous vous remercions de rendre le logement dans un état
-              de propreté similaire à celui dans lequel vous l'avez trouvé
-              à votre arrivée.
+              Si vous avez choisi d'effectuer vous-même le ménage de fin de séjour,
+              merci de rendre le logement dans un état de propreté similaire à celui
+              dans lequel vous l'avez trouvé à votre arrivée.
             </p>
-            <p>Vous trouverez tous les éléments sous l'évier et dans la buanderie</p>
-
-            <p>
-              Si vous préférez ne pas effectuer le ménage de fin de séjour,
-              merci de nous contacter avant votre départ.
-            </p>
-
-            <p>
-              Selon nos disponibilités, nous pourrons vous proposer
-              un forfait ménage de 30 €.
-            </p>
+            <p>Vous trouverez tous les éléments nécessaires sous l'évier et dans la buanderie.</p>
           </article>
 
           <article className="livret-info-card">
@@ -1085,6 +1079,7 @@ export default function LivretAccueil() {
                       <li><span>2</span>Grandes tasses vert/noir</li>
                       <li><span>2</span>Grands bols noir/vert</li>
                       <li><span>1</span>Grille-pain</li>
+                      <li><span>1</span>Congélateur</li>
                       <li><span>1</span>Passoire</li>
                       <li><span>1</span>Petite louche</li>
                       <li><span>6</span>Petites cuillères</li>
