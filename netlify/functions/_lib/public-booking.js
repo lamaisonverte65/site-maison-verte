@@ -4,11 +4,12 @@ import { escapeHtml } from "./html.js";
 const allowedFields = new Set([
   "guestFirstName", "guestLastName", "guestEmail", "guestPhone", "adultsCount", "childrenCount",
   "childrenAges", "babyBedNeeded", "marketingConsent", "guestMessage", "startDate", "endDate",
-  "nights", "total", "contractAccepted", "website",
+  "nights", "accommodationTotal", "cleaningOption", "cleaningObligationsAccepted", "contractAccepted", "website",
 ]);
 const fail = (error) => ({ ok: false, statusCode: 400, error });
 const clean = (value) => String(value ?? "").trim();
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+const CLEANING_OBLIGATIONS_VERSION = "2026-09-24-v1";
 
 function validDate(value) {
   if (!datePattern.test(value)) return false;
@@ -63,6 +64,9 @@ export function createPublicBookingFingerprint(booking = {}) {
     String(booking.end_date || ""),
     Number(booking.nights),
     Number(booking.estimated_total),
+    booking.cleaning_option === true,
+    Number(booking.cleaning_fee || 0),
+    String(booking.cleaning_obligations_version || ""),
     booking.contract_accepted === true,
     String(booking.contract_version || ""),
   ];
@@ -85,7 +89,7 @@ export async function claimPublicBookingSubmission(repository, incomingBooking) 
   return repository.claimFingerprint(createPublicBookingFingerprint(incomingBooking));
 }
 
-export function validatePublicBookingPayload(input = {}) {
+export function validatePublicBookingPayload(input = {}, { cleaningFee = 0 } = {}) {
   const unknown = Object.keys(input).find((field) => !allowedFields.has(field));
   if (unknown) return fail(`Champ inattendu : ${unknown}.`);
   if (clean(input.website)) return fail("Demande automatisée refusée.");
@@ -111,15 +115,32 @@ export function validatePublicBookingPayload(input = {}) {
   if (!validDate(startDate) || !validDate(endDate) || endDate <= startDate) return fail("Dates de séjour invalides.");
   const computedNights = Math.round((new Date(`${endDate}T12:00:00Z`) - new Date(`${startDate}T12:00:00Z`)) / 86400000);
   if (computedNights < 1 || computedNights > 60 || Number(input.nights) !== computedNights) return fail("Nombre de nuits invalide.");
-  const total = Number(input.total);
+
+  const accommodationTotal = Number(input.accommodationTotal);
+  if (!Number.isFinite(accommodationTotal) || accommodationTotal <= 0 || accommodationTotal > 100000) return fail("Total hébergement invalide.");
+  if (typeof input.cleaningOption !== "boolean") return fail("Option ménage invalide.");
+
+  const authoritativeCleaningFee = Number(cleaningFee);
+  if (!Number.isInteger(authoritativeCleaningFee) || authoritativeCleaningFee < 0 || authoritativeCleaningFee > 100000) {
+    throw new Error("Configuration du forfait ménage invalide.");
+  }
+
+  if (!input.cleaningOption && input.cleaningObligationsAccepted !== true) {
+    return fail("Les obligations de ménage doivent être acceptées lorsque le forfait ménage est refusé.");
+  }
+
+  const appliedCleaningFee = input.cleaningOption ? authoritativeCleaningFee : 0;
+  const total = accommodationTotal + appliedCleaningFee;
   if (!Number.isFinite(total) || total <= 0 || total > 100000) return fail("Total estimatif invalide.");
   if (input.contractAccepted !== true) return fail("Le contrat doit être accepté.");
   if (typeof input.babyBedNeeded !== "boolean" || typeof input.marketingConsent !== "boolean") return fail("Valeur booléenne invalide.");
 
+  const acceptedAt = new Date().toISOString();
   const emailModel = {
     firstName, lastName, email, phone, adults, children, childrenAges,
     babyBedNeeded: input.babyBedNeeded, message, startDate, endDate,
-    nights: computedNights, total,
+    nights: computedNights, accommodationTotal, cleaningOption: input.cleaningOption,
+    cleaningFee: authoritativeCleaningFee, total,
   };
   return {
     ok: true,
@@ -128,9 +149,12 @@ export function validatePublicBookingPayload(input = {}) {
       guest_email: email, guest_phone: phone, adults_count: adults, children_count: children,
       children_ages: childrenAges || null, baby_bed_needed: input.babyBedNeeded,
       marketing_consent: input.marketingConsent,
-      marketing_consent_at: input.marketingConsent ? new Date().toISOString() : null,
+      marketing_consent_at: input.marketingConsent ? acceptedAt : null,
       start_date: startDate, end_date: endDate, nights: computedNights, estimated_total: total,
-      message: message || null, contract_accepted: true, contract_accepted_at: new Date().toISOString(),
+      cleaning_option: input.cleaningOption, cleaning_fee: authoritativeCleaningFee,
+      cleaning_obligations_accepted_at: input.cleaningOption ? null : acceptedAt,
+      cleaning_obligations_version: input.cleaningOption ? null : CLEANING_OBLIGATIONS_VERSION,
+      message: message || null, contract_accepted: true, contract_accepted_at: acceptedAt,
       contract_version: "v1.1", contract_url: "https://lamaisonverte65.fr/documents/contrat-location.pdf",
     },
     emailModel,
@@ -150,7 +174,10 @@ export function buildPublicBookingEmails(model, { ownerEmail }) {
     ages ? `âges : ${ages}` : null,
     model.babyBedNeeded ? "lit bébé à prévoir" : null,
   ].filter(Boolean).join(" · ");
-  const summary = `<p><strong>Arrivée :</strong> ${escapeHtml(model.startDate)}<br /><strong>Départ :</strong> ${escapeHtml(model.endDate)}<br /><strong>Voyageurs :</strong> ${travelers}<br /><strong>Nombre de nuits :</strong> ${model.nights}<br /><strong>Total estimatif :</strong> ${model.total.toFixed(2)} €</p>`;
+  const cleaning = model.cleaningOption
+    ? `Oui (${model.cleaningFee.toFixed(2)} €)`
+    : "Non";
+  const summary = `<p><strong>Arrivée :</strong> ${escapeHtml(model.startDate)}<br /><strong>Départ :</strong> ${escapeHtml(model.endDate)}<br /><strong>Voyageurs :</strong> ${travelers}<br /><strong>Nombre de nuits :</strong> ${model.nights}<br /><strong>Hébergement :</strong> ${model.accommodationTotal.toFixed(2)} €<br /><strong>Forfait ménage :</strong> ${cleaning}<br /><strong>Total estimatif :</strong> ${model.total.toFixed(2)} €</p>`;
   return {
     owner: {
       to: ownerEmail,

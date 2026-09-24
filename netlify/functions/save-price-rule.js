@@ -60,6 +60,29 @@ export async function handler(event) {
     }
 
 
+    if (action === "update_cleaning_fee") {
+      const cleaningFee = cleanNumber(body.cleaningFee);
+
+      if (cleaningFee === null || !Number.isInteger(cleaningFee) || cleaningFee < 0) {
+        return { statusCode: 400, body: JSON.stringify({ error: "Forfait ménage invalide." }) };
+      }
+
+      const { data, error } = await supabase
+        .from("pricing_settings")
+        .upsert({
+          id: "default",
+          cleaning_fee: cleaningFee,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "id" })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return { statusCode: 200, body: JSON.stringify({ success: true, settings: data }) };
+    }
+
+
     const table = ruleType === "season" ? "season_prices" : "price_overrides";
     const payload = {
       label: body.label || (ruleType === "season" ? "Saison" : "Tarif spécifique"),

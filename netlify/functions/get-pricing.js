@@ -39,6 +39,7 @@ export async function handler() {
       },
       body: JSON.stringify({
         defaultNightPrice: Number(settings?.default_night_price || 80),
+        cleaningFee: Number(settings?.cleaning_fee ?? 50),
         seasonPrices: seasonPrices || [],
         priceOverrides: priceOverrides || [],
       }),

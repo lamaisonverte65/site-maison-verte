@@ -37,11 +37,13 @@ function emptyOverride() {
 
 export default function PricingAdmin() {
   const [defaultNightPrice, setDefaultNightPrice] = useState(null);
+  const [cleaningFee, setCleaningFee] = useState(null);
   const [seasonPrices, setSeasonPrices] = useState([]);
   const [priceOverrides, setPriceOverrides] = useState([]);
   const [seasonForm, setSeasonForm] = useState(emptySeason());
   const [overrideForm, setOverrideForm] = useState(emptyOverride());
   const [defaultPriceModal, setDefaultPriceModal] = useState(null);
+  const [cleaningFeeModal, setCleaningFeeModal] = useState(null);
   const [activeEditor, setActiveEditor] = useState("season");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -71,6 +73,7 @@ export default function PricingAdmin() {
       if (!response.ok) throw new Error(data.error || "Erreur chargement tarifs");
 
       setDefaultNightPrice(Number(data.defaultNightPrice || 80));
+      setCleaningFee(Number(data.cleaningFee ?? 50));
       setSeasonPrices(data.seasonPrices || []);
       setPriceOverrides(data.priceOverrides || []);
     } catch (err) {
@@ -114,6 +117,43 @@ export default function PricingAdmin() {
       await loadPricing();
     } catch (err) {
       alert("Erreur tarif par défaut : " + err.message);
+    }
+
+    setSaving(false);
+  }
+
+  function openCleaningFeeModal() {
+    setCleaningFeeModal({
+      cleaningFee: String(cleaningFee ?? 50),
+    });
+  }
+
+  async function saveCleaningFee(event) {
+    event.preventDefault();
+
+    if (!cleaningFeeModal) return;
+
+    const value = Number(cleaningFeeModal.cleaningFee);
+    if (!Number.isInteger(value) || value < 0) return alert("Entre un forfait ménage valide.");
+
+    setSaving(true);
+
+    try {
+      const response = await fetch("/.netlify/functions/save-price-rule", {
+        method: "POST",
+        headers: await getAdminFetchHeaders(),
+        body: JSON.stringify({
+          action: "update_cleaning_fee",
+          cleaningFee: value,
+        }),
+      });
+
+      if (!response.ok) throw new Error(await response.text());
+
+      setCleaningFeeModal(null);
+      await loadPricing();
+    } catch (err) {
+      alert("Erreur forfait ménage : " + err.message);
     }
 
     setSaving(false);
@@ -282,6 +322,22 @@ export default function PricingAdmin() {
         <p style={styles.muted}>Priorité appliquée partout : tarif spécifique → tarif saisonnier → tarif par défaut.</p>
       </section>
 
+      <section style={styles.cardPremium}>
+        <div style={styles.header}>
+          <div>
+            <p style={styles.kicker}>Service optionnel</p>
+            <h3 style={styles.cardTitle}>Forfait ménage</h3>
+            <p style={styles.muted}>Montant proposé au client pour le ménage de fin de séjour.</p>
+          </div>
+          <button style={styles.primaryButton} onClick={openCleaningFeeModal}>Modifier</button>
+        </div>
+        <strong style={styles.bigPrice}>
+          {cleaningFee === null
+            ? "Chargement..."
+            : `${formatMoney(cleaningFee)} / séjour`}
+        </strong>
+      </section>
+
       <section style={styles.editorCard}>
         <div style={styles.switchRow}>
           <button style={activeEditor === "season" ? styles.activeSwitch : styles.switchButton} onClick={() => setActiveEditor("season")}>Saisons</button>
@@ -362,6 +418,28 @@ export default function PricingAdmin() {
             </label>
             <div style={styles.modalActions}>
               <button type="button" style={styles.secondaryButton} onClick={() => setDefaultPriceModal(null)}>Annuler</button>
+              <button type="submit" style={styles.primaryButton} disabled={saving}>Enregistrer</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {cleaningFeeModal && (
+        <Modal title="Modifier le forfait ménage" onClose={() => setCleaningFeeModal(null)}>
+          <form onSubmit={saveCleaningFee} style={styles.modalForm}>
+            <label style={styles.label}>Forfait ménage par séjour (€)
+              <input
+                style={styles.input}
+                type="number"
+                min="0"
+                step="1"
+                value={cleaningFeeModal.cleaningFee}
+                onChange={(event) => setCleaningFeeModal({ ...cleaningFeeModal, cleaningFee: event.target.value })}
+                required
+              />
+            </label>
+            <div style={styles.modalActions}>
+              <button type="button" style={styles.secondaryButton} onClick={() => setCleaningFeeModal(null)}>Annuler</button>
               <button type="submit" style={styles.primaryButton} disabled={saving}>Enregistrer</button>
             </div>
           </form>

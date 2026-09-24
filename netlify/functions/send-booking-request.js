@@ -62,7 +62,15 @@ export default async function handler(request, context) {
     } catch {
       return json(400, { error: "Corps JSON invalide." });
     }
-    const validated = validatePublicBookingPayload(input);
+    const { data: pricingSettings, error: pricingSettingsError } = await supabase
+      .from("pricing_settings")
+      .select("cleaning_fee")
+      .eq("id", "default")
+      .maybeSingle();
+    if (pricingSettingsError) throw pricingSettingsError;
+
+    const cleaningFee = Number(pricingSettings?.cleaning_fee ?? 50);
+    const validated = validatePublicBookingPayload(input, { cleaningFee });
     if (!validated.ok) return json(validated.statusCode, { error: validated.error });
 
     const ownerEmail = String(process.env.BOOKING_NOTIFICATION_EMAIL || "lamaisonverte65@gmail.com").trim().toLowerCase();

@@ -23,6 +23,9 @@ export default function MaisonVerte() {
   const [guestChildren, setGuestChildren] = useState("0");
   const [childrenAges, setChildrenAges] = useState("");
   const [babyBedNeeded, setBabyBedNeeded] = useState(false);
+  const [cleaningOption, setCleaningOption] = useState(true);
+  const [cleaningObligationsAccepted, setCleaningObligationsAccepted] = useState(false);
+  const [cleaningFee, setCleaningFee] = useState(null);
   const [guestMessage, setGuestMessage] = useState("");
   const [bookingWebsite, setBookingWebsite] = useState("");
   const [contractAccepted, setContractAccepted] = useState(false);
@@ -288,6 +291,24 @@ export default function MaisonVerte() {
   }, []);
 
   useEffect(() => {
+    async function fetchCleaningFee() {
+      try {
+        const response = await fetch("/.netlify/functions/get-pricing", { cache: "no-store" });
+        if (!response.ok) throw new Error("Tarification indisponible.");
+        const data = await response.json();
+        const value = Number(data.cleaningFee);
+        if (!Number.isInteger(value) || value < 0) throw new Error("Forfait ménage invalide.");
+        setCleaningFee(value);
+      } catch (error) {
+        console.error("Erreur forfait ménage :", error);
+        setCleaningFee(null);
+      }
+    }
+
+    fetchCleaningFee();
+  }, []);
+
+  useEffect(() => {
     async function fetchPublishedReviews() {
       const { data, error } = await supabase
         .from("guest_reviews")
@@ -527,9 +548,14 @@ export default function MaisonVerte() {
     isPhoneValid &&
     isGuestCompositionValid;
 
-  const canSubmitRequest = canRequestBooking && isFormValid && contractAccepted;
+  const canSubmitRequest =
+    canRequestBooking &&
+    isFormValid &&
+    contractAccepted &&
+    cleaningFee !== null &&
+    (cleaningOption || cleaningObligationsAccepted);
 
-  const total = accommodationTotal;
+  const total = accommodationTotal + (cleaningOption ? Number(cleaningFee || 0) : 0);
 
   function previousMonth() {
     setCurrentMonth(new Date(year, month - 1, 1));
@@ -631,11 +657,13 @@ export default function MaisonVerte() {
         childrenCount,
         childrenAges: childrenAges.trim(),
         babyBedNeeded,
+        cleaningOption,
+        cleaningObligationsAccepted,
         guestMessage,
         startDate: selectedDates[0],
         endDate: selectedDates[1],
         nights: numberOfNights,
-        total,
+        accommodationTotal,
         marketingConsent,
         contractAccepted,
         website: bookingWebsite,
@@ -2561,6 +2589,83 @@ export default function MaisonVerte() {
                   </label>
                 </div>
 
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "10px",
+                    color: "#334155",
+                    lineHeight: "1.5",
+                    marginTop: "14px",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={cleaningOption}
+                    onChange={(event) => {
+                      setCleaningOption(event.target.checked);
+                      setCleaningObligationsAccepted(false);
+                    }}
+                    disabled={cleaningFee === null}
+                    style={{ marginTop: "4px" }}
+                  />
+                  <span>
+                    Forfait ménage de fin de séjour
+                    {cleaningFee !== null ? ` (+${cleaningFee} €)` : " (tarif en cours de chargement)"}
+                  </span>
+                </label>
+
+                {!cleaningOption && cleaningFee !== null && (
+                  <div
+                    style={{
+                      marginTop: "14px",
+                      padding: "14px",
+                      border: "1px solid #d6b56c",
+                      borderRadius: "8px",
+                      background: "#fffaf0",
+                      color: "#334155",
+                      lineHeight: "1.55",
+                    }}
+                  >
+                    <p style={{ margin: "0 0 10px" }}>
+                      <strong>Vous choisissez de ne pas prendre le forfait ménage de fin de séjour.</strong>
+                    </p>
+                    <p style={{ margin: "0 0 10px" }}>
+                      Vous vous engagez à rendre le logement dans un état de propreté comparable à celui dans lequel
+                      vous l’avez trouvé à votre arrivée : sols aspirés et nettoyés si nécessaire, cuisine et
+                      équipements nettoyés, vaisselle propre et rangée, sanitaires et salle de bains nettoyés,
+                      poubelles vidées et déchets déposés dans les conteneurs prévus.
+                    </p>
+                    <p style={{ margin: "0 0 12px" }}>
+                      Après votre départ, nous effectuons dans tous les cas un passage de contrôle et la remise en état
+                      nécessaire entre deux locations, notamment la préparation du linge et des lits. Ce contrôle
+                      permet également de vérifier le ménage effectué. Si ces obligations ne sont pas respectées ou si
+                      le ménage est manifestement insuffisant, le forfait ménage de {cleaningFee} € prévu pour votre
+                      réservation pourra être facturé.
+                    </p>
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "10px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={cleaningObligationsAccepted}
+                        onChange={(event) => setCleaningObligationsAccepted(event.target.checked)}
+                        style={{ marginTop: "4px" }}
+                      />
+                      <span>
+                        J’ai pris connaissance de ces obligations et les accepte. J’accepte, dans les conditions
+                        prévues au contrat, la facturation du forfait ménage de {cleaningFee} € si le ménage de fin
+                        de séjour n’est pas effectué ou est manifestement insuffisant.
+                      </span>
+                    </label>
+                  </div>
+                )}
+
                 {childrenCount > 0 && (
                   <input
                     ref={childrenAgesRef}
@@ -2799,6 +2904,19 @@ export default function MaisonVerte() {
                       : "..."}
                   </span>
                 </div>
+
+                {cleaningOption && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    <span>Forfait ménage</span>
+                    <span>{cleaningFee !== null ? `${cleaningFee}€` : "..."}</span>
+                  </div>
+                )}
 
                 <hr
                   style={{
