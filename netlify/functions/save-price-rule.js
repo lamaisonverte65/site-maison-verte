@@ -83,6 +83,29 @@ export async function handler(event) {
     }
 
 
+    if (action === "update_keybox_code") {
+      const keyboxCode = String(body.keyboxCode || "").trim();
+
+      if (!keyboxCode || keyboxCode.length > 32) {
+        return { statusCode: 400, body: JSON.stringify({ error: "Code de boîte à clés invalide." }) };
+      }
+
+      const { data, error } = await supabase
+        .from("pricing_settings")
+        .upsert({
+          id: "default",
+          keybox_code: keyboxCode,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "id" })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return { statusCode: 200, body: JSON.stringify({ success: true, settings: data }) };
+    }
+
+
     const table = ruleType === "season" ? "season_prices" : "price_overrides";
     const payload = {
       label: body.label || (ruleType === "season" ? "Saison" : "Tarif spécifique"),

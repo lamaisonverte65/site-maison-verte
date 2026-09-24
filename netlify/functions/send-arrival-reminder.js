@@ -100,12 +100,23 @@ async function alreadySentArrivalReminder(bookingId) {
   return Array.isArray(data) && data.length > 0;
 }
 
+async function getCurrentKeyboxCode() {
+  const { data, error } = await supabase
+    .from("pricing_settings")
+    .select("keybox_code")
+    .eq("id", "default")
+    .maybeSingle();
+  if (error) throw error;
+  return String(data?.keybox_code || "").trim();
+}
+
 async function sendArrivalReminderEmail(booking) {
   if (!booking.guest_email) {
     return { sent: false, reason: "missing_guest_email" };
   }
 
-  const subject = "Votre heure d’arrivée - La Maison Verte";
+  const subject = "Préparez votre arrivée à La Maison Verte";
+  const keyboxCode = await getCurrentKeyboxCode();
   const capability = createArrivalToken(booking);
   let tokenClaim = supabase.from("booking_requests").update({
     arrival_token_hash: capability.hash,
@@ -123,19 +134,38 @@ async function sendArrivalReminderEmail(booking) {
 
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-      <h2>Préparation de votre arrivée</h2>
+      <h2>Votre séjour approche 🌿</h2>
 
       <p>Bonjour ${escapeHtml(booking.guest_first_name)} ${escapeHtml(booking.guest_last_name)},</p>
 
       <p>
         Votre séjour à <strong>La Maison Verte à Arreau</strong> approche.
-        Afin d’organiser votre accueil dans les meilleures conditions,
-        merci de nous indiquer votre heure d’arrivée estimée.
+        Vous pouvez consulter ou modifier votre heure d’arrivée estimée à tout moment jusqu’à votre séjour.
       </p>
 
       <p>
         <strong>Arrivée :</strong> ${formatDate(booking.start_date)}<br />
         <strong>Départ :</strong> ${formatDate(booking.end_date)}
+      </p>
+
+      <p>
+        <strong>Heure d’arrivée habituelle :</strong> à partir de 16 h.<br />
+        <strong>Heure de départ :</strong> avant 10 h.
+      </p>
+
+      <p>
+        Ces horaires peuvent éventuellement être adaptés en fonction des départs et arrivées précédant ou suivant votre séjour.
+        N’hésitez pas à nous contacter si vous souhaitez effectuer une demande particulière.
+      </p>
+
+      <p>
+        <strong>Boîte à clés :</strong> ${keyboxCode ? `code ${escapeHtml(keyboxCode)}` : "code momentanément indisponible — contactez-nous avant votre arrivée."}<br />
+        <strong>Wi-Fi :</strong> mot de passe <strong>lamaisonverte65</strong>
+      </p>
+
+      <p style="margin-top:20px;">
+        <a href="${SITE_URL}/boite-a-cles" style="color:#14532d;font-weight:bold;">Voir la procédure de la boîte à clés</a><br />
+        <a href="${SITE_URL}/livret" style="color:#14532d;font-weight:bold;">Consulter le livret d’accueil</a>
       </p>
 
       <p style="margin-top:30px;">
@@ -151,10 +181,11 @@ async function sendArrivalReminderEmail(booking) {
             display:inline-block;
           "
         >
-          Renseigner mon heure d’arrivée
+          ${booking.arrival_time ? "Consulter ou modifier mon heure d’arrivée" : "Indiquer mon heure d’arrivée"}
         </a>
       </p>
 
+      ${booking.arrival_time ? `<p><strong>Heure d’arrivée actuellement indiquée :</strong> ${escapeHtml(booking.arrival_time)}</p>` : ""}
       <p>
         Vous pouvez aussi répondre directement à cet email si vous préférez.
       </p>
@@ -232,14 +263,6 @@ async function runArrivalReminder() {
   const skipped = [];
 
   for (const booking of bookings || []) {
-    if (booking.arrival_time) {
-      skipped.push({
-        bookingId: booking.id,
-        reason: "arrival_time_already_set",
-      });
-      continue;
-    }
-
     const sentAlready = await alreadySentArrivalReminder(booking.id);
 
     if (!shouldSendSecureArrivalReminder(booking, { reminderSent: sentAlready })) {
@@ -255,9 +278,9 @@ async function runArrivalReminder() {
     await logBookingEvent({
       bookingId: booking.id,
       eventType: "arrival_reminder_sent",
-      label: "Relance heure d’arrivée envoyée",
+      label: "Informations d’arrivée J-2 envoyées",
       message: emailResult.sent
-        ? "Email automatique envoyé à J-2 pour demander l’heure d’arrivée."
+        ? "Email automatique d’arrivée envoyé à J-2."
         : "Tentative d’envoi email J-2 échouée.",
       metadata: {
         targetDate,

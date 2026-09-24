@@ -40,7 +40,7 @@ function createDependencies({ storedBooking = booking, recent = false, sendError
     dependencies: {
       now,
       siteUrl: "https://example.test",
-      randomBytes: () => Buffer.alloc(32, 7),
+      arrivalLinkSecret: "test-arrival-link-secret",
       rateLimitKey: "ip-hash",
       repository: {
         async claimIpAttempt() { return ipAttemptAllowed; },

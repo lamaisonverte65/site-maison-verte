@@ -38,12 +38,14 @@ function emptyOverride() {
 export default function PricingAdmin() {
   const [defaultNightPrice, setDefaultNightPrice] = useState(null);
   const [cleaningFee, setCleaningFee] = useState(null);
+  const [keyboxCode, setKeyboxCode] = useState(null);
   const [seasonPrices, setSeasonPrices] = useState([]);
   const [priceOverrides, setPriceOverrides] = useState([]);
   const [seasonForm, setSeasonForm] = useState(emptySeason());
   const [overrideForm, setOverrideForm] = useState(emptyOverride());
   const [defaultPriceModal, setDefaultPriceModal] = useState(null);
   const [cleaningFeeModal, setCleaningFeeModal] = useState(null);
+  const [keyboxCodeModal, setKeyboxCodeModal] = useState(null);
   const [activeEditor, setActiveEditor] = useState("season");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -74,6 +76,12 @@ export default function PricingAdmin() {
 
       setDefaultNightPrice(Number(data.defaultNightPrice || 80));
       setCleaningFee(Number(data.cleaningFee ?? 50));
+
+      const keyboxResponse = await fetch("/.netlify/functions/get-keybox-code");
+      const keyboxData = await keyboxResponse.json();
+      if (!keyboxResponse.ok) throw new Error(keyboxData.error || "Erreur chargement boîte à clés");
+      setKeyboxCode(String(keyboxData.keyboxCode || ""));
+
       setSeasonPrices(data.seasonPrices || []);
       setPriceOverrides(data.priceOverrides || []);
     } catch (err) {
@@ -156,6 +164,33 @@ export default function PricingAdmin() {
       alert("Erreur forfait ménage : " + err.message);
     }
 
+    setSaving(false);
+  }
+
+  function openKeyboxCodeModal() {
+    setKeyboxCodeModal({ keyboxCode: String(keyboxCode || "") });
+  }
+
+  async function saveKeyboxCode(event) {
+    event.preventDefault();
+    if (!keyboxCodeModal) return;
+
+    const value = String(keyboxCodeModal.keyboxCode || "").trim();
+    if (!value || value.length > 32) return alert("Entre un code de boîte à clés valide.");
+
+    setSaving(true);
+    try {
+      const response = await fetch("/.netlify/functions/save-price-rule", {
+        method: "POST",
+        headers: await getAdminFetchHeaders(),
+        body: JSON.stringify({ action: "update_keybox_code", keyboxCode: value }),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      setKeyboxCodeModal(null);
+      await loadPricing();
+    } catch (err) {
+      alert("Erreur boîte à clés : " + err.message);
+    }
     setSaving(false);
   }
 
@@ -338,6 +373,20 @@ export default function PricingAdmin() {
         </strong>
       </section>
 
+      <section style={styles.cardPremium}>
+        <div style={styles.header}>
+          <div>
+            <p style={styles.kicker}>Accueil voyageurs</p>
+            <h3 style={styles.cardTitle}>Boîte à clés</h3>
+            <p style={styles.muted}>Code courant utilisé par la page d’arrivée et les emails envoyés à J-2.</p>
+          </div>
+          <button style={styles.primaryButton} onClick={openKeyboxCodeModal}>Modifier</button>
+        </div>
+        <strong style={styles.bigPrice}>
+          {keyboxCode === null ? "Chargement..." : keyboxCode || "Non renseigné"}
+        </strong>
+      </section>
+
       <section style={styles.editorCard}>
         <div style={styles.switchRow}>
           <button style={activeEditor === "season" ? styles.activeSwitch : styles.switchButton} onClick={() => setActiveEditor("season")}>Saisons</button>
@@ -440,6 +489,28 @@ export default function PricingAdmin() {
             </label>
             <div style={styles.modalActions}>
               <button type="button" style={styles.secondaryButton} onClick={() => setCleaningFeeModal(null)}>Annuler</button>
+              <button type="submit" style={styles.primaryButton} disabled={saving}>Enregistrer</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {keyboxCodeModal && (
+        <Modal title="Modifier le code de la boîte à clés" onClose={() => setKeyboxCodeModal(null)}>
+          <form onSubmit={saveKeyboxCode} style={styles.modalForm}>
+            <label style={styles.label}>Code actuel
+              <input
+                style={styles.input}
+                type="text"
+                maxLength="32"
+                value={keyboxCodeModal.keyboxCode}
+                onChange={(event) => setKeyboxCodeModal({ ...keyboxCodeModal, keyboxCode: event.target.value })}
+                autoComplete="off"
+                required
+              />
+            </label>
+            <p style={styles.muted}>Toute modification sera utilisée immédiatement par la page « Boîte à clés » et par les prochains emails J-2.</p>
+            <div style={styles.modalActions}>
+              <button type="button" style={styles.secondaryButton} onClick={() => setKeyboxCodeModal(null)}>Annuler</button>
               <button type="submit" style={styles.primaryButton} disabled={saving}>Enregistrer</button>
             </div>
           </form>

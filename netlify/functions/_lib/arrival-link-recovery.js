@@ -30,7 +30,6 @@ function normalizeRecoveryInput(input = {}) {
 function isEligibleBooking(booking, now) {
   return Boolean(
     booking?.id
-      && !booking.arrival_time
       && ELIGIBLE_STATUSES.has(String(booking.status || ""))
       && /^\d{4}-\d{2}-\d{2}$/.test(String(booking.end_date || ""))
       && now.toISOString().slice(0, 10) <= booking.end_date,
@@ -48,7 +47,7 @@ export async function recoverArrivalLink(input, {
   siteUrl,
   rateLimitKey,
   now = new Date(),
-  randomBytes,
+  arrivalLinkSecret,
   logger = console,
 }) {
   const normalized = normalizeRecoveryInput(input);
@@ -75,7 +74,7 @@ export async function recoverArrivalLink(input, {
     const cooldownSince = new Date(now.getTime() - 15 * 60 * 1000).toISOString();
     if (await repository.hasRecentRecovery(booking.id, cooldownSince)) return publicResult();
 
-    capability = createArrivalToken(booking, { randomBytes });
+    capability = createArrivalToken(booking, { secret: arrivalLinkSecret });
     const claimed = await repository.saveToken({
       bookingId: booking.id,
       hash: capability.hash,

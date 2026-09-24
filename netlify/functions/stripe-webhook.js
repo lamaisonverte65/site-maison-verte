@@ -295,7 +295,7 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
     ? "Nous avons bien reçu le paiement du solde de votre séjour à <strong>La Maison Verte à Arreau</strong>."
     : isManual
     ? "Nous avons bien reçu votre paiement à <strong>La Maison Verte à Arreau</strong>."
-    : "Nous avons bien reçu votre acompte pour votre séjour à <strong>La Maison Verte à Arreau</strong>.";
+    : "Nous avons bien reçu votre acompte pour votre séjour à <strong>La Maison Verte à Arreau</strong> et nous vous en remercions.";
 
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6;">
@@ -313,13 +313,40 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
         ${paymentLine}
       </p>
 
-      ${paymentType === "deposit" ? "<p>Le solde vous sera demandé environ <strong>30 jours avant votre arrivée</strong>.</p>" : ""}
+      ${paymentType === "deposit" ? `
+        <p>Le solde vous sera demandé environ <strong>30 jours avant votre arrivée</strong>.</p>
+        <p>À réception du paiement du solde, les informations nécessaires à la préparation de votre séjour vous seront communiquées.</p>
+      ` : ""}
 
-      <p>
-        Merci de nous communiquer votre heure d’arrivée estimée afin d’organiser votre accueil dans les meilleures conditions.
-      </p>
+      ${(isFull || isBalance) ? `
+        <p>
+          Les draps ainsi que deux serviettes par personne (une grande serviette 70 × 140 cm et une petite serviette 33 × 50 cm) sont fournis.
+        </p>
 
-      ${arrivalUrl ? `<p style="margin-top:24px;"><a href="${escapeHtml(arrivalUrl)}" style="background:#2f4f35;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;">Renseigner mon heure d’arrivée</a></p>` : ""}
+        <p>
+          Les clés seront disponibles dans une boîte à clés. Le code et les dernières informations pratiques vous seront automatiquement envoyés deux jours avant votre arrivée.
+        </p>
+
+        <p>
+          <strong>Heure d’arrivée habituelle :</strong> à partir de 16 h.<br />
+          <strong>Heure de départ :</strong> avant 10 h.
+        </p>
+
+        <p>
+          Ces horaires peuvent éventuellement être adaptés en fonction des départs et arrivées précédant ou suivant votre séjour.
+          N’hésitez pas à nous contacter si vous souhaitez effectuer une demande particulière.
+        </p>
+
+        <p>
+          Vous pouvez également consulter dès maintenant notre livret d’accueil, qui regroupe les informations utiles concernant le logement, l’accès, le stationnement et votre séjour.
+        </p>
+
+        <p style="margin-top:20px;">
+          <a href="https://lamaisonverte65.fr/livret" style="background:#2f4f35;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;">Consulter le livret d’accueil</a>
+        </p>
+
+        ${arrivalUrl ? `<p style="margin-top:24px;"><a href="${escapeHtml(arrivalUrl)}" style="background:#2f4f35;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;">Renseigner mon heure d’arrivée</a></p>` : ""}
+      ` : ""}
 
       <p>Nous avons hâte de vous accueillir dans les Pyrénées 🌿</p>
 

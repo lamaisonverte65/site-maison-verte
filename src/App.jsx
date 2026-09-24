@@ -1,8 +1,9 @@
 import MaisonVerte from "./pages/MaisonVerte";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Admin from "./pages/Admin";
 import GuideValleesAureLouron from "./pages/GuideValleesAureLouron";
 import LivretAccueil from "./pages/LivretAccueil";
+import BoiteACles from "./pages/BoiteACles";
 import ContactRedirect from "./pages/ContactRedirect";
 import AppelerRedirect from "./pages/AppelerRedirect";
 import MentionsLegales from "./pages/MentionsLegales";
@@ -224,6 +225,29 @@ function ArrivalTimePage() {
   const [recoveryLastName, setRecoveryLastName] = useState("");
   const [recoveryStatus, setRecoveryStatus] = useState("");
   const [recoverySubmitting, setRecoverySubmitting] = useState(false);
+  const [arrivalLoading, setArrivalLoading] = useState(linkMode === "secure");
+
+  useEffect(() => {
+    if (linkMode !== "secure") return;
+    let active = true;
+
+    async function loadArrivalTime() {
+      try {
+        const query = new URLSearchParams({ bookingId, token });
+        const response = await fetch(`/.netlify/functions/update-arrival-time?${query.toString()}`);
+        if (!response.ok) throw new Error(await response.text());
+        const data = await response.json();
+        if (active) setArrivalTime(data.arrivalTime || "");
+      } catch (_) {
+        if (active) setStatus("Ce lien d’arrivée n’est plus valide. Vous pouvez demander un nouveau lien ou nous contacter directement.");
+      } finally {
+        if (active) setArrivalLoading(false);
+      }
+    }
+
+    loadArrivalTime();
+    return () => { active = false; };
+  }, [bookingId, token, linkMode]);
 
   async function requestSecureArrivalLink(event) {
     event.preventDefault();
@@ -265,7 +289,9 @@ function ArrivalTimePage() {
         throw new Error(await response.text());
       }
 
-      setStatus("Merci, votre heure d’arrivée a bien été transmise ✅");
+      const data = await response.json();
+      setArrivalTime(data.arrivalTime || arrivalTime);
+      setStatus("Votre heure d’arrivée a bien été enregistrée ✅");
     } catch (error) {
       setStatus("Une erreur est survenue. Vous pouvez aussi nous contacter directement par téléphone ou email.");
     }
@@ -291,9 +317,15 @@ function ArrivalTimePage() {
     <main style={{ minHeight: "100vh", background: "#f3f0e8", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", fontFamily: "Inter, sans-serif" }}>
       <form onSubmit={submitArrivalTime} style={{ background: "white", borderRadius: "28px", padding: "40px", maxWidth: "640px", width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,0.12)", textAlign: "center" }}>
         <h1 style={{ color: "#14532d", marginTop: 0 }}>Heure d’arrivée</h1>
-        <p style={{ color: "#334155", lineHeight: 1.7 }}>Merci de nous indiquer votre heure d’arrivée estimée afin d’organiser votre accueil à La Maison Verte.</p>
-        <input type="time" value={arrivalTime} onChange={(event) => setArrivalTime(event.target.value)} step="300" style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "18px" }} />
-        <button type="submit" style={{ marginTop: "22px", border: "none", background: "#2f4f35", color: "white", padding: "14px 24px", borderRadius: "999px", fontWeight: "bold", cursor: "pointer" }}>Envoyer</button>
+        <p style={{ color: "#334155", lineHeight: 1.7 }}>
+          {arrivalLoading
+            ? "Chargement de votre heure d’arrivée…"
+            : arrivalTime
+            ? <>Heure d’arrivée actuellement indiquée : <strong>{arrivalTime}</strong>. Vous pouvez la modifier ci-dessous.</>
+            : "Vous n’avez pas encore indiqué votre heure d’arrivée. Vous pouvez la renseigner ci-dessous."}
+        </p>
+        <input type="time" value={arrivalTime} onChange={(event) => { setArrivalTime(event.target.value); setStatus(""); }} step="300" disabled={arrivalLoading} style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "18px" }} />
+        <button type="submit" disabled={arrivalLoading} style={{ marginTop: "22px", border: "none", background: "#2f4f35", color: "white", padding: "14px 24px", borderRadius: "999px", fontWeight: "bold", cursor: arrivalLoading ? "wait" : "pointer" }}>{arrivalTime ? "Enregistrer mon heure d’arrivée" : "Indiquer mon heure d’arrivée"}</button>
         {status && <p style={{ marginTop: "22px", color: status.includes("✅") ? "#166534" : "#b91c1c" }}>{status}</p>}
         <a href="/" style={{ marginTop: "24px", display: "inline-block", color: "#2f4f35" }}>Retour au site</a>
       </form>
@@ -327,6 +359,10 @@ export default function App() {
 
   if (path === "/arrival") {
     return withAnalytics(<ArrivalTimePage />);
+  }
+
+  if (path === "/boite-a-cles") {
+    return withAnalytics(<BoiteACles />);
   }
   
   if (path === "/guide-vallees-aure-louron") {

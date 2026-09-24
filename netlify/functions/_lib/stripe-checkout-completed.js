@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { hashArrivalToken } from "./arrival-token.js";
 
 function getCheckoutAmount(session) {
@@ -6,8 +6,11 @@ function getCheckoutAmount(session) {
   return Number(session?.metadata?.manual_amount || session?.metadata?.balance_amount || session?.metadata?.deposit_amount || 0);
 }
 
-function createArrivalCapability() {
-  const token = randomBytes(32).toString("hex");
+function createArrivalCapability(bookingId, secret = process.env.ARRIVAL_LINK_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!secret) throw new Error("Secret de lien d'arrivée indisponible.");
+  const token = createHmac("sha256", secret)
+    .update(`arrival:${bookingId}`, "utf8")
+    .digest("hex");
   return { token, hash: hashArrivalToken(token) };
 }
 
@@ -29,7 +32,9 @@ export async function processCheckoutSessionCompleted({ session, stripeEventCrea
   const amount = getCheckoutAmount(session);
   const stripePaidAt = stripeTimestampToIso(stripeEventCreated);
   const financialDetails = await dependencies.getFinancialDetails(session);
-  const arrivalCapability = (dependencies.createArrivalCapability || createArrivalCapability)();
+  const arrivalCapability = dependencies.createArrivalCapability
+    ? dependencies.createArrivalCapability(bookingId)
+    : createArrivalCapability(bookingId);
 
   const application = await dependencies.applyPayment({
     bookingId,

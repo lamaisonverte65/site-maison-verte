@@ -54,16 +54,15 @@ test("cancelled, refused, pending, and completed stays are refused", () => {
 });
 
 test("token creation stores a hash and expires with the stay", () => {
-  const result = createArrivalToken({ id: "booking-a", end_date: "2026-10-14" }, { randomBytes: () => Buffer.alloc(32, 1) });
+  const result = createArrivalToken({ id: "booking-a", end_date: "2026-10-14" }, { secret: "test-arrival-link-secret" });
   assert.equal(result.token.length, 64);
   assert.notEqual(result.hash, result.token);
   assert.equal(result.hash, hashArrivalToken(result.token));
   assert.equal(result.expiresAt, "2026-10-14T23:59:59.999Z");
 });
 
-test("a reminder already marked sent is reissued when no usable secure token exists", () => {
+test("the J-2 reminder remains sendable independently of a previously stored arrival time", () => {
   assert.equal(typeof arrivalToken.shouldSendSecureArrivalReminder, "function");
-  assert.equal(arrivalToken.shouldSendSecureArrivalReminder({ ...eligibleBooking, arrival_token_hash: null }, { reminderSent: true, now }), true);
-  assert.equal(arrivalToken.shouldSendSecureArrivalReminder(eligibleBooking, { reminderSent: true, now }), false);
+  assert.equal(arrivalToken.shouldSendSecureArrivalReminder({ ...eligibleBooking, arrival_time: "17:30" }, { reminderSent: false, now }), true);
   assert.equal(arrivalToken.shouldSendSecureArrivalReminder(eligibleBooking, { reminderSent: false, now }), true);
 });

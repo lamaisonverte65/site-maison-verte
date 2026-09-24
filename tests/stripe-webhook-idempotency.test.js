@@ -25,6 +25,10 @@ function dependencies({ outcome = "applied", reviewReason = null } = {}) {
   return {
     state,
     dependencies: {
+      createArrivalCapability(bookingId) {
+        const token = "a".repeat(64);
+        return { bookingId, token, hash: "test-arrival-hash", expiresAt: "2026-10-14T23:59:59.999Z" };
+      },
       async getFinancialDetails() {
         return {
           stripeFeeAmount: 1.65,
@@ -89,6 +93,10 @@ test("two deliveries of the same session keep one payment, one amount applicatio
   assert.equal(typeof processCheckoutSessionCompleted, "function");
   const state = { sessions: new Set(), amountPaid: 0, events: 0, emails: 0 };
   const deps = {
+    createArrivalCapability(bookingId) {
+      const token = "a".repeat(64);
+      return { bookingId, token, hash: "test-arrival-hash", expiresAt: "2026-10-14T23:59:59.999Z" };
+    },
     async getFinancialDetails() {
       return {
         stripeFeeAmount: 1.65,

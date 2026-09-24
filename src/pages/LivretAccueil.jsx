@@ -169,8 +169,13 @@ export default function LivretAccueil() {
                       <strong>Votre avis compte</strong>
                     </a>
 
-                    <a href="#inventaire">
+                    <a href="#boite-a-cles">
                       <span>Page 9</span>
+                      <strong>Arrivée & boîte à clés</strong>
+                    </a>
+
+                    <a href="#inventaire">
+                      <span>Page 10</span>
                       <strong>Inventaire complet</strong>
                     </a>
                   </nav>
@@ -198,7 +203,7 @@ export default function LivretAccueil() {
                   </div>
 
                   <div className="livret-qr-block">
-                    <a href="tel:+33695938315">
+                    <a href="tel:+33795938315">
                     <div className="livret-qr-icon">☎</div>
                     <h2>Nous appeler</h2>
                     <img src="/livret/qr-telephone.svg" alt="QR code pour appeler La Maison Verte" />
@@ -918,7 +923,62 @@ export default function LivretAccueil() {
           </div>
         </section>
 
-        {/* PAGE 9 — INVENTAIRE — REZ-DE-CHAUSSÉE */}
+        {/* PAGE 9 — ARRIVÉE & BOÎTE À CLÉS */}
+        <section
+          id="boite-a-cles"
+          className="livret-page livret-function-page"
+          aria-label="Arrivée et boîte à clés"
+        >
+          <div className="livret-page-inner livret-function-inner">
+            <header className="livret-page-header livret-function-header">
+              <h1>Arrivée & boîte à clés</h1>
+              <div className="livret-ornament" aria-hidden="true">⟡</div>
+            </header>
+
+            <div className="livret-function-layout">
+              <article className="livret-function-card">
+                <h2>Récupérer les clés</h2>
+                <p>
+                  Les clés de La Maison Verte sont mises à votre disposition dans une boîte à clés.
+                  Le code en vigueur vous est communiqué dans l'email envoyé deux jours avant votre arrivée.
+                </p>
+                <ol>
+                  <li>Composez le code sur la boîte à clés.</li>
+                  <li>Ouvrez la boîte et prenez les clés du logement.</li>
+                  <li>Refermez correctement la boîte après avoir récupéré les clés.</li>
+                </ol>
+              </article>
+
+              <article className="livret-function-card">
+                <h2>Au moment du départ</h2>
+                <p>
+                  Avant de quitter le logement, replacez les clés dans la boîte à clés et vérifiez qu'elle est correctement refermée.
+                </p>
+                <p>
+                  En cas de difficulté, contactez-nous au <strong>07 95 93 83 15</strong>.
+                </p>
+              </article>
+
+              <article className="livret-function-card">
+                <h2>Horaires</h2>
+                <p>
+                  <strong>Arrivée habituelle :</strong> à partir de 16 h.<br />
+                  <strong>Départ :</strong> avant 10 h.
+                </p>
+                <p>
+                  Ces horaires peuvent éventuellement être adaptés selon les départs et arrivées précédant ou suivant votre séjour.
+                </p>
+              </article>
+            </div>
+
+            <footer className="livret-page-footer">
+              <img src="/livret/liseret-separateur.webp" alt="" aria-hidden="true" />
+              <div className="livret-page-number">9</div>
+            </footer>
+          </div>
+        </section>
+
+        {/* PAGE 10 — INVENTAIRE — REZ-DE-CHAUSSÉE */}
         <section
           id="inventaire"
           className="livret-page livret-inventory-page"
@@ -1061,12 +1121,12 @@ export default function LivretAccueil() {
 
             <footer className="livret-page-footer">
               <img src="/livret/liseret-separateur.webp" alt="" aria-hidden="true" />
-              <div className="livret-page-number">9</div>
+              <div className="livret-page-number">10</div>
             </footer>
           </div>
         </section>
 
-        {/* PAGE 10 — INVENTAIRE — ÉTAGES */}
+        {/* PAGE 11 — INVENTAIRE — ÉTAGES */}
         <section
           id="inventaire-etages"
           className="livret-page livret-inventory-page"
@@ -1202,7 +1262,7 @@ export default function LivretAccueil() {
 
             <footer className="livret-page-footer">
               <img src="/livret/liseret-separateur.webp" alt="" aria-hidden="true" />
-              <div className="livret-page-number">10</div>
+              <div className="livret-page-number">11</div>
             </footer>
           </div>
         </section>
