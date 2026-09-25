@@ -77,7 +77,11 @@ export default function PricingAdmin() {
       setDefaultNightPrice(Number(data.defaultNightPrice || 80));
       setCleaningFee(Number(data.cleaningFee ?? 50));
 
-      const keyboxResponse = await fetch("/.netlify/functions/get-keybox-code");
+      const keyboxResponse = await fetch("/.netlify/functions/save-price-rule", {
+        method: "POST",
+        headers: await getAdminFetchHeaders(),
+        body: JSON.stringify({ action: "get_keybox_code" }),
+      });
       const keyboxData = await keyboxResponse.json();
       if (!keyboxResponse.ok) throw new Error(keyboxData.error || "Erreur chargement boîte à clés");
       setKeyboxCode(String(keyboxData.keyboxCode || ""));
@@ -378,7 +382,7 @@ export default function PricingAdmin() {
           <div>
             <p style={styles.kicker}>Accueil voyageurs</p>
             <h3 style={styles.cardTitle}>Boîte à clés</h3>
-            <p style={styles.muted}>Code courant utilisé par la page d’arrivée et les emails envoyés à J-2.</p>
+            <p style={styles.muted}>Code courant communiqué aux voyageurs dans les emails envoyés à J-2.</p>
           </div>
           <button style={styles.primaryButton} onClick={openKeyboxCodeModal}>Modifier</button>
         </div>
@@ -508,7 +512,7 @@ export default function PricingAdmin() {
                 required
               />
             </label>
-            <p style={styles.muted}>Toute modification sera utilisée immédiatement par la page « Boîte à clés » et par les prochains emails J-2.</p>
+            <p style={styles.muted}>Toute modification sera utilisée par les prochains emails J-2 envoyés aux voyageurs.</p>
             <div style={styles.modalActions}>
               <button type="button" style={styles.secondaryButton} onClick={() => setKeyboxCodeModal(null)}>Annuler</button>
               <button type="submit" style={styles.primaryButton} disabled={saving}>Enregistrer</button>

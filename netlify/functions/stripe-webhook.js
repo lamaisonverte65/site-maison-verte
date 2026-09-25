@@ -327,6 +327,14 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
           Les clés seront disponibles dans une boîte à clés. Le code et les dernières informations pratiques vous seront automatiquement envoyés deux jours avant votre arrivée.
         </p>
 
+        <p style="margin:24px 0;">
+          <img
+            src="https://lamaisonverte65.fr/livret/procedure-boite-a-cles.png"
+            alt="Procédure illustrée d’ouverture et de fermeture de la boîte à clés Master Lock 5423EURD"
+            style="display:block;width:100%;max-width:720px;height:auto;margin:0 auto;border:0;"
+          />
+        </p>
+
         <p>
           <strong>Heure d’arrivée habituelle :</strong> à partir de 16 h.<br />
           <strong>Heure de départ :</strong> avant 10 h.

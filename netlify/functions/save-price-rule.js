@@ -30,6 +30,21 @@ export async function handler(event) {
     const body = JSON.parse(event.body || "{}");
     const { action, ruleType, id } = body;
 
+    if (action === "get_keybox_code") {
+      const { data, error } = await supabase
+        .from("pricing_settings")
+        .select("keybox_code")
+        .eq("id", "default")
+        .maybeSingle();
+
+      if (error) throw error;
+
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ keyboxCode: String(data?.keybox_code || "").trim() }),
+      };
+    }
+
     if (action === "delete") {
       const table = ruleType === "season" ? "season_prices" : "price_overrides";
       const { error } = await supabase.from(table).delete().eq("id", id);

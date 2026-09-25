@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet";
 import "../styles/livret.css";
 
 export default function LivretAccueil() {
+  const [keyboxImageError, setKeyboxImageError] = useState(false);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("print") !== "1") return;
@@ -484,32 +485,45 @@ export default function LivretAccueil() {
 
           <article className="livret-info-card">
             <div className="livret-info-title">
-              <img src="/livret/icone-parking.svg" alt="" aria-hidden="true" />
-              <h2>Accès & stationnement</h2>
+              <span
+                aria-hidden="true"
+                style={{
+                  width: "30px",
+                  height: "30px",
+                  borderRadius: "50%",
+                  background: "#eef3d8",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flex: "0 0 auto",
+                }}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ color: "#315d3b" }}
+                >
+                  <circle cx="12" cy="12" r="8" />
+                  <path d="M12 7v5l3 2" />
+                </svg>
+              </span>
+              <h2>Horaires</h2>
             </div>
             <br />
             <p>
-              La Maison Verte se situe dans une impasse piétonne.
+              <strong>Arrivée habituelle :</strong> à partir de 16 h.<br />
+              <strong>Départ :</strong> avant 10 h.
             </p>
-            <br />
-            <p>
-              Vous pouvez vous approcher en voiture par la rue de la
-              Coutellerie pour charger ou décharger vos bagages.
+            <p>Les horaires d’arrivée et de départ doivent être respectés lorsque les séjours s’enchaînent, afin de nous laisser le temps de préparer la maison pour les voyageurs suivants.
             </p>
-            <p>
-              Cette rue est également une impasse et il n'est pas
-              possible d'y faire demi-tour.
+            <p> En période plus calme, nous pouvons être beaucoup plus flexibles. N’hésitez pas à nous faire part de vos besoins : une arrivée anticipée ou un départ plus tardif peuvent être possibles.
             </p>
-            <br />
-            <p>
-              Plusieurs parkings gratuits sont disponibles à proximité,
-              notamment :
-            </p>
-
-            <ul>
-              <li>parking du Monument aux Morts ;</li>
-              <li>parking de l'église Notre-Dame.</li>
-            </ul>
           </article>
 
           <article className="livret-info-card">
@@ -930,41 +944,62 @@ export default function LivretAccueil() {
             </header>
 
             <div className="livret-function-layout">
-              <article className="livret-function-card">
+              <article className="livret-function-card" style={{ gridColumn: "1 / -1" }}>
+                {!keyboxImageError && (
+                <img
+                  src="/livret/procedure-boite-a-cles.png"
+                  alt="Procédure d’ouverture et de fermeture de la boîte à clés"
+                  loading="lazy"
+                  onError={() => setKeyboxImageError(true)}
+                  style={{
+                    display: "block",
+                    width: "88%",
+                    maxWidth: "768px",
+                    minWidth: "280px",
+                    height: "auto",
+                    margin: "0 auto",
+                    borderRadius: "12px",
+                  }}
+                />
+              )}
+              </article>
+
+              {keyboxImageError && (
+                <>
+<article className="livret-function-card">
                 <h2>Récupérer les clés</h2>
                 <p>
                   Les clés de La Maison Verte sont mises à votre disposition dans une boîte à clés.
                   Le code en vigueur vous est communiqué dans l'email envoyé deux jours avant votre arrivée.
                 </p>
                 <ol>
-                  <li>Composez le code sur la boîte à clés.</li>
-                  <li>Ouvrez la boîte et prenez les clés du logement.</li>
-                  <li>Refermez correctement la boîte après avoir récupéré les clés.</li>
+                  <li>Ouvrez le cache de protection en plastique sur la façade en tirant le haut du couvercle.</li>
+                  <li>Enfoncez le bouton « CLEAR » (C), situé sous le clavier, pour effacer toute saisie précédente.</li>
+                  <li>Appuyez sur les boutons correspondant au code qui vous a été communiqué.</li>
+                  <li>Enfoncez et maintenez le bouton « OPEN », situé en haut du clavier.</li>
+                  <li>Tirez la porte vers vous puis vers le bas pour l’ouvrir complètement et récupérez les clés.</li>
                 </ol>
               </article>
 
               <article className="livret-function-card">
                 <h2>Au moment du départ</h2>
                 <p>
-                  Avant de quitter le logement, replacez les clés dans la boîte à clés et vérifiez qu'elle est correctement refermée.
+                  La boîte ne peut pas se refermer sans refaire la procédure :
                 </p>
+                <ol>
+                  <li>Replacez les clés dans la boîte puis enfoncez le bouton « CLEAR » (C).</li>
+                  <li>Entrez de nouveau le code qui vous a été communiqué.</li>
+                  <li>Enfoncez et maintenez le bouton « OPEN ».</li>
+                  <li>Remontez et fermez la porte du compartiment, puis relâchez le bouton.</li>
+                  <li>Appuyez de nouveau sur « CLEAR » (C) pour brouiller le code, puis refermez le cache de protection.</li>
+                </ol>
                 <p>
                   En cas de difficulté, contactez-nous au <strong>07 95 93 83 15</strong>.
                 </p>
               </article>
-
-              <article className="livret-function-card">
-                <h2>Horaires</h2>
-                <p>
-                  <strong>Arrivée habituelle :</strong> à partir de 16 h.<br />
-                  <strong>Départ :</strong> avant 10 h.
-                </p>
-                <p>
-                  Ces horaires peuvent éventuellement être adaptés selon les départs et arrivées précédant ou suivant votre séjour.
-                </p>
-              </article>
+                </>
+              )}
             </div>
-
             <footer className="livret-page-footer">
               <img src="/livret/liseret-separateur.webp" alt="" aria-hidden="true" />
               <div className="livret-page-number">9</div>

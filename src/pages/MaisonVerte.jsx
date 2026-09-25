@@ -180,9 +180,17 @@ export default function MaisonVerte() {
       title: "Accès et village",
       items: [
         {
+          question: "Comment récupérer les clés ?",
+          answer:
+            "Les clés sont mises à votre disposition dans une boîte à clés. Le code en vigueur est communiqué directement par email avant votre arrivée. Vous pouvez consulter la procédure illustrée d'ouverture et de fermeture de la boîte ci-dessous.",
+          linkUrl: "/livret/procedure-boite-a-cles.png",
+          linkLabel: "Voir la procédure de la boîte à clés →",
+        },
+        {
           question: "Peut-on se garer facilement à proximité ?",
           answer:
             "Oui. Plusieurs parkings gratuits sont accessibles à quelques dizaines de mètres de la maison. Il est généralement facile de stationner à proximité du logement tout au long de l'année.",
+          planUrl: "/livret/plan-acces.jpg",
         },
         {
           question:
@@ -1430,7 +1438,6 @@ export default function MaisonVerte() {
             "Lave-vaisselle",
             "Congélateur",
             "Smart TV",
-            "Wi-Fi 7",
             "Cafetière italienne",
             "Cafetière à filtres",
             "Bouilloire",
@@ -1444,7 +1451,6 @@ export default function MaisonVerte() {
             "Linge de lit et serviettes fournis",
             "Poubelle de tri",
             "Animaux non acceptés",
-            "Réservation directe propriétaire",
             "Parking gratuit proche",
             "Impasse piétonne",
           ].map((item) => (
@@ -1476,11 +1482,12 @@ export default function MaisonVerte() {
             rel="noopener noreferrer"
             style={{
               display: "inline-block",
-              padding: "16px 26px",
+              padding: "20px 38px",
               borderRadius: "999px",
               background: "#eef7f0",
               color: "#1f6f3d",
               fontWeight: "700",
+              fontSize: "1.12rem",
               textDecoration: "none",
               boxShadow: "0 8px 24px rgba(0,0,0,0.06)",
             }}
@@ -1496,7 +1503,7 @@ export default function MaisonVerte() {
             }}
           >
             Vous y trouverez toutes les informations utiles pour préparer votre séjour :
-            fonctionnement du logement, bonnes adresses, activités et inventaire.
+            fonctionnement du logement, accès, bonnes adresses, activités, consignes et inventaire complet des équipements.
           </p>
         </div>
       </section>
@@ -1579,19 +1586,28 @@ export default function MaisonVerte() {
         <div
           style={{
             background: "white",
-            padding: "34px",
+            padding: "22px 28px",
             borderRadius: "34px",
             boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
-            marginBottom: "34px",
+            marginBottom: "26px",
           }}
         >
-          <h3 style={{ marginBottom: "18px" }}>Avis clients La Maison Verte</h3>
+          <p
+            style={{
+              margin: "0 0 16px",
+              color: "#555",
+              lineHeight: "1.5",
+              textAlign: "center",
+            }}
+          >
+            Vous avez déjà séjourné à La Maison Verte ? Votre retour nous aide beaucoup et rassure les futurs voyageurs.
+          </p>
 
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))",
-              gap: "22px",
+              gap: "16px",
               alignItems: "center",
             }}
           >
@@ -1631,12 +1647,7 @@ export default function MaisonVerte() {
             </div>
 
             <div style={{ display: "grid", gap: "14px" }}>
-              {publishedReviews.length === 0 ? (
-                <p style={{ color: "#666", lineHeight: "1.7" }}>
-                  Vous avez déjà séjourné à La Maison Verte ? Votre retour nous
-                  aide beaucoup et rassure les futurs voyageurs.
-                </p>
-              ) : (
+              {publishedReviews.length === 0 ? null : (
                 publishedReviews.slice(0, 3).map((review) => (
                   <div
                     key={review.id}
@@ -2148,6 +2159,38 @@ export default function MaisonVerte() {
                             }}
                           >
                             {item.answer}
+                            {item.linkUrl && (
+                              <div style={{ marginTop: "12px" }}>
+                                <a
+                                  href={item.linkUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    color: "#1f6f3d",
+                                    fontWeight: "700",
+                                    textDecoration: "none",
+                                  }}
+                                >
+                                  {item.linkLabel || "Voir le document →"}
+                                </a>
+                              </div>
+                            )}
+                            {item.planUrl && (
+                              <div style={{ marginTop: "12px" }}>
+                                <a
+                                  href={item.planUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    color: "#1f6f3d",
+                                    fontWeight: "700",
+                                    textDecoration: "none",
+                                  }}
+                                >
+                                  Voir le plan d’accès et de stationnement →
+                                </a>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -3322,6 +3365,18 @@ export default function MaisonVerte() {
       {/* METEO + CARTE */}
 
       <section id="meteo" className="section">
+        <div style={{ textAlign: "center", marginBottom: "28px" }}>
+          <a
+            href="/livret/plan-acces.jpg"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="button"
+            style={{ textDecoration: "none" }}
+          >
+            Voir le plan d’accès et de stationnement
+          </a>
+        </div>
+
         <div
           style={{
             display: "grid",

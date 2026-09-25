@@ -163,8 +163,15 @@ async function sendArrivalReminderEmail(booking) {
         <strong>Wi-Fi :</strong> mot de passe <strong>lamaisonverte65</strong>
       </p>
 
+      <p style="margin:24px 0;">
+        <img
+          src="${SITE_URL}/livret/procedure-boite-a-cles.png"
+          alt="Procédure illustrée d’ouverture et de fermeture de la boîte à clés Master Lock 5423EURD"
+          style="display:block;width:100%;max-width:720px;height:auto;margin:0 auto;border:0;"
+        />
+      </p>
+
       <p style="margin-top:20px;">
-        <a href="${SITE_URL}/boite-a-cles" style="color:#14532d;font-weight:bold;">Voir la procédure de la boîte à clés</a><br />
         <a href="${SITE_URL}/livret" style="color:#14532d;font-weight:bold;">Consulter le livret d’accueil</a>
       </p>
 

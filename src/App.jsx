@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import Admin from "./pages/Admin";
 import GuideValleesAureLouron from "./pages/GuideValleesAureLouron";
 import LivretAccueil from "./pages/LivretAccueil";
-import BoiteACles from "./pages/BoiteACles";
 import ContactRedirect from "./pages/ContactRedirect";
 import AppelerRedirect from "./pages/AppelerRedirect";
 import MentionsLegales from "./pages/MentionsLegales";
@@ -361,9 +360,6 @@ export default function App() {
     return withAnalytics(<ArrivalTimePage />);
   }
 
-  if (path === "/boite-a-cles") {
-    return withAnalytics(<BoiteACles />);
-  }
   
   if (path === "/guide-vallees-aure-louron") {
     return withAnalytics(<GuideValleesAureLouron />);
