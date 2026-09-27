@@ -524,6 +524,7 @@ export default function LivretAccueil() {
             </p>
             <p> En période plus calme, nous pouvons être beaucoup plus flexibles. N’hésitez pas à nous faire part de vos besoins : une arrivée anticipée ou un départ plus tardif peuvent être possibles.
             </p>
+            <p>Vous trouverez les clés dans une boîte à clés dont le code vous sera envoyé par email 2 jours avant votre arrivée</p>
           </article>
 
           <article className="livret-info-card">

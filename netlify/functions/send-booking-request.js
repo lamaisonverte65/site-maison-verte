@@ -2,6 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import { createHmac } from "node:crypto";
 import { buildPublicBookingEmails, validatePublicBookingPayload } from "./_lib/public-booking.js";
 import { createSupabaseAtomicBookingRepository, DATE_CONFLICT_MESSAGE, runAtomicPublicBookingWorkflow } from "./_lib/public-booking-request.js";
+import { calculatePublicBookingQuote, quoteToBookingMoney } from "./_lib/booking-quote.js";
+import { centsToEuros } from "./_lib/tourist-tax.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const json = (statusCode, body) => new Response(JSON.stringify(body), {
@@ -72,6 +74,22 @@ export default async function handler(request, context) {
     const cleaningFee = Number(pricingSettings?.cleaning_fee ?? 50);
     const validated = validatePublicBookingPayload(input, { cleaningFee });
     if (!validated.ok) return json(validated.statusCode, { error: validated.error });
+
+    const quote = await calculatePublicBookingQuote(supabase, {
+      startDate: validated.booking.start_date,
+      endDate: validated.booking.end_date,
+      adultsCount: validated.booking.adults_count,
+      childrenCount: validated.booking.children_count,
+      cleaningOption: validated.booking.cleaning_option,
+      promotionCode: input.promotionCode,
+    });
+    Object.assign(validated.booking, quoteToBookingMoney(quote));
+    validated.emailModel.accommodationGross = Number(validated.booking.accommodation_gross);
+    validated.emailModel.promotionCode = validated.booking.promotion_code || null;
+    validated.emailModel.promotionDiscountAmount = Number(validated.booking.promotion_discount_amount || 0);
+    validated.emailModel.accommodationTotal = centsToEuros(quote.accommodationNetCents);
+    validated.emailModel.touristTaxAmount = Number(validated.booking.tourist_tax_amount || 0);
+    validated.emailModel.total = centsToEuros(quote.totalCents);
 
     const ownerEmail = String(process.env.BOOKING_NOTIFICATION_EMAIL || "lamaisonverte65@gmail.com").trim().toLowerCase();
     const result = await runAtomicPublicBookingWorkflow({

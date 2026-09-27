@@ -91,82 +91,43 @@ async function sendReviewRequestEmail(booking) {
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color:#1f2933;">
       <h2>Merci pour votre séjour à La Maison Verte</h2>
-
       <p>Bonjour ${booking.guest_first_name || ""},</p>
+      <p>Nous espérons que votre séjour à <strong>La Maison Verte à Arreau</strong> s’est bien passé et que vous avez pleinement profité des Pyrénées.</p>
 
-      <p>
-        Nous espérons que vous avez passé un excellent séjour à
-        <strong>La Maison Verte à Arreau</strong>.
-      </p>
+      <h3>Votre retour nous intéresse</h3>
+      <p>S’il vous a manqué quelque chose, si un équipement pourrait être amélioré ou si vous avez une suggestion, <strong>répondez simplement à cet email</strong>. Vos remarques nous aident directement à améliorer la maison.</p>
 
-      <p>
-        <strong>Séjour :</strong> ${formatDate(booking.start_date)} → ${formatDate(booking.end_date)}
-      </p>
+      <h3>Partagez votre expérience</h3>
+      <p>Si vous le souhaitez, vous pouvez aussi partager votre expérience pour aider les futurs voyageurs.</p>
+      <p><a href="${reviewUrl}" style="background:#1f6f3d;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;margin-right:10px;margin-bottom:10px;">Laisser un avis sur La Maison Verte</a></p>
+      <p><a href="${GOOGLE_REVIEW_URL}" style="background:#ffffff;color:#1f6f3d;border:1px solid #1f6f3d;padding:12px 20px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;margin-bottom:10px;">Donner aussi un avis Google</a></p>
 
-      <p>
-        Votre commentaire est précieux : il aide les futurs voyageurs à préparer leur séjour
-        et contribue au développement de La Maison Verte.
-      </p>
+      <h3>10 % pour votre prochain séjour</h3>
+      <p>Pour une prochaine réservation effectuée directement sur notre site, vous bénéficiez de <strong>10 % de réduction sur l’hébergement</strong> avec le code :</p>
+      <p style="font-size:22px;font-weight:bold;letter-spacing:1px;">CLIENTFIDELE</p>
+      <p>Ce code n’a pas de date d’expiration. La réduction concerne l’hébergement uniquement, hors forfait ménage et taxe de séjour.</p>
 
-      <p>
-        Vous pouvez laisser un avis directement sur notre site en cliquant sur le bouton ci-dessous.
-        L'avis ne sera publié qu'après validation.
-      </p>
-
-      <p style="margin-top:30px;">
-        <a href="${reviewUrl}" style="background:#1f6f3d;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;margin-right:10px;margin-bottom:10px;">
-          Laisser un avis sur La Maison Verte
-        </a>
-      </p>
-
-      <p>
-        Si vous disposez d'un compte Google, vous pouvez aussi partager votre expérience
-        sur notre fiche Google. Cela nous aide énormément à faire connaître La Maison Verte
-        auprès des futurs voyageurs.
-      </p>
-
-      <p>
-        <a href="${GOOGLE_REVIEW_URL}" style="background:#ffffff;color:#1f6f3d;border:1px solid #1f6f3d;padding:12px 20px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;margin-bottom:10px;">
-          Donner aussi un avis Google
-        </a>
-      </p>
-
-      <p>
-        Les anciens voyageurs restent nos meilleurs ambassadeurs. Lors d'un futur séjour,
-        n'hésitez pas à nous rappeler que vous avez déjà séjourné à La Maison Verte.
-        Les clients fidèles bénéficient régulièrement d'attentions particulières et
-        d'avantages lors de leurs réservations en direct.
-      </p>
-
-      <p>
-        Merci encore pour votre confiance et à bientôt dans les Pyrénées.
-      </p>
-
-      <p style="margin-top:26px;">
-        Raphaël<br />
-        La Maison Verte – Arreau
-      </p>
+      <p>Merci encore pour votre confiance et au plaisir de vous accueillir de nouveau.</p>
+      <p style="margin-top:26px;">Raphaël &amp; Emmanuelle<br /><a href="tel:+33795938315">07 95 93 83 15</a><br />La Maison Verte — Arreau</p>
     </div>
   `;
 
   const text = `Bonjour ${booking.guest_first_name || ""},
 
-Nous espérons que vous avez passé un excellent séjour à La Maison Verte à Arreau.
+Nous espérons que votre séjour à La Maison Verte à Arreau s’est bien passé.
 
-Séjour : ${formatDate(booking.start_date)} → ${formatDate(booking.end_date)}
+Votre retour nous intéresse : s’il vous a manqué quelque chose, si un équipement pourrait être amélioré ou si vous avez une suggestion, répondez simplement à cet email.
 
-Votre commentaire est précieux : il aide les futurs voyageurs à préparer leur séjour et contribue au développement de La Maison Verte.
+Avis La Maison Verte : ${reviewUrl}
+Avis Google : ${GOOGLE_REVIEW_URL}
 
-Vous pouvez laisser un avis directement sur notre site ici :
-${reviewUrl}
+Pour une prochaine réservation directe sur notre site, le code CLIENTFIDELE vous donne 10 % de réduction sur l’hébergement, sans date d’expiration. La réduction ne s’applique ni au forfait ménage ni à la taxe de séjour.
 
-Si vous disposez d'un compte Google, vous pouvez aussi partager votre expérience sur notre fiche Google :
-${GOOGLE_REVIEW_URL}
+Merci encore pour votre confiance et au plaisir de vous accueillir de nouveau.
 
-Merci encore pour votre confiance et à bientôt dans les Pyrénées.
-
-Raphaël
-La Maison Verte – Arreau`;
+Raphaël & Emmanuelle
+07 95 93 83 15
+La Maison Verte — Arreau`;
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",

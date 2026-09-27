@@ -24,8 +24,12 @@ export default function MaisonVerte() {
   const [childrenAges, setChildrenAges] = useState("");
   const [babyBedNeeded, setBabyBedNeeded] = useState(false);
   const [cleaningOption, setCleaningOption] = useState(true);
+  const [payFullNow, setPayFullNow] = useState(false);
   const [cleaningObligationsAccepted, setCleaningObligationsAccepted] = useState(false);
   const [cleaningFee, setCleaningFee] = useState(null);
+  const [promotionCode, setPromotionCode] = useState("");
+  const [bookingQuote, setBookingQuote] = useState(null);
+  const [bookingQuoteLoading, setBookingQuoteLoading] = useState(false);
   const [guestMessage, setGuestMessage] = useState("");
   const [bookingWebsite, setBookingWebsite] = useState("");
   const [contractAccepted, setContractAccepted] = useState(false);
@@ -43,6 +47,7 @@ export default function MaisonVerte() {
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [bookingSubmitting, setBookingSubmitting] = useState(false);
+  const [bookingConfirmation, setBookingConfirmation] = useState(null);
   const bookingSubmitLockRef = useRef(false);
   const [bookingValidationErrors, setBookingValidationErrors] = useState([]);
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
@@ -317,6 +322,45 @@ export default function MaisonVerte() {
   }, []);
 
   useEffect(() => {
+    if (selectedDates.length !== 2 || cleaningFee === null || Number(guestAdults || 0) < 1 || Number(guestAdults || 0) + Number(guestChildren || 0) > 4) {
+      setBookingQuote(null);
+      return undefined;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setBookingQuoteLoading(true);
+      try {
+        const response = await fetch("/.netlify/functions/booking-quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            startDate: selectedDates[0],
+            endDate: selectedDates[1],
+            adultsCount: Number(guestAdults || 0),
+            childrenCount: Number(guestChildren || 0),
+            cleaningOption,
+            promotionCode: promotionCode.trim(),
+          }),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Calcul du séjour indisponible.");
+        setBookingQuote(await response.json());
+      } catch (error) {
+        if (error?.name !== "AbortError") {
+          console.error("Erreur calcul séjour :", error);
+          setBookingQuote(null);
+        }
+      } finally {
+        if (!controller.signal.aborted) setBookingQuoteLoading(false);
+      }
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [selectedDates, guestAdults, guestChildren, cleaningOption, cleaningFee, promotionCode]);
+
+  useEffect(() => {
     async function fetchPublishedReviews() {
       const { data, error } = await supabase
         .from("guest_reviews")
@@ -561,9 +605,23 @@ export default function MaisonVerte() {
     isFormValid &&
     contractAccepted &&
     cleaningFee !== null &&
+    bookingQuote !== null &&
+    !bookingQuoteLoading &&
     (cleaningOption || cleaningObligationsAccepted);
 
-  const total = accommodationTotal + (cleaningOption ? Number(cleaningFee || 0) : 0);
+  const displayedAccommodationTotal = bookingQuote?.accommodationGross ?? accommodationTotal;
+  const touristTaxAmount = bookingQuote?.touristTax ?? 0;
+  const total = bookingQuote?.total ?? (accommodationTotal + (cleaningOption ? Number(cleaningFee || 0) : 0));
+  const depositBase = bookingQuote
+    ? Number(bookingQuote.accommodationNet || 0) + Number(bookingQuote.cleaningApplied || 0)
+    : accommodationTotal + (cleaningOption ? Number(cleaningFee || 0) : 0);
+  const depositAmount = Math.round(depositBase * 30) / 100;
+  const balanceAmount = Math.round((total - depositAmount) * 100) / 100;
+  const daysBeforeArrival = selectedDates.length === 2
+    ? Math.ceil((parseLocalDate(selectedDates[0]) - parseLocalDate(formatLocalDate(new Date()))) / 86400000)
+    : null;
+  const canChooseFullPayment = daysBeforeArrival !== null && daysBeforeArrival > 30;
+  const daysUntilBalanceRequest = canChooseFullPayment ? daysBeforeArrival - 30 : null;
 
   function previousMonth() {
     setCurrentMonth(new Date(year, month - 1, 1));
@@ -667,11 +725,13 @@ export default function MaisonVerte() {
         babyBedNeeded,
         cleaningOption,
         cleaningObligationsAccepted,
+        paymentPreference: canChooseFullPayment && payFullNow ? "full" : "deposit",
         guestMessage,
         startDate: selectedDates[0],
         endDate: selectedDates[1],
         nights: numberOfNights,
         accommodationTotal,
+        promotionCode: promotionCode.trim(),
         marketingConsent,
         contractAccepted,
         website: bookingWebsite,
@@ -688,12 +748,14 @@ export default function MaisonVerte() {
         return;
       }
 
-      alert(outcome.confirmationPending
-        ? "Votre demande a bien été enregistrée. L’email de confirmation n’a pas pu être confirmé immédiatement ; ne renvoyez pas le formulaire et contactez-nous si vous ne recevez rien."
-        : "Votre demande de réservation a bien été envoyée. Un email de confirmation vient de vous être adressé. Pensez à vérifier vos courriers indésirables / spams si vous ne le recevez pas rapidement. Le calendrier va maintenant se mettre à jour.");
+      setBookingConfirmation({
+        confirmationPending: Boolean(outcome.confirmationPending),
+      });
 
       setGuestFirstName("");
       setGuestLastName("");
+      setPromotionCode("");
+      setBookingQuote(null);
 
       setGuestEmail("");
       setGuestPhone("");
@@ -701,6 +763,7 @@ export default function MaisonVerte() {
       setGuestChildren("0");
       setChildrenAges("");
       setBabyBedNeeded(false);
+      setPayFullNow(false);
       setMarketingConsent(false);
       setGuestMessage("");
       setBookingWebsite("");
@@ -709,7 +772,6 @@ export default function MaisonVerte() {
       setContractAccepted(false);
       setBookingValidationErrors([]);
 
-      window.location.reload();
     } catch (err) {
       console.error(err);
       setBookingValidationErrors(["Une erreur inattendue est survenue. Vos informations sont conservées ; réessayez."]);
@@ -996,6 +1058,74 @@ export default function MaisonVerte() {
     }
   }
 `}</style>
+
+      {bookingConfirmation && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="booking-confirmation-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 3000,
+            background: "rgba(20, 30, 22, 0.62)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+          }}
+        >
+          <div
+            style={{
+              width: "min(560px, 100%)",
+              background: "white",
+              borderRadius: "28px",
+              padding: "30px",
+              boxShadow: "0 24px 70px rgba(0,0,0,0.24)",
+              textAlign: "center",
+            }}
+          >
+            <h2 id="booking-confirmation-title" style={{ marginTop: 0, color: "#1f6f3d" }}>
+              Votre demande a bien été envoyée
+            </h2>
+
+            {bookingConfirmation.confirmationPending ? (
+              <p style={{ lineHeight: "1.7", color: "#444" }}>
+                Votre demande a bien été enregistrée. L’envoi de l’email de
+                confirmation n’a pas pu être confirmé immédiatement. Ne renvoyez
+                pas le formulaire et contactez-nous si vous ne recevez rien.
+              </p>
+            ) : (
+              <>
+                <p style={{ lineHeight: "1.7", color: "#444" }}>
+                  Vous allez recevoir un email de confirmation dans quelques instants.
+                </p>
+                <p style={{ lineHeight: "1.7", color: "#444" }}>
+                  <strong>Pensez à vérifier vos courriers indésirables (spams)</strong>{" "}
+                  et, si possible, à enregistrer notre adresse email dans vos contacts.
+                </p>
+                <p style={{ lineHeight: "1.7", color: "#444" }}>
+                  Si votre demande est acceptée, le lien permettant de confirmer
+                  votre réservation par paiement sera également envoyé par email
+                  et restera valable <strong>24 h</strong>.
+                </p>
+              </>
+            )}
+
+            <button
+              type="button"
+              className="button"
+              onClick={() => {
+                setBookingConfirmation(null);
+                window.location.reload();
+              }}
+              style={{ marginTop: "10px", border: "none", cursor: "pointer", fontSize: "1rem" }}
+            >
+              J’ai compris
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* MENU */}
 
@@ -1623,31 +1753,37 @@ export default function MaisonVerte() {
                   ? `${getPublishedReviewAverage()}/5`
                   : "Vos avis"}
               </div>
-              <p style={{ color: "#555", lineHeight: "1.7" }}>
-                {publishedReviews.length > 0
-                  ? `Basé sur ${publishedReviews.length} avis publiés sur le site.`
-                  : "Les premiers avis directs seront bientôt affichés ici."}
-              </p>
-              <button
-                type="button"
-                onClick={() => setShowReviewForm(true)}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  color: "#1f6f3d",
-                  fontWeight: "700",
-                  textDecoration: "none",
-                  cursor: "pointer",
-                  padding: 0,
-                  fontSize: "1rem",
-                }}
-              >
-                Laisser un avis →
-              </button>
+              {publishedReviews.length > 0 && (
+                <p style={{ color: "#555", lineHeight: "1.7" }}>
+                  Basé sur {publishedReviews.length} avis publiés sur le site.
+                </p>
+              )}
             </div>
 
             <div style={{ display: "grid", gap: "14px" }}>
-              {publishedReviews.length === 0 ? null : (
+              {publishedReviews.length === 0 ? (
+                <div>
+                  <p style={{ color: "#555", lineHeight: "1.7", marginTop: 0 }}>
+                    Les premiers avis directs seront bientôt affichés ici.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowReviewForm(true)}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      color: "#1f6f3d",
+                      fontWeight: "700",
+                      textDecoration: "none",
+                      cursor: "pointer",
+                      padding: 0,
+                      fontSize: "1rem",
+                    }}
+                  >
+                    Laisser un avis →
+                  </button>
+                </div>
+              ) : (
                 publishedReviews.slice(0, 3).map((review) => (
                   <div
                     key={review.id}
@@ -2660,6 +2796,45 @@ export default function MaisonVerte() {
                   </span>
                 </label>
 
+                {selectedDates.length === 2 && (
+                  <div
+                    style={{
+                      marginTop: "18px",
+                      padding: "16px",
+                      border: "1px solid #d1d5db",
+                      borderRadius: "14px",
+                      background: "#f8fafc",
+                      color: "#334155",
+                      lineHeight: "1.55",
+                    }}
+                  >
+                    <p style={{ margin: "0 0 10px" }}>
+                      <strong>Paiement de la réservation</strong>
+                    </p>
+                    {canChooseFullPayment ? (
+                      <>
+                        <p style={{ margin: "0 0 12px" }}>
+                          Par défaut, un acompte de 30 % sera demandé après acceptation de votre réservation.
+                          Le solde sera demandé 30 jours avant votre arrivée, soit dans {daysUntilBalanceRequest} jour{daysUntilBalanceRequest > 1 ? "s" : ""}.
+                        </p>
+                        <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", fontWeight: 600 }}>
+                          <input
+                            type="checkbox"
+                            checked={payFullNow}
+                            onChange={(event) => setPayFullNow(event.target.checked)}
+                            style={{ marginTop: "4px" }}
+                          />
+                          <span>Je préfère régler la totalité du séjour en une seule fois.</span>
+                        </label>
+                      </>
+                    ) : (
+                      <p style={{ margin: 0 }}>
+                        Votre arrivée étant prévue dans 30 jours ou moins, le règlement intégral du séjour sera demandé après acceptation de votre réservation.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {!cleaningOption && cleaningFee !== null && (
                   <div
                     style={{
@@ -2913,6 +3088,29 @@ export default function MaisonVerte() {
                 </div>
               )}
 
+              <div style={{ marginTop: "18px", marginBottom: "18px" }}>
+                <label htmlFor="promotion-code" style={{ display: "block", fontWeight: "700", marginBottom: "6px" }}>
+                  Code fidélité
+                </label>
+                <input
+                  id="promotion-code"
+                  type="text"
+                  value={promotionCode}
+                  onChange={(event) => setPromotionCode(event.target.value.toUpperCase())}
+                  placeholder="VOTRE CODE ICI"
+                  maxLength={40}
+                  autoComplete="off"
+                  style={{ width: "100%", boxSizing: "border-box" }}
+                />
+                {promotionCode.trim() && bookingQuote && (
+                  <div style={{ marginTop: "6px", color: bookingQuote.promotionCode ? "#1f6f3d" : "#7a3f12" }}>
+                    {bookingQuote.promotionCode
+                      ? `Code ${bookingQuote.promotionCode} appliqué : -${bookingQuote.promotionDiscount} € sur l’hébergement.`
+                      : "Ce code n’est pas applicable à cette demande."}
+                  </div>
+                )}
+              </div>
+
               <button
                 className="button"
                 disabled={bookingSubmitting}
@@ -2944,11 +3142,25 @@ export default function MaisonVerte() {
                   <span>Séjour x {numberOfNights} nuits</span>
 
                   <span>
-                    {pricingLoaded && accommodationTotal > 0
-                      ? `${accommodationTotal}€`
+                    {pricingLoaded && displayedAccommodationTotal > 0
+                      ? `${displayedAccommodationTotal}€`
                       : "..."}
                   </span>
                 </div>
+
+                {bookingQuote?.promotionCode && bookingQuote.promotionDiscount > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px", color: "#1f6f3d" }}>
+                    <span>Remise {bookingQuote.promotionCode}</span>
+                    <span>-{bookingQuote.promotionDiscount}€</span>
+                  </div>
+                )}
+
+                {bookingQuote && (
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
+                    <span>Taxe de séjour</span>
+                    <span>{touristTaxAmount}€</span>
+                  </div>
+                )}
 
                 {cleaningOption && (
                   <div
@@ -2977,12 +3189,39 @@ export default function MaisonVerte() {
                     fontSize: "1.2rem",
                   }}
                 >
-                  <span>Total estimatif</span>
+                  <span>{canChooseFullPayment && !payFullNow ? "Total" : "Total à régler"}</span>
 
                   <span>
                     {pricingLoaded && total > 0 ? `${total}€` : "..."}
                   </span>
                 </div>
+
+                {canChooseFullPayment && !payFullNow && pricingLoaded && total > 0 && (
+                  <div style={{ marginTop: "14px" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        marginBottom: "8px",
+                        fontWeight: "700",
+                        color: "#1f6f3d",
+                      }}
+                    >
+                      <span>Acompte à régler (30 %)</span>
+                      <span>{depositAmount}€</span>
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        color: "#555",
+                      }}
+                    >
+                      <span>Solde à régler à J-30</span>
+                      <span>{balanceAmount}€</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

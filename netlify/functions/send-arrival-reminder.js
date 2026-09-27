@@ -133,74 +133,39 @@ async function sendArrivalReminderEmail(booking) {
   const arrivalUrl = `${SITE_URL}/arrival?booking=${encodeURIComponent(booking.id)}&token=${encodeURIComponent(capability.token)}`;
 
   const html = `
-    <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-      <h2>Votre séjour approche 🌿</h2>
-
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color:#1f2933;">
+      <h2>Votre arrivée à La Maison Verte</h2>
       <p>Bonjour ${escapeHtml(booking.guest_first_name)} ${escapeHtml(booking.guest_last_name)},</p>
+      <p>Votre séjour approche. Voici toutes les informations utiles pour votre arrivée.</p>
 
-      <p>
-        Votre séjour à <strong>La Maison Verte à Arreau</strong> approche.
-        Vous pouvez consulter ou modifier votre heure d’arrivée estimée à tout moment jusqu’à votre séjour.
-      </p>
+      <h3>Adresse</h3>
+      <p><strong>La Maison Verte — 3 Impasse Trassens, 65240 Arreau</strong></p>
 
-      <p>
-        <strong>Arrivée :</strong> ${formatDate(booking.start_date)}<br />
-        <strong>Départ :</strong> ${formatDate(booking.end_date)}
-      </p>
+      <h3>Récupération des clés</h3>
+      <p>À votre arrivée, récupérez les clés dans la boîte à clés à l'aide du code ci-dessous.</p>
+      <p><strong>Code de la boîte à clés :</strong> ${keyboxCode ? escapeHtml(keyboxCode) : "momentanément indisponible — contactez-nous avant votre arrivée."}</p>
+      <p style="margin:24px 0;"><img src="${SITE_URL}/livret/procedure-boite-a-cles.png" alt="Procédure illustrée de la boîte à clés" style="display:block;width:100%;max-width:720px;height:auto;margin:0 auto;border:0;" /></p>
 
-      <p>
-        <strong>Heure d’arrivée habituelle :</strong> à partir de 16 h.<br />
-        <strong>Heure de départ :</strong> avant 10 h.
-      </p>
+      <h3>Accès et stationnement</h3>
+      <p>La maison se trouve dans une impasse piétonne. Vous pouvez consulter le plan d'accès et de stationnement avant votre arrivée :</p>
+      <p><a href="${SITE_URL}/livret/plan-acces.jpg" style="color:#14532d;font-weight:bold;">Voir le plan d'accès et de stationnement</a></p>
 
-      <p>
-        Ces horaires peuvent éventuellement être adaptés en fonction des départs et arrivées précédant ou suivant votre séjour.
-        N’hésitez pas à nous contacter si vous souhaitez effectuer une demande particulière.
-      </p>
+      <h3>Votre heure d'arrivée</h3>
+      ${booking.arrival_time ? `<p><strong>Heure actuellement indiquée :</strong> ${escapeHtml(booking.arrival_time)}</p>` : "<p>Vous pouvez nous indiquer votre heure d'arrivée estimée.</p>"}
+      <p><a href="${arrivalUrl}" style="background:#16a34a;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;">${booking.arrival_time ? "Consulter ou modifier mon heure d’arrivée" : "Indiquer mon heure d’arrivée"}</a></p>
 
-      <p>
-        <strong>Boîte à clés :</strong> ${keyboxCode ? `code ${escapeHtml(keyboxCode)}` : "code momentanément indisponible — contactez-nous avant votre arrivée."}<br />
-        <strong>Wi-Fi :</strong> mot de passe <strong>lamaisonverte65</strong>
-      </p>
+      <h3>Horaires</h3>
+      <p><strong>Arrivée :</strong> à partir de 16 h.<br /><strong>Départ :</strong> avant 10 h.</p>
+      <p>Ces horaires peuvent éventuellement être adaptés selon les départs et arrivées précédant ou suivant votre séjour. N’hésitez pas à nous contacter pour une demande particulière.</p>
 
-      <p style="margin:24px 0;">
-        <img
-          src="${SITE_URL}/livret/procedure-boite-a-cles.png"
-          alt="Procédure illustrée d’ouverture et de fermeture de la boîte à clés Master Lock 5423EURD"
-          style="display:block;width:100%;max-width:720px;height:auto;margin:0 auto;border:0;"
-        />
-      </p>
+      <h3>Wi-Fi</h3>
+      <p><strong>Réseau :</strong> La Maison Verte<br /><strong>Mot de passe :</strong> lamaisonverte65</p>
 
-      <p style="margin-top:20px;">
-        <a href="${SITE_URL}/livret" style="color:#14532d;font-weight:bold;">Consulter le livret d’accueil</a>
-      </p>
+      <h3>Livret d'accueil</h3>
+      <p><a href="${SITE_URL}/livret" style="color:#14532d;font-weight:bold;">Consulter le livret d’accueil</a></p>
 
-      <p style="margin-top:30px;">
-        <a
-          href="${arrivalUrl}"
-          style="
-            background:#16a34a;
-            color:white;
-            padding:14px 22px;
-            border-radius:12px;
-            text-decoration:none;
-            font-weight:bold;
-            display:inline-block;
-          "
-        >
-          ${booking.arrival_time ? "Consulter ou modifier mon heure d’arrivée" : "Indiquer mon heure d’arrivée"}
-        </a>
-      </p>
-
-      ${booking.arrival_time ? `<p><strong>Heure d’arrivée actuellement indiquée :</strong> ${escapeHtml(booking.arrival_time)}</p>` : ""}
-      <p>
-        Vous pouvez aussi répondre directement à cet email si vous préférez.
-      </p>
-
-      <p style="margin-top:30px;font-size:13px;color:#666;">
-        Pensez à vérifier vos courriers indésirables / spams si vous ne recevez pas nos prochains messages,
-        puis ajoutez contact@lamaisonverte65.fr à vos contacts.
-      </p>
+      <p style="margin-top:28px;">Une question avant votre arrivée ? Vous pouvez répondre directement à cet email ou nous appeler au <a href="tel:+33795938315">07 95 93 83 15</a>.</p>
+      <p style="margin-top:26px;">Raphaël &amp; Emmanuelle<br /><a href="tel:+33795938315">07 95 93 83 15</a><br />La Maison Verte — Arreau</p>
     </div>
   `;
 

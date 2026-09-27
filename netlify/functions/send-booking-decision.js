@@ -53,14 +53,15 @@ function getPaymentContext({ paymentType, paymentAmount, displayedPrice, daysBef
       amountToPay: amount || depositAmount || total,
       explanation: `
         <p>
-          La réservation sera confirmée après validation finale et paiement de l’acompte.
+          Pour confirmer définitivement votre réservation, il vous reste simplement à régler l’acompte
+          en cliquant sur le bouton ci-dessous.
         </p>
       `,
       cancellationNote: "",
     };
   }
 
-  if (!Number.isNaN(days) && days <= 7) {
+  if (!Number.isNaN(days) && days > 30) {
     return {
       title: "Paiement du séjour",
       buttonLabel: "Payer le séjour",
@@ -68,12 +69,8 @@ function getPaymentContext({ paymentType, paymentAmount, displayedPrice, daysBef
       amountToPay: amount || total,
       explanation: `
         <p>
-          La date d’arrivée étant proche, le montant total du séjour est demandé pour confirmer la réservation.
-        </p>
-
-        <p>
-          Conformément aux conditions de location, pour une réservation effectuée à moins de 7 jours de l’arrivée,
-          les sommes versées ne pourront pas être remboursées en cas d’annulation par le locataire.
+          Vous avez choisi de régler la totalité du séjour en une seule fois.
+          Ce paiement confirmera définitivement votre réservation.
         </p>
       `,
       cancellationNote: "",
@@ -91,9 +88,9 @@ function getPaymentContext({ paymentType, paymentAmount, displayedPrice, daysBef
       </p>
 
       <p>
-        En cas d’annulation entre 30 jours et 7 jours avant l’arrivée,
-        l’équivalent de l’acompte reste acquis, mais le solde versé pourra être remboursé
-        selon les conditions de location.
+        En cas d’annulation à partir de 30 jours avant l’arrivée,
+        l’acompte reste acquis et tout solde déjà versé est remboursé,
+        selon les conditions de location. La taxe de séjour est remboursée si le séjour n’a pas lieu.
       </p>
     `,
     cancellationNote: "",
@@ -172,50 +169,28 @@ export async function handler(event) {
     });
 
     if (type === "accepted") {
-      subject = "Votre demande est acceptée - La Maison Verte";
-      title = "Votre demande est acceptée ✅";
+      subject = "Votre demande est acceptée — La Maison Verte";
+      title = "Votre demande est acceptée";
 
       content = `
-        <p>Bonjour ${guestFirstName || ""} ${guestLastName || ""},</p>
+        <p>Bonjour ${guestFirstName || ""},</p>
 
         <p>
-          Nous avons le plaisir de vous informer que votre demande de réservation
-          pour <strong>La Maison Verte à Arreau</strong> a été acceptée.
+          Bonne nouvelle, nous pouvons vous accueillir à <strong>La Maison Verte à Arreau</strong>
+          aux dates demandées.
         </p>
 
         <p>
-          <strong>Arrivée :</strong> ${startDate}<br />
-          <strong>Départ :</strong> ${endDate}<br />
-          <strong>Nombre de nuits :</strong> ${nights}<br />
-          <strong>Voyageurs :</strong> ${travelersSummary}<br />
-          <strong>Tarif du séjour :</strong> ${formatMoney(displayedPrice)}<br />
-          <strong>${paymentContext.amountLabel} :</strong> ${formatMoney(paymentContext.amountToPay)}
+          <strong>Récapitulatif de votre séjour</strong><br />
+          Arrivée : ${startDate}<br />
+          Départ : ${endDate}<br />
+          Nombre de nuits : ${nights}<br />
+          Voyageurs : ${travelersSummary}<br />
+          Tarif du séjour : ${formatMoney(displayedPrice)}<br />
+          <strong>${paymentContext.amountLabel} : ${formatMoney(paymentContext.amountToPay)}</strong>
         </p>
-
-        ${
-          ownerMessage
-            ? `
-          <p>
-            <strong>Message :</strong><br />
-            ${safeOwnerMessage}
-          </p>
-        `
-            : ""
-        }
 
         ${paymentContext.explanation}
-
-        <p>
-          Vous disposez de <strong>24h</strong> pour procéder au paiement${
-            acceptanceDeadline
-              ? `, soit jusqu’au <strong>${acceptanceDeadline}</strong>`
-              : ""
-          }.
-        </p>
-
-        <p>
-          Passé ce délai, les dates pourront être remises à disposition.
-        </p>
 
         ${
           paymentLink
@@ -240,55 +215,86 @@ export async function handler(event) {
             : ""
         }
 
-        <p style="margin-top:24px;">
-          <strong>Préparer votre séjour :</strong><br />
-          Vous pouvez consulter notre livret d’accueil en ligne :
-          <a
-            href="https://lamaisonverte65.fr/livret"
-            style="color:#166534;font-weight:bold;text-decoration:none;"
-          >
-            https://lamaisonverte65.fr/livret
-          </a>
-        </p>
-
-        <p style="margin-top:22px;color:#475569;">
-          Si vous ne souhaitez finalement pas confirmer cette réservation,
-          répondez simplement à cet email afin que nous puissions libérer les dates.
+        <p>
+          Ce lien est valable pendant <strong>24 h</strong>${
+            acceptanceDeadline
+              ? `, jusqu’au <strong>${acceptanceDeadline}</strong>`
+              : ""
+          }. Passé ce délai, en l’absence de paiement, les dates seront à nouveau disponibles.
         </p>
 
         <p>
-          Merci de nous communiquer votre heure d’arrivée estimée
-          afin d’organiser votre accueil dans les meilleures conditions 🙂
-        </p>
-      `;
-    }
-
-    if (type === "refused") {
-      subject = "Votre demande de réservation - La Maison Verte";
-      title = "Votre demande n’a pas pu être acceptée";
-
-      content = `
-        <p>Bonjour ${guestFirstName || ""} ${guestLastName || ""},</p>
-
-        <p>
-          Nous sommes désolés, mais votre demande de réservation
-          n’a malheureusement pas pu être acceptée.
+          Après votre paiement, vous recevrez un email confirmant définitivement votre réservation.
         </p>
 
         ${
-          ownerMessage
+          paymentType !== "full"
             ? `
           <p>
-            <strong>Message :</strong><br />
-            ${safeOwnerMessage}
+            Le solde vous sera automatiquement demandé <strong>30 jours avant votre arrivée</strong>.
           </p>
         `
             : ""
         }
 
         <p>
-          Nous espérons pouvoir vous accueillir une prochaine fois
-          dans les Pyrénées 🙂
+          Vous pouvez à tout moment consulter le
+          <a
+            href="https://lamaisonverte65.fr/documents/contrat-location.pdf"
+            style="color:#166534;font-weight:bold;text-decoration:none;"
+          >contrat de location</a>,
+          qui reprend les conditions de votre réservation.
+        </p>
+
+        ${
+          ownerMessage
+            ? `
+          <p>${safeOwnerMessage}</p>
+        `
+            : ""
+        }
+
+        <p>
+          Au plaisir de vous accueillir,
+        </p>
+
+        <p>
+          <strong>Raphaël &amp; Emmanuelle</strong><br />
+          <a href="tel:+33795938315" style="color:#166534;text-decoration:none;">07 95 93 83 15</a><br />
+          <strong>La Maison Verte — Arreau</strong>
+        </p>
+      `;
+    }
+
+    if (type === "refused") {
+      subject = "Votre demande de réservation — La Maison Verte";
+      title = "Votre demande n’a pas pu être acceptée";
+
+      content = `
+        <p>Bonjour ${guestFirstName || ""},</p>
+
+        <p>
+          Nous sommes désolés, mais nous ne pouvons malheureusement pas donner suite à votre demande
+          de réservation à <strong>La Maison Verte à Arreau</strong> pour le séjour
+          du <strong>${startDate}</strong> au <strong>${endDate}</strong>.
+        </p>
+
+        ${
+          ownerMessage
+            ? `
+          <p>${safeOwnerMessage}</p>
+        `
+            : ""
+        }
+
+        <p>
+          Nous espérons avoir l’occasion de vous accueillir une prochaine fois.
+        </p>
+
+        <p>
+          <strong>Raphaël &amp; Emmanuelle</strong><br />
+          <a href="tel:+33795938315" style="color:#166534;text-decoration:none;">07 95 93 83 15</a><br />
+          <strong>La Maison Verte — Arreau</strong>
         </p>
       `;
     }

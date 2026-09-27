@@ -116,6 +116,17 @@ export default function Admin() {
     if (session && adminUsersData.currentAdminUser) loadAdminData();
   }, [session, adminUsersData.currentAdminUser]);
 
+  useEffect(() => {
+    if (!bookingRequests.length || selectedRequest) return;
+    const params = new URLSearchParams(window.location.search);
+    const bookingId = params.get("booking");
+    if (!bookingId) return;
+    const booking = bookingRequests.find((item) => item.id === bookingId);
+    if (!booking) return;
+    setSelectedRequest(booking);
+    setActiveTab("reservations");
+  }, [bookingRequests, selectedRequest]);
+
   async function checkSession() {
     const { data: { session } } = await supabase.auth.getSession();
     setSession(session);
@@ -234,10 +245,13 @@ export default function Admin() {
     }
 
     const untilArrival = daysUntil(request.start_date);
-    const paymentMode = untilArrival !== null && untilArrival <= 30 ? "total" : "deposit";
+    const requestedFullPayment = request.payment_preference === "full";
+    const paymentMode = untilArrival !== null && (untilArrival <= 30 || requestedFullPayment) ? "total" : "deposit";
     const helper = paymentMode === "total"
-      ? "La réservation est à moins de 30 jours : le lien Stripe demandera le paiement total."
-      : "Un lien Stripe d’acompte de 30% sera créé et ajouté à l’email.";
+      ? untilArrival !== null && untilArrival <= 30
+        ? "La réservation est à 30 jours ou moins : le lien Stripe demandera le paiement total."
+        : "Le client a choisi le paiement intégral : le lien Stripe demandera la totalité du séjour."
+      : `Le client a choisi l’acompte de 30 %. Le solde sera demandé à J-30, soit dans ${Math.max((untilArrival ?? 30) - 30, 0)} jour${Math.max((untilArrival ?? 30) - 30, 0) > 1 ? "s" : ""}.`;
 
     setModal({
       type: "accept",

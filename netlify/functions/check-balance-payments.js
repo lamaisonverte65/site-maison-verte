@@ -1,7 +1,6 @@
 import { schedule } from "@netlify/functions";
-import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+import { createBalancePaymentUrl } from "./_lib/balance-link.js";
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -141,38 +140,6 @@ async function markFullyPaidIfNeeded(booking, total, totalPaid) {
   return true;
 }
 
-async function createSession(booking, amount) {
-  return await stripe.checkout.sessions.create({
-    payment_method_types: ["card"],
-    mode: "payment",
-    customer_email: booking.guest_email,
-    metadata: {
-      booking_id: booking.id,
-      payment_type: "balance",
-      balance_amount: String(amount),
-      guest_first_name: booking.guest_first_name || "",
-      guest_last_name: booking.guest_last_name || "",
-      start_date: booking.start_date || "",
-      end_date: booking.end_date || "",
-    },
-    line_items: [
-      {
-        price_data: {
-          currency: "eur",
-          product_data: {
-            name: "Solde séjour - La Maison Verte",
-            description: `${formatDate(booking.start_date)} → ${formatDate(booking.end_date)}`,
-          },
-          unit_amount: Math.round(Number(amount) * 100),
-        },
-        quantity: 1,
-      },
-    ],
-    success_url: "https://lamaisonverte65.fr/success?session_id={CHECKOUT_SESSION_ID}",
-    cancel_url: "https://lamaisonverte65.fr/cancel",
-  });
-}
-
 async function sendEmail(booking, paymentLink, amount, step) {
   const labels = {
     request: "Paiement du solde",
@@ -204,11 +171,8 @@ async function sendEmail(booking, paymentLink, amount, step) {
           Payer le solde
         </a>
       </p>
-      ${
-        step === "urgent"
-          ? "<p><strong>Sans règlement ou prise de contact, la réservation pourra être annulée selon les conditions de location.</strong></p>"
-          : ""
-      }
+      ${step === "reminder_2" ? "<p>Votre réservation reste bien enregistrée et les dates restent réservées. Le solde demeure à régler. Si vous rencontrez une difficulté, avez une question ou souhaitez modifier votre projet de séjour, contactez-nous.</p>" : ""}
+      ${step === "urgent" ? "<p>Votre réservation reste bien enregistrée et les dates restent réservées. Le solde demeure à régler. Il s’agit de notre dernière relance automatique ; si vous rencontrez une difficulté ou si votre projet a changé, contactez-nous.</p>" : ""}
       <p style="margin-top:30px;font-size:13px;color:#666;">
         Pensez à vérifier vos courriers indésirables / spams si vous ne recevez pas nos prochains messages,
         puis ajoutez contact@lamaisonverte65.fr à vos contacts.
@@ -240,6 +204,16 @@ async function sendEmail(booking, paymentLink, amount, step) {
   let responseData = null;
   try { responseData = await response.json(); } catch (_) {}
   await logEmail({ bookingId: booking.id, emailType: `balance:${step}`, toEmail: booking.guest_email, subject: `${labels[step]} - La Maison Verte`, status: "sent", providerId: responseData?.id || null });
+}
+
+async function sendOwnerJ17Alert(booking, balance) {
+  const ownerEmail = process.env.OWNER_EMAIL || "contact@lamaisonverte65.fr";
+  const name = `${booking.guest_first_name || ""} ${booking.guest_last_name || ""}`.trim();
+  const adminUrl = `${process.env.URL || "https://lamaisonverte65.fr"}/admin?booking=${encodeURIComponent(booking.id)}`;
+  const subject = `⚠️ Solde impayé — contacter ${name || "le client"} — arrivée le ${formatDate(booking.start_date)}`;
+  const html = `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>Solde impayé à J-17</h2><p>La relance automatique J-17 vient d’être envoyée au client.</p><p><strong>Client :</strong> ${name || "-"}<br><strong>Téléphone :</strong> <a href="tel:${booking.guest_phone || ""}">${booking.guest_phone || "-"}</a><br><strong>Email :</strong> <a href="mailto:${booking.guest_email || ""}">${booking.guest_email || "-"}</a></p><p><strong>Séjour :</strong> ${formatDate(booking.start_date)} → ${formatDate(booking.end_date)}<br><strong>Total du séjour :</strong> ${formatMoney(getTotalDue(booking))}<br><strong>Acompte reçu :</strong> ${formatMoney(booking.deposit_amount || 0)}<br><strong>Solde restant :</strong> ${formatMoney(balance)}</p><p><strong>Action :</strong> contacter le client par téléphone pour vérifier qu’il a reçu les demandes de paiement et confirmer que le séjour est maintenu.</p><p>La réservation reste active, les dates restent bloquées et le solde demeure dû.</p><p><a href="${adminUrl}" style="background:#166534;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Ouvrir la réservation dans l’admin</a></p></div>`;
+  const response = await fetch("https://api.resend.com/emails", { method:"POST", headers:{ Authorization:`Bearer ${process.env.RESEND_API_KEY}`, "Content-Type":"application/json" }, body:JSON.stringify({ from:"La Maison Verte <contact@lamaisonverte65.fr>", to:[ownerEmail], subject, html }) });
+  if (!response.ok) throw new Error(await response.text());
 }
 
 export const handler = schedule("0 8 * * *", async (event) => {
@@ -288,13 +262,20 @@ export const handler = schedule("0 8 * * *", async (event) => {
         continue;
       }
 
-      const session = await createSession(booking, balance);
-      await sendEmail(booking, session.url, balance, step);
+      const paymentLink = createBalancePaymentUrl(process.env.URL || "https://lamaisonverte65.fr", booking.id);
+      await sendEmail(booking, paymentLink, balance, step);
+      if (step === "reminder_2") {
+        try {
+          await sendOwnerJ17Alert(booking, balance);
+        } catch (ownerAlertError) {
+          console.error("Erreur email interne J-17:", ownerAlertError);
+        }
+      }
 
       const now = new Date().toISOString();
       const updatePayload = {
         balance_amount: balance,
-        balance_payment_link: session.url,
+        balance_payment_link: paymentLink,
         balance_status: step === "request" ? "à payer" : step,
         updated_at: now,
       };
@@ -316,7 +297,7 @@ export const handler = schedule("0 8 * * *", async (event) => {
         eventType: `balance_${step}`,
         label: `Solde : ${step}`,
         message: `Lien solde envoyé pour ${formatMoney(balance)}`,
-        metadata: { step, balance, days, sessionId: session.id },
+        metadata: { step, balance, days, durablePaymentLink: true },
       });
 
       processed.push({ bookingId: booking.id, step, balance, days });

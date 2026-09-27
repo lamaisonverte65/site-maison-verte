@@ -37,9 +37,11 @@ function paymentDetails(booking, now) {
     && booking.deposit_amount !== undefined
     && Number.isFinite(storedDeposit)
     && storedDeposit >= 0;
+  const daysBeforeArrival = daysUntil(booking.start_date, now);
+  const requestedFullPayment = booking.payment_preference === "full";
   const fullPayment = hasStoredPaymentTerms
     ? storedDeposit === 0 || booking.deposit_status === "non applicable"
-    : daysUntil(booking.start_date, now) <= 30;
+    : daysBeforeArrival <= 30 || requestedFullPayment;
   const deposit = hasStoredPaymentTerms && !fullPayment
     ? money(storedDeposit)
     : money(total * DEPOSIT_RATE);

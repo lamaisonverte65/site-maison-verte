@@ -1,9 +1,8 @@
-import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
+import { createBalancePaymentUrl } from "./_lib/balance-link.js";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 function formatDate(value) {
@@ -50,7 +49,8 @@ async function sendBalanceEmail(booking, paymentLink, amount, step = "request") 
         </a>
       </p>
 
-      ${step === "urgent" ? "<p><strong>Sans règlement ou prise de contact, la réservation pourra être annulée selon les conditions de location.</strong></p>" : ""}
+      ${step === "reminder_2" ? "<p>Votre réservation reste bien enregistrée et les dates restent réservées. Le solde demeure à régler. Si vous rencontrez une difficulté, avez une question ou souhaitez modifier votre projet de séjour, contactez-nous.</p>" : ""}
+      ${step === "urgent" ? "<p>Votre réservation reste bien enregistrée et les dates restent réservées. Le solde demeure à régler. Il s’agit de notre dernière relance automatique ; si vous rencontrez une difficulté ou si votre projet a changé, contactez-nous.</p>" : ""}
 
       <p style="margin-top:30px;font-size:13px;color:#666;">
         Pensez à vérifier vos courriers indésirables / spams si vous ne recevez pas nos prochains messages,
@@ -77,39 +77,6 @@ async function sendBalanceEmail(booking, paymentLink, amount, step = "request") 
   if (!response.ok) throw new Error(await response.text());
 }
 
-async function createBalanceSession(booking, amount) {
-  const session = await stripe.checkout.sessions.create({
-    payment_method_types: ["card"],
-    mode: "payment",
-    customer_email: booking.guest_email,
-    metadata: {
-      booking_id: booking.id,
-      payment_type: "balance",
-      balance_amount: String(amount),
-      guest_first_name: booking.guest_first_name || "",
-      guest_last_name: booking.guest_last_name || "",
-      start_date: booking.start_date || "",
-      end_date: booking.end_date || "",
-    },
-    line_items: [
-      {
-        price_data: {
-          currency: "eur",
-          product_data: {
-            name: "Solde séjour - La Maison Verte",
-            description: `${formatDate(booking.start_date)} → ${formatDate(booking.end_date)}`,
-          },
-          unit_amount: Math.round(Number(amount) * 100),
-        },
-        quantity: 1,
-      },
-    ],
-    success_url: "https://lamaisonverte65.fr/success?session_id={CHECKOUT_SESSION_ID}",
-    cancel_url: "https://lamaisonverte65.fr/cancel",
-  });
-
-  return session;
-}
 
 export async function handler(event) {
   if (event.httpMethod !== "POST") return { statusCode: 405, body: "Method Not Allowed" };
@@ -130,13 +97,13 @@ export async function handler(event) {
 
     if (!balance || balance <= 0) return { statusCode: 400, body: JSON.stringify({ error: "Aucun solde à payer" }) };
 
-    const session = await createBalanceSession(booking, balance);
-    await sendBalanceEmail(booking, session.url, balance, step);
+    const paymentLink = createBalancePaymentUrl(process.env.URL || "https://lamaisonverte65.fr", booking.id);
+    await sendBalanceEmail(booking, paymentLink, balance, step);
 
     const now = new Date().toISOString();
     const updatePayload = {
       balance_amount: balance,
-      balance_payment_link: session.url,
+      balance_payment_link: paymentLink,
       balance_status: step === "request" ? "à payer" : step,
       updated_at: now,
     };
@@ -149,7 +116,7 @@ export async function handler(event) {
     const { error: updateError } = await supabase.from("booking_requests").update(updatePayload).eq("id", booking.id);
     if (updateError) throw updateError;
 
-    return { statusCode: 200, body: JSON.stringify({ url: session.url, amount: balance, step }) };
+    return { statusCode: 200, body: JSON.stringify({ url: paymentLink, amount: balance, step }) };
   } catch (error) {
     console.error("Erreur create-balance-checkout-session:", error);
     return { statusCode: 500, body: JSON.stringify({ error: error.message }) };

@@ -4,7 +4,7 @@ import { escapeHtml } from "./html.js";
 const allowedFields = new Set([
   "guestFirstName", "guestLastName", "guestEmail", "guestPhone", "adultsCount", "childrenCount",
   "childrenAges", "babyBedNeeded", "marketingConsent", "guestMessage", "startDate", "endDate",
-  "nights", "accommodationTotal", "cleaningOption", "cleaningObligationsAccepted", "contractAccepted", "website",
+  "nights", "accommodationTotal", "promotionCode", "cleaningOption", "cleaningObligationsAccepted", "paymentPreference", "contractAccepted", "website",
 ]);
 const fail = (error) => ({ ok: false, statusCode: 400, error });
 const clean = (value) => String(value ?? "").trim();
@@ -64,9 +64,15 @@ export function createPublicBookingFingerprint(booking = {}) {
     String(booking.end_date || ""),
     Number(booking.nights),
     Number(booking.estimated_total),
+    Number(booking.accommodation_gross ?? 0),
+    String(booking.promotion_code || ""),
+    Number(booking.promotion_discount_amount ?? 0),
+    Number(booking.accommodation_net ?? 0),
+    Number(booking.tourist_tax_amount ?? 0),
     booking.cleaning_option === true,
     Number(booking.cleaning_fee || 0),
     String(booking.cleaning_obligations_version || ""),
+    String(booking.payment_preference || "deposit"),
     booking.contract_accepted === true,
     String(booking.contract_version || ""),
   ];
@@ -119,6 +125,7 @@ export function validatePublicBookingPayload(input = {}, { cleaningFee = 0 } = {
   const accommodationTotal = Number(input.accommodationTotal);
   if (!Number.isFinite(accommodationTotal) || accommodationTotal <= 0 || accommodationTotal > 100000) return fail("Total hébergement invalide.");
   if (typeof input.cleaningOption !== "boolean") return fail("Option ménage invalide.");
+  if (input.paymentPreference !== undefined && !new Set(["deposit", "full"]).has(input.paymentPreference)) return fail("Préférence de paiement invalide.");
 
   const authoritativeCleaningFee = Number(cleaningFee);
   if (!Number.isInteger(authoritativeCleaningFee) || authoritativeCleaningFee < 0 || authoritativeCleaningFee > 100000) {
@@ -130,6 +137,12 @@ export function validatePublicBookingPayload(input = {}, { cleaningFee = 0 } = {
   }
 
   const appliedCleaningFee = input.cleaningOption ? authoritativeCleaningFee : 0;
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const arrival = new Date(`${startDate}T00:00:00.000Z`);
+  const daysBeforeArrival = Math.ceil((arrival.getTime() - today.getTime()) / 86400000);
+  const requestedPaymentPreference = input.paymentPreference === "full" ? "full" : "deposit";
+  const paymentPreference = daysBeforeArrival <= 30 ? "full" : requestedPaymentPreference;
   const total = accommodationTotal + appliedCleaningFee;
   if (!Number.isFinite(total) || total <= 0 || total > 100000) return fail("Total estimatif invalide.");
   if (input.contractAccepted !== true) return fail("Le contrat doit être accepté.");
@@ -140,7 +153,7 @@ export function validatePublicBookingPayload(input = {}, { cleaningFee = 0 } = {
     firstName, lastName, email, phone, adults, children, childrenAges,
     babyBedNeeded: input.babyBedNeeded, message, startDate, endDate,
     nights: computedNights, accommodationTotal, cleaningOption: input.cleaningOption,
-    cleaningFee: authoritativeCleaningFee, total,
+    cleaningFee: authoritativeCleaningFee, total, paymentPreference,
   };
   return {
     ok: true,
@@ -152,6 +165,7 @@ export function validatePublicBookingPayload(input = {}, { cleaningFee = 0 } = {
       marketing_consent_at: input.marketingConsent ? acceptedAt : null,
       start_date: startDate, end_date: endDate, nights: computedNights, estimated_total: total,
       cleaning_option: input.cleaningOption, cleaning_fee: authoritativeCleaningFee,
+      payment_preference: paymentPreference,
       cleaning_obligations_accepted_at: input.cleaningOption ? null : acceptedAt,
       cleaning_obligations_version: input.cleaningOption ? null : CLEANING_OBLIGATIONS_VERSION,
       message: message || null, contract_accepted: true, contract_accepted_at: acceptedAt,
@@ -177,7 +191,11 @@ export function buildPublicBookingEmails(model, { ownerEmail }) {
   const cleaning = model.cleaningOption
     ? `Oui (${model.cleaningFee.toFixed(2)} €)`
     : "Non";
-  const summary = `<p><strong>Arrivée :</strong> ${escapeHtml(model.startDate)}<br /><strong>Départ :</strong> ${escapeHtml(model.endDate)}<br /><strong>Voyageurs :</strong> ${travelers}<br /><strong>Nombre de nuits :</strong> ${model.nights}<br /><strong>Hébergement :</strong> ${model.accommodationTotal.toFixed(2)} €<br /><strong>Forfait ménage :</strong> ${cleaning}<br /><strong>Total estimatif :</strong> ${model.total.toFixed(2)} €</p>`;
+  const paymentPreference = model.paymentPreference === "full" ? "Paiement intégral" : "Acompte de 30 % puis solde à J-30";
+  const promotionDetails = model.promotionCode && Number(model.promotionDiscountAmount || 0) > 0
+    ? `<strong>Hébergement :</strong> ${Number(model.accommodationGross).toFixed(2)} €<br /><strong>Remise ${escapeHtml(model.promotionCode)} :</strong> -${Number(model.promotionDiscountAmount).toFixed(2)} €<br /><strong>Hébergement après remise :</strong> ${model.accommodationTotal.toFixed(2)} €<br />`
+    : `<strong>Hébergement :</strong> ${model.accommodationTotal.toFixed(2)} €<br />`;
+  const summary = `<p><strong>Arrivée :</strong> ${escapeHtml(model.startDate)}<br /><strong>Départ :</strong> ${escapeHtml(model.endDate)}<br /><strong>Voyageurs :</strong> ${travelers}<br /><strong>Nombre de nuits :</strong> ${model.nights}<br />${promotionDetails}<strong>Forfait ménage :</strong> ${cleaning}<br /><strong>Taxe de séjour :</strong> ${Number(model.touristTaxAmount || 0).toFixed(2)} €<br /><strong>Total estimatif :</strong> ${model.total.toFixed(2)} €<br /><strong>Mode de paiement souhaité :</strong> ${paymentPreference}</p>`;
   return {
     owner: {
       to: ownerEmail,
@@ -186,8 +204,8 @@ export function buildPublicBookingEmails(model, { ownerEmail }) {
     },
     guest: {
       to: model.email,
-      subject: "Votre demande de réservation - La Maison Verte",
-      html: `<div style="font-family:Arial,sans-serif;line-height:1.7"><h2>Votre demande a bien été reçue</h2><p>Bonjour ${firstName} ${lastName},</p><p>Nous avons bien reçu votre demande de réservation pour La Maison Verte à Arreau.</p>${summary}<p>Votre demande va être étudiée rapidement avant validation définitive.</p></div>`,
+      subject: "Votre demande pour La Maison Verte à Arreau",
+      html: `<div style="font-family:Arial,sans-serif;line-height:1.7"><p>Bonjour ${firstName},</p><p>Merci pour votre demande de réservation à La Maison Verte.</p><p>Nous avons bien reçu votre demande pour votre séjour à Arreau du <strong>${escapeHtml(model.startDate)}</strong> au <strong>${escapeHtml(model.endDate)}</strong>.</p><p><strong>Récapitulatif de votre demande</strong></p>${summary}<p><strong>Votre réservation n'est pas encore définitive à ce stade, mais les dates sont bloquées.</strong></p><p>Après acceptation de votre demande, vous recevrez les informations nécessaires pour confirmer votre réservation. Un lien de paiement Stripe vous sera envoyé. Ce lien sera valable pendant <strong>24 h</strong> ; passé ce délai, en l'absence de paiement, la période sera à nouveau disponible.</p><p>Au plaisir de vous accueillir,<br /><strong>Raphaël &amp; Emmanuelle</strong><br /><a href="tel:+33795938315">07 95 93 83 15</a><br /><strong>La Maison Verte — Arreau</strong></p></div>`,
     },
   };
 }
