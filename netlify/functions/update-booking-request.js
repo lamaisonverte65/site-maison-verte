@@ -337,7 +337,6 @@ export async function handler(event) {
       const quote = await calculateV410ModificationQuote(existingBooking, { startDate, endDate, adults, children });
       Object.assign(updatePayload, quoteToBookingMoney(quote));
       updatePayload.cleaning_fee = Number(existingBooking.cleaning_fee || 0);
-      updatePayload.owner_price = updatePayload.contract_total;
       updatePayload.gross_amount = updatePayload.contract_total;
     } else if (bookingKind === "site" && !isV410) {
       // Compatibilité legacy : le champ total reste utilisable uniquement sans snapshot V4.10.

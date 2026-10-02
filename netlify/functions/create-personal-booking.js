@@ -403,7 +403,6 @@ export async function handler(event) {
         nights,
         ...(bookingKind === "site" ? {
           ...financialSnapshot,
-          owner_price: financialSnapshot.contract_total,
           gross_amount: financialSnapshot.contract_total,
         } : {
           estimated_total: 0, owner_price: 0, gross_amount: 0, deposit_amount: 0, balance_amount: 0,

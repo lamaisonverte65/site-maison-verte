@@ -69,7 +69,6 @@ export async function handler(event) {
     const { data: updated, error: updateError } = await supabase.from("booking_requests").update({
       ...snapshot,
       cleaning_fee: Number(booking.cleaning_fee || 0),
-      owner_price: snapshot.contract_total,
       gross_amount: snapshot.contract_total,
       updated_at: new Date().toISOString(),
     }).eq("id", bookingId).eq("status", "pending").select("id,contract_total,deposit_amount,deposit_rate").maybeSingle();

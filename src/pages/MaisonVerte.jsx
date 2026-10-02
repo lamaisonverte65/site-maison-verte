@@ -2496,7 +2496,8 @@ export default function MaisonVerte() {
                     >
                       <div>{day.getDate()}</div>
 
-                      {!unavailableDates.includes(key) && (
+                      {(!unavailableDates.includes(key) ||
+                        departureOnlyDates.includes(key)) && (
                         <div
                           style={{
                             marginTop: "6px",
