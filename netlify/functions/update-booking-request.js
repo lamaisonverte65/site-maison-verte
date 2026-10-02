@@ -2,6 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
 import { canMutateReservationData } from "./_lib/business-mutation-policy.js";
 import { DATE_CONFLICT_MESSAGE, isBookingDateConflictError } from "./_lib/public-booking-request.js";
+import { calculatePublicBookingQuote, quoteToBookingMoney } from "./_lib/booking-quote.js";
+import { hasV410FinancialSnapshot, recordedPaidAmount } from "./_lib/booking-financial-authority.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -67,6 +69,31 @@ function nightsBetween(startDate, endDate) {
   return Math.max(Math.round((end - start) / (1000 * 60 * 60 * 24)), 0);
 }
 
+async function calculateV410ModificationQuote(existingBooking, { startDate, endDate, adults, children }) {
+  if (!Number.isInteger(adults) || adults < 1 || !Number.isInteger(children || 0) || (adults + (children || 0)) > 4) {
+    throw new Error("Composition des voyageurs invalide.");
+  }
+  const taxSnapshot = existingBooking.tourist_tax_snapshot || {};
+  const preservedPromotionRate = Number(existingBooking.promotion_discount_rate);
+  const financialContext = {
+    depositRate: Number(existingBooking.deposit_rate),
+    touristTaxClassification: taxSnapshot.classification || undefined,
+    cleaningFeeCents: Math.round(Number(existingBooking.cleaning_fee || 0) * 100),
+    promotion: existingBooking.promotion_code && Number.isFinite(preservedPromotionRate)
+      ? { code: existingBooking.promotion_code, discountBasisPoints: Math.round(preservedPromotionRate * 10000) }
+      : null,
+  };
+  return calculatePublicBookingQuote(supabase, {
+    startDate,
+    endDate,
+    adultsCount: adults,
+    childrenCount: children || 0,
+    cleaningOption: existingBooking.cleaning_option === true,
+    promotionCode: existingBooking.promotion_code || "",
+    financialContext,
+  });
+}
+
 async function findOrCreateCustomer(body, startDate, endDate) {
   const bookingKind = normalizeBookingKind(body.bookingKind);
   if (bookingKind === "personal") return null;
@@ -75,6 +102,10 @@ async function findOrCreateCustomer(body, startDate, endDate) {
   const lastName = cleanText(body.lastName);
   const email = cleanText(body.email);
   const phone = cleanText(body.phone);
+  const address = cleanText(body.address);
+  const postalCode = cleanText(body.postalCode);
+  const city = cleanText(body.city);
+  const country = cleanText(body.country);
   const customerSource = cleanText(body.customerSource) || getBookingSource(bookingKind);
   const customerNotes = fieldProvided(body, "customerNotes") ? cleanText(body.customerNotes) : undefined;
   const marketingConsent = Boolean(body.marketingConsent);
@@ -126,9 +157,15 @@ async function findOrCreateCustomer(body, startDate, endDate) {
   }
 
   if (existingCustomer) {
+    const postalEnrichment = {
+      ...(!cleanText(existingCustomer.address) && address ? { address } : {}),
+      ...(!cleanText(existingCustomer.postal_code) && postalCode ? { postal_code: postalCode } : {}),
+      ...(!cleanText(existingCustomer.city) && city ? { city } : {}),
+      ...(!cleanText(existingCustomer.country) && country ? { country } : {}),
+    };
     const { data, error } = await supabase
       .from("customers")
-      .update({ ...basePayload, first_stay: existingCustomer.first_stay || startDate })
+      .update({ ...basePayload, ...postalEnrichment, first_stay: existingCustomer.first_stay || startDate })
       .eq("id", existingCustomer.id)
       .select()
       .single();
@@ -138,7 +175,7 @@ async function findOrCreateCustomer(body, startDate, endDate) {
 
   const { data, error } = await supabase
     .from("customers")
-    .insert([{ ...basePayload, first_stay: startDate, booking_count: 0, booking_request_count: 1, customer_status: "prospect" }])
+    .insert([{ ...basePayload, address: address || null, postal_code: postalCode || null, city: city || null, country: country || null, first_stay: startDate, booking_count: 0, booking_request_count: 1, customer_status: "prospect" }])
     .select()
     .single();
 
@@ -188,7 +225,50 @@ export async function handler(event) {
     if (!startDate || !endDate || endDate <= startDate) return { statusCode: 400, body: JSON.stringify({ error: "Période invalide." }) };
 
     const bookingKind = normalizeBookingKind(body.bookingKind);
-    const total = bookingKind === "site" ? Math.max(Number(body.total || 0), 0) : 0;
+    const legacyTotal = bookingKind === "site" ? Math.max(Number(body.total || 0), 0) : 0;
+    const isV410 = bookingKind === "site" && hasV410FinancialSnapshot(existingBooking);
+
+    if (body.preview === true) {
+      if (!isV410) {
+        return { statusCode: 400, body: JSON.stringify({ error: "Aperçu financier disponible uniquement pour une réservation V4.10." }) };
+      }
+      const adults = Number(body.adults || 0) || null;
+      const children = Number(body.children || 0) || null;
+      const quote = await calculateV410ModificationQuote(existingBooking, { startDate, endDate, adults, children });
+      const after = quoteToBookingMoney(quote);
+      const paidAmount = recordedPaidAmount(existingBooking);
+      const beforeTax = Number(existingBooking.tourist_tax_amount || 0);
+      const afterTax = Number(after.tourist_tax_amount || 0);
+      const afterTotal = Number(after.contract_total || 0);
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          success: true,
+          preview: true,
+          before: {
+            nights: Number(existingBooking.nights || nightsBetween(existingBooking.start_date, existingBooking.end_date)),
+            accommodationNet: Number(existingBooking.accommodation_net || 0),
+            cleaningFee: existingBooking.cleaning_option === true ? Number(existingBooking.cleaning_fee || 0) : 0,
+            touristTax: beforeTax,
+            contractTotal: Number(existingBooking.contract_total || 0),
+          },
+          after: {
+            nights: quote.nights.length,
+            accommodationNet: Number(after.accommodation_net || 0),
+            cleaningFee: quote.cleaningAppliedCents / 100,
+            touristTax: afterTax,
+            contractTotal: afterTotal,
+          },
+          paidAmount,
+          remainingDue: Math.max(afterTotal - paidAmount, 0),
+          overpayment: Math.max(paidAmount - afterTotal, 0),
+          touristTaxRefund: Math.max(beforeTax - afterTax, 0),
+          automaticPayment: false,
+          automaticRefund: false,
+        }),
+      };
+    }
+
     const customer = await findOrCreateCustomer(body, startDate, endDate);
 
     let guestFirstName = cleanText(body.firstName);
@@ -214,13 +294,22 @@ export async function handler(event) {
     if (!guestFirstName && bookingKind !== "personal") throw new Error("Nom client manquant.");
 
     const clientMessage = editableText(body, "clientMessage", existingBooking.message);
-    const internalNotes = editableText(body, "internalNotes", existingBooking.owner_message);
+    const internalNotes = editableText(body, "internalNotes", existingBooking.internal_notes);
     const housekeepingNotes = editableText(body, "housekeepingNotes", existingBooking.housekeeping_notes);
     const nights = nightsBetween(startDate, endDate);
     const now = new Date().toISOString();
     const source = getBookingSource(bookingKind);
     const contractVersion = getBookingContractVersion(bookingKind);
     const requestedStatus = normalizeStatus(body.status, existingBooking.status || "pending");
+
+    const adults = Number(body.adults || 0) || null;
+    const children = Number(body.children || 0) || null;
+    const financialInputsChanged = bookingKind === "site" && (
+      startDate !== String(existingBooking.start_date || "").slice(0, 10)
+      || endDate !== String(existingBooking.end_date || "").slice(0, 10)
+      || adults !== (Number(existingBooking.adults_count || 0) || null)
+      || children !== (Number(existingBooking.children_count || 0) || null)
+    );
 
     const updatePayload = {
       customer_id: customer?.id || null,
@@ -231,21 +320,31 @@ export async function handler(event) {
       start_date: startDate,
       end_date: endDate,
       nights,
-      estimated_total: total,
-      owner_price: total,
-      gross_amount: total,
       source,
       contract_version: contractVersion,
       status: requestedStatus,
-      adults_count: Number(body.adults || 0) || null,
-      children_count: Number(body.children || 0) || null,
+      adults_count: adults,
+      children_count: children,
       baby_bed_needed: Boolean(body.babyBedNeeded),
       arrival_time: cleanText(body.arrivalTime),
       message: clientMessage,
-      owner_message: internalNotes,
+      internal_notes: internalNotes,
       housekeeping_notes: housekeepingNotes,
       updated_at: now,
     };
+
+    if (bookingKind === "site" && isV410 && financialInputsChanged) {
+      const quote = await calculateV410ModificationQuote(existingBooking, { startDate, endDate, adults, children });
+      Object.assign(updatePayload, quoteToBookingMoney(quote));
+      updatePayload.cleaning_fee = Number(existingBooking.cleaning_fee || 0);
+      updatePayload.owner_price = updatePayload.contract_total;
+      updatePayload.gross_amount = updatePayload.contract_total;
+    } else if (bookingKind === "site" && !isV410) {
+      // Compatibilité legacy : le champ total reste utilisable uniquement sans snapshot V4.10.
+      updatePayload.estimated_total = legacyTotal;
+      updatePayload.owner_price = legacyTotal;
+      updatePayload.gross_amount = legacyTotal;
+    }
 
     if (bookingKind !== "site") {
       updatePayload.estimated_total = 0;
@@ -279,10 +378,31 @@ export async function handler(event) {
     await logBookingEvent({
       bookingId,
       userEmail: admin.user?.email,
-      metadata: { source: "calendar_admin", bookingKind, startDate, endDate, total },
+      metadata: {
+        source: "calendar_admin", bookingKind, startDate, endDate,
+        financialInputsChanged,
+        financialAuthority: isV410 ? "v4.10_snapshot" : "legacy",
+        previousContractTotal: isV410 ? Number(existingBooking.contract_total) : null,
+        newContractTotal: isV410 ? Number(booking.contract_total) : null,
+        recordedPaidAmount: isV410 ? recordedPaidAmount(existingBooking) : null,
+        remainingDue: isV410 ? Math.max(Number(booking.contract_total || 0) - recordedPaidAmount(existingBooking), 0) : null,
+        overpayment: isV410 ? Math.max(recordedPaidAmount(existingBooking) - Number(booking.contract_total || 0), 0) : null,
+      },
     });
 
-    return { statusCode: 200, body: JSON.stringify({ success: true, booking }) };
+    const paidAmount = isV410 ? recordedPaidAmount(existingBooking) : null;
+    const newContractTotal = isV410 ? Number(booking.contract_total || 0) : null;
+    const financialAdjustment = isV410 ? {
+      recalculated: financialInputsChanged,
+      paidAmount,
+      contractTotal: newContractTotal,
+      remainingDue: Math.max(newContractTotal - paidAmount, 0),
+      overpayment: Math.max(paidAmount - newContractTotal, 0),
+      automaticPayment: false,
+      automaticRefund: false,
+    } : null;
+
+    return { statusCode: 200, body: JSON.stringify({ success: true, booking, financialAdjustment }) };
   } catch (error) {
     console.error("Erreur update-booking-request :", error);
     if (isBookingDateConflictError(error)) {

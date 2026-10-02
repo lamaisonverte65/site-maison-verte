@@ -128,3 +128,26 @@ test("the admin loader reports an unreadable registry instead of verified availa
     },
   })), /Lecture du registre impossible/);
 });
+
+test("accounting imports enrich external calendar names only on an unambiguous match", () => {
+  assert.equal(typeof calendar.enrichExternalReservationsFromAccounting, "function");
+  const reservations = [
+    { source: "booking", uid: "b-1", start_date: "2026-10-10", end_date: "2026-10-14", guest_name: "Client Booking", title: "Client Booking" },
+    { source: "airbnb", uid: "a-1", start_date: "2026-11-01", end_date: "2026-11-04", guest_name: "Client Airbnb", title: "Client Airbnb" },
+    { source: "booking", uid: "b-amb", start_date: "2026-12-01", end_date: "2026-12-03", guest_name: "Client Booking", title: "Client Booking" },
+  ];
+  const entries = [
+    { source: "booking", metadata: { guest_name: "Jean Dupont", arrival_date: "2026-10-10", checkout_date: "2026-10-14", external_calendar_uid: "b-1" } },
+    { source: "airbnb", metadata: { guest_name: "Marie Martin", arrival_date: "2026-11-01", checkout_date: "2026-11-04" } },
+    { source: "booking", metadata: { guest_name: "Client Un", arrival_date: "2026-12-01", checkout_date: "2026-12-03" } },
+    { source: "booking", metadata: { guest_name: "Client Deux", arrival_date: "2026-12-01", checkout_date: "2026-12-03" } },
+  ];
+
+  const enriched = calendar.enrichExternalReservationsFromAccounting(reservations, entries);
+  assert.equal(enriched[0].guest_name, "Jean Dupont");
+  assert.equal(enriched[0].accounting_match, true);
+  assert.equal(enriched[1].guest_name, "Marie Martin");
+  assert.equal(enriched[1].accounting_match, true);
+  assert.equal(enriched[2].guest_name, "Client Booking");
+  assert.equal(enriched[2].accounting_match, undefined);
+});

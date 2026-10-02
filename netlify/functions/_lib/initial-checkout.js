@@ -1,5 +1,6 @@
+import { contractualDeposit, contractualTotal, hasV410FinancialSnapshot, LEGACY_PAYMENT_DEFAULTS } from "./booking-financial-authority.js";
+
 const ACCEPTANCE_WINDOW_MS = 24 * 60 * 60 * 1000;
-const DEPOSIT_RATE = 0.3;
 const PAID_BOOKING_STATUSES = new Set(["deposit_paid", "paid", "fully_paid", "confirmed"]);
 
 export class InitialCheckoutError extends Error {
@@ -23,34 +24,39 @@ function money(value) {
 }
 
 function paymentDetails(booking, now) {
-  const hasOwnerPrice = booking.owner_price !== null
-    && booking.owner_price !== undefined
-    && booking.owner_price !== "";
-  const total = Number(hasOwnerPrice ? booking.owner_price : booking.estimated_total);
+  const total = contractualTotal(booking);
   if (!Number.isFinite(total) || total <= 0 || !Number.isSafeInteger(Math.round(total * 100))) {
     throw new InitialCheckoutError("invalid_booking_price", "Le tarif de la réservation est invalide.", 422);
   }
 
+  const v410 = hasV410FinancialSnapshot(booking);
   const storedDeposit = Number(booking.deposit_amount);
-  const hasStoredPaymentTerms = booking.status === "accepted"
+  const hasLegacyStoredPaymentTerms = !v410
+    && booking.status === "accepted"
     && booking.deposit_amount !== null
     && booking.deposit_amount !== undefined
     && Number.isFinite(storedDeposit)
     && storedDeposit >= 0;
   const daysBeforeArrival = daysUntil(booking.start_date, now);
   const requestedFullPayment = booking.payment_preference === "full";
-  const fullPayment = hasStoredPaymentTerms
-    ? storedDeposit === 0 || booking.deposit_status === "non applicable"
-    : daysBeforeArrival <= 30 || requestedFullPayment;
-  const deposit = hasStoredPaymentTerms && !fullPayment
-    ? money(storedDeposit)
-    : money(total * DEPOSIT_RATE);
+  const fullPayment = v410
+    ? daysBeforeArrival <= 30 || requestedFullPayment
+    : hasLegacyStoredPaymentTerms
+      ? storedDeposit === 0 || booking.deposit_status === "non applicable"
+      : daysBeforeArrival <= 30 || requestedFullPayment;
+  const deposit = v410
+    ? money(contractualDeposit(booking))
+    : hasLegacyStoredPaymentTerms
+      ? money(storedDeposit)
+      : money(total * LEGACY_PAYMENT_DEFAULTS.depositRate);
+
   return {
     total: money(total),
     deposit,
     balance: money(total - deposit),
     paymentType: fullPayment ? "full" : "deposit",
     amount: fullPayment ? money(total) : deposit,
+    v410,
   };
 }
 
@@ -153,7 +159,7 @@ function persistenceValues(booking, session, payment, acceptanceExpiresAt, accep
     stripe_checkout_session_id: session.id,
     acceptance_expires_at: acceptanceExpiresAt,
     accepted_at: acceptedAt,
-    deposit_amount: fullPayment ? 0 : payment.deposit,
+    ...(payment.v410 ? {} : { deposit_amount: fullPayment ? 0 : payment.deposit }),
     balance_amount: fullPayment ? payment.total : payment.balance,
     deposit_status: fullPayment ? "non applicable" : "à payer",
     balance_status: fullPayment ? "à payer" : "en attente",

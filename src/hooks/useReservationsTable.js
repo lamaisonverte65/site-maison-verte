@@ -33,6 +33,7 @@ function getReservationText(reservation) {
     reservation.source,
     reservation.message,
     reservation.owner_message,
+    reservation.internal_notes,
     reservation.payment_status,
     reservation.deposit_status,
     reservation.balance_status,

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { escapeHtml } from "./html.js";
 
 const allowedFields = new Set([
-  "guestFirstName", "guestLastName", "guestEmail", "guestPhone", "adultsCount", "childrenCount",
+  "guestFirstName", "guestLastName", "guestEmail", "guestPhone", "guestAddress", "guestPostalCode", "guestCity", "guestCountry", "adultsCount", "childrenCount",
   "childrenAges", "babyBedNeeded", "marketingConsent", "guestMessage", "startDate", "endDate",
   "nights", "accommodationTotal", "promotionCode", "cleaningOption", "cleaningObligationsAccepted", "paymentPreference", "contractAccepted", "website",
 ]);
@@ -104,11 +104,19 @@ export function validatePublicBookingPayload(input = {}, { cleaningFee = 0 } = {
   const lastName = clean(input.guestLastName);
   const email = clean(input.guestEmail).toLowerCase();
   const phone = clean(input.guestPhone);
+  const address = clean(input.guestAddress);
+  const postalCode = clean(input.guestPostalCode);
+  const city = clean(input.guestCity);
+  const country = clean(input.guestCountry);
   const message = clean(input.guestMessage);
   const childrenAges = clean(input.childrenAges);
   if (!firstName || firstName.length > 80 || !lastName || lastName.length > 80) return fail("Nom ou prénom invalide.");
   if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail("Adresse email invalide.");
   if (!phone || phone.length > 32 || !/^[+\d][\d\s().-]{5,31}$/.test(phone)) return fail("Numéro de téléphone invalide.");
+  if (!address || address.length > 200) return fail("Adresse postale invalide.");
+  if (!postalCode || postalCode.length > 20) return fail("Code postal invalide.");
+  if (!city || city.length > 100) return fail("Ville invalide.");
+  if (!country || country.length > 100) return fail("Pays invalide.");
   if (message.length > 1500 || childrenAges.length > 120) return fail("Un champ texte dépasse la taille autorisée.");
 
   const adults = Number(input.adultsCount);
@@ -144,13 +152,13 @@ export function validatePublicBookingPayload(input = {}, { cleaningFee = 0 } = {
   const requestedPaymentPreference = input.paymentPreference === "full" ? "full" : "deposit";
   const paymentPreference = daysBeforeArrival <= 30 ? "full" : requestedPaymentPreference;
   const total = accommodationTotal + appliedCleaningFee;
-  if (!Number.isFinite(total) || total <= 0 || total > 100000) return fail("Total estimatif invalide.");
+  if (!Number.isFinite(total) || total <= 0 || total > 100000) return fail("Total invalide.");
   if (input.contractAccepted !== true) return fail("Le contrat doit être accepté.");
   if (typeof input.babyBedNeeded !== "boolean" || typeof input.marketingConsent !== "boolean") return fail("Valeur booléenne invalide.");
 
   const acceptedAt = new Date().toISOString();
   const emailModel = {
-    firstName, lastName, email, phone, adults, children, childrenAges,
+    firstName, lastName, email, phone, address, postalCode, city, country, adults, children, childrenAges,
     babyBedNeeded: input.babyBedNeeded, message, startDate, endDate,
     nights: computedNights, accommodationTotal, cleaningOption: input.cleaningOption,
     cleaningFee: authoritativeCleaningFee, total, paymentPreference,
@@ -159,7 +167,8 @@ export function validatePublicBookingPayload(input = {}, { cleaningFee = 0 } = {
     ok: true,
     booking: {
       status: "pending", guest_first_name: firstName, guest_last_name: lastName,
-      guest_email: email, guest_phone: phone, adults_count: adults, children_count: children,
+      guest_email: email, guest_phone: phone, guest_address: address, guest_postal_code: postalCode,
+      guest_city: city, guest_country: country, adults_count: adults, children_count: children,
       children_ages: childrenAges || null, baby_bed_needed: input.babyBedNeeded,
       marketing_consent: input.marketingConsent,
       marketing_consent_at: input.marketingConsent ? acceptedAt : null,
@@ -191,11 +200,15 @@ export function buildPublicBookingEmails(model, { ownerEmail }) {
   const cleaning = model.cleaningOption
     ? `Oui (${model.cleaningFee.toFixed(2)} €)`
     : "Non";
-  const paymentPreference = model.paymentPreference === "full" ? "Paiement intégral" : "Acompte de 30 % puis solde à J-30";
+  const rawDepositRate = Number(model.depositRate);
+  const depositPercent = Number.isFinite(rawDepositRate) ? Math.round(rawDepositRate * 100) : null;
+  const paymentPreference = model.paymentPreference === "full"
+    ? "Paiement intégral"
+    : depositPercent === null ? "Acompte puis solde à J-30" : `Acompte de ${depositPercent} % puis solde à J-30`;
   const promotionDetails = model.promotionCode && Number(model.promotionDiscountAmount || 0) > 0
     ? `<strong>Hébergement :</strong> ${Number(model.accommodationGross).toFixed(2)} €<br /><strong>Remise ${escapeHtml(model.promotionCode)} :</strong> -${Number(model.promotionDiscountAmount).toFixed(2)} €<br /><strong>Hébergement après remise :</strong> ${model.accommodationTotal.toFixed(2)} €<br />`
     : `<strong>Hébergement :</strong> ${model.accommodationTotal.toFixed(2)} €<br />`;
-  const summary = `<p><strong>Arrivée :</strong> ${escapeHtml(model.startDate)}<br /><strong>Départ :</strong> ${escapeHtml(model.endDate)}<br /><strong>Voyageurs :</strong> ${travelers}<br /><strong>Nombre de nuits :</strong> ${model.nights}<br />${promotionDetails}<strong>Forfait ménage :</strong> ${cleaning}<br /><strong>Taxe de séjour :</strong> ${Number(model.touristTaxAmount || 0).toFixed(2)} €<br /><strong>Total estimatif :</strong> ${model.total.toFixed(2)} €<br /><strong>Mode de paiement souhaité :</strong> ${paymentPreference}</p>`;
+  const summary = `<p><strong>Arrivée :</strong> ${escapeHtml(model.startDate)}<br /><strong>Départ :</strong> ${escapeHtml(model.endDate)}<br /><strong>Voyageurs :</strong> ${travelers}<br /><strong>Nombre de nuits :</strong> ${model.nights}<br />${promotionDetails}<strong>Forfait ménage :</strong> ${cleaning}<br /><strong>Taxe de séjour :</strong> ${Number(model.touristTaxAmount || 0).toFixed(2)} €<br /><strong>Total :</strong> ${model.total.toFixed(2)} €<br /><strong>Mode de paiement souhaité :</strong> ${paymentPreference}</p>`;
   return {
     owner: {
       to: ownerEmail,

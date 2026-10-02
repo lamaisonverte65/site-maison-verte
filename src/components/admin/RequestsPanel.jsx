@@ -35,7 +35,7 @@ export default function RequestsPanel({
                 <th style={styles.th}>Fin séjour</th>
                 <th style={styles.th}>Statut</th>
                 <th style={styles.th}>Nuits</th>
-                <th style={styles.th}>Total estimatif</th>
+                <th style={styles.th}>Total</th>
                 <th style={styles.th}>Contact</th>
               </tr>
             </thead>
@@ -53,7 +53,7 @@ export default function RequestsPanel({
                   <td style={styles.td}>{formatDate(request.end_date)}</td>
                   <td style={styles.td}><StatusBadge status={request.status || "pending"} /></td>
                   <td style={styles.td}>{request.nights || "-"}</td>
-                  <td style={styles.td}>{formatMoney(request.estimated_total)}</td>
+                  <td style={styles.td}>{formatMoney(request.contract_total ?? request.owner_price ?? request.estimated_total)}</td>
                   <td style={styles.td}>{request.guest_email || request.guest_phone || "-"}</td>
                 </tr>
               ))}

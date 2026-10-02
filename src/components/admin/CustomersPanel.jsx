@@ -2,6 +2,7 @@ import { useState } from "react";
 import { styles } from "./adminStyles";
 import CustomerList from "./customer/CustomerList";
 import CustomerDetails from "./customer/CustomerDetails";
+import CustomerCreateModal from "./CustomerCreateModal";
 import PermissionGate from "./common/PermissionGate";
 import { ADMIN_PERMISSIONS } from "../../utils/adminPermissions";
 
@@ -18,6 +19,7 @@ export default function CustomersPanel({
   permissions,
 }) {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [showCreateCustomer, setShowCreateCustomer] = useState(false);
 
   const selectedCustomerFromList = selectedCustomer
     ? filteredCustomers.find((customer) => customer.id === selectedCustomer.id) || selectedCustomer
@@ -53,10 +55,18 @@ export default function CustomersPanel({
             <button style={styles.addButton} onClick={() => customerActions.bulkEmail("loyal")}>Email clients fidèles</button>
           </PermissionGate>
           <PermissionGate permissions={permissions} permission={ADMIN_PERMISSIONS.manageCustomers}>
-            <button style={styles.addButton} onClick={customerActions.add}>Ajouter client</button>
+            <button style={styles.addButton} onClick={() => setShowCreateCustomer(true)}>Ajouter client</button>
           </PermissionGate>
         </div>
       </div>
+
+      {showCreateCustomer && (
+        <CustomerCreateModal
+          onClose={() => setShowCreateCustomer(false)}
+          onCreate={customerActions.add}
+          onOpenExisting={openCustomerDetails}
+        />
+      )}
 
       {selectedCustomerFromList && (
         <CustomerDetails

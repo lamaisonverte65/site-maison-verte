@@ -186,9 +186,6 @@ async function runExpiredBookingsCheck() {
         payment_status: "expired",
         deposit_status: "annulé",
         balance_status: "annulé",
-        owner_message:
-          booking.owner_message ||
-          "Demande expirée automatiquement : paiement non reçu dans le délai prévu.",
         updated_at: now,
       })
       .eq("id", booking.id)

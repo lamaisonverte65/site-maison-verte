@@ -28,10 +28,10 @@ export function getStayNightKeys(startDate, endDate) {
   return nights;
 }
 
-export function resolveTouristTaxRulesByNight({ startDate, endDate, rules }) {
+export function resolveTouristTaxRulesByNight({ startDate, endDate, rules, classification = null }) {
   const nights = getStayNightKeys(startDate, endDate);
   const activeRules = (rules || [])
-    .filter((rule) => rule?.is_active !== false)
+    .filter((rule) => rule?.is_active !== false && (!classification || rule?.classification === classification))
     .map((rule) => ({ raw: rule, normalized: normalizeTaxRule(rule) }));
 
   return nights.map((night) => {
@@ -45,7 +45,10 @@ export function resolveTouristTaxRulesByNight({ startDate, endDate, rules }) {
   });
 }
 
-export async function loadTouristTaxRulesForStay(supabase, { startDate, endDate }) {
+export async function loadTouristTaxRulesForStay(supabase, { startDate, endDate, classification }) {
+  if (!new Set(["unclassified", "1_star", "2_star", "3_star"]).has(classification)) {
+    throw new Error("Classement taxe de séjour invalide.");
+  }
   const nights = getStayNightKeys(startDate, endDate);
   const firstNight = nights[0];
   const lastNight = nights[nights.length - 1];
@@ -54,10 +57,11 @@ export async function loadTouristTaxRulesForStay(supabase, { startDate, endDate 
     .from("tourist_tax_rules")
     .select("id,effective_from,effective_to,classification,calculation_type,base_rate_basis_points,department_additional_basis_points,regional_additional_basis_points,base_cap_cents,fixed_rate_cents,is_active")
     .eq("is_active", true)
+    .eq("classification", classification)
     .lte("effective_from", lastNight)
     .or(`effective_to.is.null,effective_to.gte.${firstNight}`)
     .order("effective_from", { ascending: true });
 
   if (error) throw error;
-  return resolveTouristTaxRulesByNight({ startDate, endDate, rules: data || [] });
+  return resolveTouristTaxRulesByNight({ startDate, endDate, rules: data || [], classification });
 }

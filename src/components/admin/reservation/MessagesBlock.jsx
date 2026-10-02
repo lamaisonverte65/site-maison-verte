@@ -13,9 +13,10 @@ function MessageCard({ title, children }) {
 export default function MessagesBlock({ request, housekeepingNotes = [] }) {
   const clientMessage = request.message || "";
   const ownerMessage = request.owner_message || "";
+  const internalNotes = request.internal_notes || "";
   const adminReservationNotes = request.housekeeping_notes || "";
   const manualPaymentMessage = request.manual_payment_message || "";
-  const hasAnyMessage = Boolean(clientMessage || ownerMessage || adminReservationNotes || manualPaymentMessage || housekeepingNotes.length);
+  const hasAnyMessage = Boolean(clientMessage || ownerMessage || internalNotes || adminReservationNotes || manualPaymentMessage || housekeepingNotes.length);
 
   return (
     <section style={{ marginTop: 22 }}>
@@ -25,6 +26,7 @@ export default function MessagesBlock({ request, housekeepingNotes = [] }) {
       ) : (
         <>
           <MessageCard title="Message client">{clientMessage}</MessageCard>
+          <MessageCard title="Notes internes admin">{internalNotes}</MessageCard>
           <MessageCard title="Valeur historique propriétaire — provenance non qualifiée">{ownerMessage}</MessageCard>
           <MessageCard title="Note du propriétaire destinée au ménage">{adminReservationNotes}</MessageCard>
           <MessageCard title="Dernier message paiement manuel">{manualPaymentMessage}</MessageCard>

@@ -14,6 +14,10 @@ const validPayload = {
   guestLastName: "Martin",
   guestEmail: "alice@example.test",
   guestPhone: "+33 6 12 34 56 78",
+  guestAddress: "12 rue des Pyrénées",
+  guestPostalCode: "65240",
+  guestCity: "Arreau",
+  guestCountry: "France",
   adultsCount: 2,
   childrenCount: 1,
   childrenAges: "7 ans",
@@ -35,6 +39,24 @@ test("a normal anonymous booking request remains valid", () => {
   assert.equal(result.booking.guest_email, "alice@example.test");
   assert.equal(result.booking.status, "pending");
   assert.equal(result.booking.nights, 3);
+  assert.equal(result.booking.guest_address, "12 rue des Pyrénées");
+  assert.equal(result.booking.guest_postal_code, "65240");
+  assert.equal(result.booking.guest_city, "Arreau");
+  assert.equal(result.booking.guest_country, "France");
+});
+
+test("postal coordinates are mandatory and bounded", () => {
+  assert.equal(validateBooking({ ...validPayload, guestAddress: "" }).ok, false);
+  assert.equal(validateBooking({ ...validPayload, guestPostalCode: "" }).ok, false);
+  assert.equal(validateBooking({ ...validPayload, guestCity: "" }).ok, false);
+  assert.equal(validateBooking({ ...validPayload, guestCountry: "" }).ok, false);
+  assert.equal(validateBooking({ ...validPayload, guestAddress: "x".repeat(201) }).ok, false);
+});
+
+test("postal coordinates do not alter the anti-duplicate fingerprint", () => {
+  const first = validateBooking(validPayload).booking;
+  const second = validateBooking({ ...validPayload, guestAddress: "12 RUE DES PYRENEES", guestCity: "Autre ville" }).booking;
+  assert.equal(publicBooking.createPublicBookingFingerprint(first), publicBooking.createPublicBookingFingerprint(second));
 });
 
 test("unexpected relay fields are rejected", () => {

@@ -66,6 +66,7 @@ export default function ReservationSummaryPanel({
   const email = reservation.guest_email || reservation.email || "";
   const occupancy = getAdultsChildren(reservation);
   const arrivalTime = reservation.arrival_time || reservation.arrivalTime || "";
+  const internalNotes = reservation.internal_notes || "";
   const ownerHistoricalValue = reservation.owner_message || "";
   const housekeepingNotes = reservation.housekeeping_notes || "";
   const babyBedNeeded = Boolean(reservation.baby_bed_needed || reservation.babyBedNeeded);
@@ -101,6 +102,13 @@ export default function ReservationSummaryPanel({
           {occupancy && <p style={styles.muted}>{occupancy}</p>}
           {babyBedNeeded && <p style={styles.muted}>Lit bébé demandé</p>}
           {arrivalTime && <p style={styles.muted}>Arrivée : {arrivalTime}</p>}
+        </div>
+      )}
+
+      {internalNotes && (
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "14px", padding: "12px" }}>
+          <strong>Notes internes admin</strong>
+          <p style={{ ...styles.muted, marginTop: "6px", whiteSpace: "pre-wrap" }}>{internalNotes}</p>
         </div>
       )}
 

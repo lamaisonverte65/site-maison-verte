@@ -36,10 +36,10 @@ function queryResult(value) {
   return builder;
 }
 
-function makeSupabase({ defaultNightPrice = 100, cleaningFee = 50, seasons = [], overrides = [], promotion = null, taxRules = [openTaxRule] } = {}) {
+function makeSupabase({ defaultNightPrice = 100, cleaningFee = 50, depositRate = 0.30, touristTaxClassification = "unclassified", seasons = [], overrides = [], promotion = null, taxRules = [openTaxRule] } = {}) {
   return {
     from(table) {
-      if (table === "pricing_settings") return queryResult({ data: { default_night_price: defaultNightPrice, cleaning_fee: cleaningFee }, error: null });
+      if (table === "pricing_settings") return queryResult({ data: { default_night_price: defaultNightPrice, cleaning_fee: cleaningFee, deposit_rate: depositRate, tourist_tax_classification: touristTaxClassification }, error: null });
       if (table === "season_prices") return queryResult({ data: seasons, error: null });
       if (table === "price_overrides") return queryResult({ data: overrides, error: null });
       if (table === "promotion_rules") return queryResult({ data: promotion, error: null });
@@ -110,7 +110,8 @@ test("V4.9 booking money snapshot preserves promotion and tourist-tax evidence",
   });
   const money = quoteToBookingMoney(quote);
   assert.deepEqual(Object.keys(money).sort(), [
-    "accommodation_gross", "accommodation_net", "estimated_total", "promotion_code",
+    "accommodation_gross", "accommodation_net", "contract_total", "deposit_amount",
+    "deposit_basis", "deposit_rate", "estimated_total", "promotion_code",
     "promotion_discount_amount", "promotion_discount_rate", "tourist_tax_amount",
     "tourist_tax_collector", "tourist_tax_snapshot",
   ].sort());
@@ -120,10 +121,15 @@ test("V4.9 booking money snapshot preserves promotion and tourist-tax evidence",
   assert.equal(money.promotion_discount_amount, 20);
   assert.equal(money.accommodation_net, 180);
   assert.equal(money.tourist_tax_collector, "la_maison_verte");
+  assert.equal(money.tourist_tax_snapshot.classification, "unclassified");
   assert.equal(money.tourist_tax_snapshot.occupants, 3);
   assert.equal(money.tourist_tax_snapshot.taxablePeople, 2);
   assert.equal(money.tourist_tax_snapshot.exemptPeople, 1);
-  assert.equal(money.estimated_total, money.accommodation_net + 50 + money.tourist_tax_amount);
+  assert.equal(money.deposit_rate, 0.30);
+  assert.equal(money.deposit_basis, money.accommodation_net + 50);
+  assert.equal(money.deposit_amount, 69);
+  assert.equal(money.contract_total, money.accommodation_net + 50 + money.tourist_tax_amount);
+  assert.equal(money.estimated_total, money.contract_total);
 });
 
 test("migration 002 opens the validated operational rule and persists every V4.9 money snapshot field atomically", () => {
@@ -146,10 +152,30 @@ test("deposit basis is explicitly accommodation net plus selected cleaning, excl
     startDate: "2026-10-01", endDate: "2026-10-03", adultsCount: 2, cleaningOption: true,
     promotionCode: "CLIENTFIDELE", now: new Date("2026-10-01T12:00:00Z"),
   });
-  const depositBasisCents = quote.accommodationNetCents + quote.cleaningAppliedCents;
-  const depositCents = Math.round(depositBasisCents * 0.30);
-  assert.equal(depositBasisCents, 23000);
-  assert.equal(depositCents, 6900);
+  assert.equal(quote.depositBasisCents, 23000);
+  assert.equal(quote.depositRate, 0.30);
+  assert.equal(quote.depositCents, 6900);
   assert.ok(quote.touristTaxCents > 0);
-  assert.notEqual(depositCents, Math.round(quote.totalCents * 0.30));
+  assert.notEqual(quote.depositCents, Math.round(quote.totalCents * quote.depositRate));
+});
+
+
+test("V4.10 quote snapshots configurable deposit rate and selected tourist-tax classification", async () => {
+  const fixedRule = {
+    id: "tax-2-star", effective_from: "2026-01-01", effective_to: null,
+    classification: "2_star", calculation_type: "fixed",
+    base_rate_basis_points: null, department_additional_basis_points: null,
+    regional_additional_basis_points: null, base_cap_cents: null,
+    fixed_rate_cents: 144, is_active: true,
+  };
+  const quote = await calculatePublicBookingQuote(makeSupabase({
+    depositRate: 0.40, touristTaxClassification: "2_star", taxRules: [openTaxRule, fixedRule],
+  }), { startDate: "2026-10-01", endDate: "2026-10-03", adultsCount: 2, childrenCount: 1, cleaningOption: true });
+  assert.equal(quote.depositRate, 0.40);
+  assert.equal(quote.depositBasisCents, 25000);
+  assert.equal(quote.depositCents, 10000);
+  assert.equal(quote.touristTaxCents, 576);
+  assert.equal(quote.contractTotalCents, 25576);
+  assert.equal(quote.touristTaxSnapshot.classification, "2_star");
+  assert.ok(quote.touristTaxSnapshot.nights.every((night) => night.rule.classification === "2_star"));
 });

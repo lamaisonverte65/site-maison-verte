@@ -18,6 +18,8 @@ export async function handler(event) {
       cleaningFee: centsToEuros(quote.cleaningFeeCents),
       cleaningApplied: centsToEuros(quote.cleaningAppliedCents),
       touristTax: centsToEuros(quote.touristTaxCents),
+      depositRate: quote.depositRate,
+      depositAmount: centsToEuros(quote.depositCents),
       total: centsToEuros(quote.totalCents),
     });
   } catch (error) {

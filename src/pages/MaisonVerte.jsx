@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet";
 import { supabase } from "../supabaseClient";
 import { submitPublicBooking } from "../utils/publicBookingSubmission";
+import { isDepartureOnlyDate, selectionContainsUnavailableNight } from "../utils/publicCalendarSelection";
 
 export default function MaisonVerte() {
   const [selectedDates, setSelectedDates] = useState([]);
   const [unavailableDates, setUnavailableDates] = useState([]);
+  const [departureOnlyDates, setDepartureOnlyDates] = useState([]);
   const [pricingRules, setPricingRules] = useState({
     defaultNightPrice: null,
     seasonPrices: [],
@@ -19,6 +21,10 @@ export default function MaisonVerte() {
   const [guestLastName, setGuestLastName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
+  const [guestAddress, setGuestAddress] = useState("");
+  const [guestPostalCode, setGuestPostalCode] = useState("");
+  const [guestCity, setGuestCity] = useState("");
+  const [guestCountry, setGuestCountry] = useState("France");
   const [guestAdults, setGuestAdults] = useState("2");
   const [guestChildren, setGuestChildren] = useState("0");
   const [childrenAges, setChildrenAges] = useState("");
@@ -57,6 +63,10 @@ export default function MaisonVerte() {
   const guestLastNameRef = useRef(null);
   const guestEmailRef = useRef(null);
   const guestPhoneRef = useRef(null);
+  const guestAddressRef = useRef(null);
+  const guestPostalCodeRef = useRef(null);
+  const guestCityRef = useRef(null);
+  const guestCountryRef = useRef(null);
   const childrenAgesRef = useRef(null);
   const contractAcceptedRef = useRef(null);
   const [openFaqCategory, setOpenFaqCategory] = useState(null);
@@ -288,6 +298,7 @@ export default function MaisonVerte() {
       const data = await response.json();
 
       setUnavailableDates(data.unavailableDates || []);
+      setDepartureOnlyDates(data.departureOnlyDates || []);
 
       setPricingRules({
         defaultNightPrice: Number(data.defaultNightPrice ?? 80),
@@ -433,7 +444,14 @@ export default function MaisonVerte() {
 
     const key = formatLocalDate(day);
 
-    if (unavailableDates.includes(key)) {
+    const isUnavailable = unavailableDates.includes(key);
+    const isDepartureOnly = isDepartureOnlyDate(
+      key,
+      unavailableDates,
+      departureOnlyDates
+    );
+
+    if (isUnavailable && !(selectedDates.length === 1 && isDepartureOnly)) {
       return;
     }
 
@@ -447,23 +465,12 @@ export default function MaisonVerte() {
     const end = key < start ? start : key;
     const realStart = key < start ? key : start;
 
-    // Empêche de sélectionner une période qui traverse une date réservée
-    const startDate = parseLocalDate(realStart);
-    const endDate = parseLocalDate(end);
-
-    for (
-      let d = new Date(startDate);
-      d <= endDate;
-      d.setDate(d.getDate() + 1)
-    ) {
-      const dKey = formatLocalDate(d);
-
-      if (unavailableDates.includes(dKey)) {
-        alert("Cette période contient une date déjà réservée.");
-        setSelectedDates([]);
-        setContractAccepted(false);
-        return;
-      }
+    // La date de départ n'est pas une nuit occupée : seule la plage [arrivée, départ[ est contrôlée.
+    if (selectionContainsUnavailableNight(realStart, end, unavailableDates)) {
+      alert("Cette période contient une date déjà réservée.");
+      setSelectedDates([]);
+      setContractAccepted(false);
+      return;
     }
 
     setSelectedDates([realStart, end]);
@@ -598,6 +605,10 @@ export default function MaisonVerte() {
     guestLastName.trim() !== "" &&
     isEmailValid &&
     isPhoneValid &&
+    guestAddress.trim() !== "" &&
+    guestPostalCode.trim() !== "" &&
+    guestCity.trim() !== "" &&
+    guestCountry.trim() !== "" &&
     isGuestCompositionValid;
 
   const canSubmitRequest =
@@ -612,10 +623,11 @@ export default function MaisonVerte() {
   const displayedAccommodationTotal = bookingQuote?.accommodationGross ?? accommodationTotal;
   const touristTaxAmount = bookingQuote?.touristTax ?? 0;
   const total = bookingQuote?.total ?? (accommodationTotal + (cleaningOption ? Number(cleaningFee || 0) : 0));
-  const depositBase = bookingQuote
-    ? Number(bookingQuote.accommodationNet || 0) + Number(bookingQuote.cleaningApplied || 0)
-    : accommodationTotal + (cleaningOption ? Number(cleaningFee || 0) : 0);
-  const depositAmount = Math.round(depositBase * 30) / 100;
+  const depositRate = Number(bookingQuote?.depositRate ?? 0);
+  const depositAmount = bookingQuote
+    ? Number(bookingQuote.depositAmount || 0)
+    : 0;
+  const depositPercent = Math.round(depositRate * 100);
   const balanceAmount = Math.round((total - depositAmount) * 100) / 100;
   const daysBeforeArrival = selectedDates.length === 2
     ? Math.ceil((parseLocalDate(selectedDates[0]) - parseLocalDate(formatLocalDate(new Date()))) / 86400000)
@@ -665,6 +677,11 @@ export default function MaisonVerte() {
     } else if (!isPhoneValid) {
       errors.push({ message: "Renseignez un numéro de téléphone valide.", ref: guestPhoneRef });
     }
+
+    if (guestAddress.trim() === "") errors.push({ message: "Renseignez votre adresse.", ref: guestAddressRef });
+    if (guestPostalCode.trim() === "") errors.push({ message: "Renseignez votre code postal.", ref: guestPostalCodeRef });
+    if (guestCity.trim() === "") errors.push({ message: "Renseignez votre ville.", ref: guestCityRef });
+    if (guestCountry.trim() === "") errors.push({ message: "Renseignez votre pays.", ref: guestCountryRef });
 
     if (!isGuestCompositionValid) {
       errors.push({
@@ -719,6 +736,10 @@ export default function MaisonVerte() {
         guestLastName: guestLastName.trim(),
         guestEmail: guestEmail.trim(),
         guestPhone: guestPhone.trim(),
+        guestAddress: guestAddress.trim(),
+        guestPostalCode: guestPostalCode.trim(),
+        guestCity: guestCity.trim(),
+        guestCountry: guestCountry.trim(),
         adultsCount,
         childrenCount,
         childrenAges: childrenAges.trim(),
@@ -2448,7 +2469,9 @@ export default function MaisonVerte() {
                   <div
                     key={key}
                     className={`day ${
-                      isPastDate || unavailableDates.includes(key)
+                      isPastDate ||
+                      (unavailableDates.includes(key) &&
+                        !departureOnlyDates.includes(key))
                         ? "unavailable"
                         : isDateSelected(key)
                           ? "selected"
@@ -2673,6 +2696,46 @@ export default function MaisonVerte() {
                     </div>
                   )}
                 </div>
+
+                <input
+                  ref={guestAddressRef}
+                  type="text"
+                  autoComplete="street-address"
+                  placeholder="Votre adresse"
+                  value={guestAddress}
+                  onChange={(e) => setGuestAddress(e.target.value)}
+                  style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #ddd", gridColumn: "1 / -1" }}
+                />
+
+                <input
+                  ref={guestPostalCodeRef}
+                  type="text"
+                  autoComplete="postal-code"
+                  placeholder="Code postal"
+                  value={guestPostalCode}
+                  onChange={(e) => setGuestPostalCode(e.target.value)}
+                  style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #ddd" }}
+                />
+
+                <input
+                  ref={guestCityRef}
+                  type="text"
+                  autoComplete="address-level2"
+                  placeholder="Ville"
+                  value={guestCity}
+                  onChange={(e) => setGuestCity(e.target.value)}
+                  style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #ddd" }}
+                />
+
+                <input
+                  ref={guestCountryRef}
+                  type="text"
+                  autoComplete="country-name"
+                  placeholder="Pays"
+                  value={guestCountry}
+                  onChange={(e) => setGuestCountry(e.target.value)}
+                  style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #ddd", gridColumn: "1 / -1" }}
+                />
               </div>
 
               <div
@@ -2814,7 +2877,7 @@ export default function MaisonVerte() {
                     {canChooseFullPayment ? (
                       <>
                         <p style={{ margin: "0 0 12px" }}>
-                          Par défaut, un acompte de 30 % sera demandé après acceptation de votre réservation.
+                          Par défaut, un acompte de {depositPercent} % sera demandé après acceptation de votre réservation.
                           Le solde sera demandé 30 jours avant votre arrivée, soit dans {daysUntilBalanceRequest} jour{daysUntilBalanceRequest > 1 ? "s" : ""}.
                         </p>
                         <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", fontWeight: 600 }}>
@@ -3207,7 +3270,7 @@ export default function MaisonVerte() {
                         color: "#1f6f3d",
                       }}
                     >
-                      <span>Acompte à régler (30 %)</span>
+                      <span>Acompte à régler ({depositPercent} %)</span>
                       <span>{depositAmount}€</span>
                     </div>
                     <div

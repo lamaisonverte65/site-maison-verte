@@ -1,12 +1,13 @@
 import MaisonVerte from "./pages/MaisonVerte";
-import { useEffect, useState } from "react";
-import Admin from "./pages/Admin";
-import GuideValleesAureLouron from "./pages/GuideValleesAureLouron";
-import LivretAccueil from "./pages/LivretAccueil";
-import ContactRedirect from "./pages/ContactRedirect";
-import AppelerRedirect from "./pages/AppelerRedirect";
-import MentionsLegales from "./pages/MentionsLegales";
-import PolitiqueConfidentialite from "./pages/PolitiqueConfidentialite";
+import { lazy, Suspense, useEffect, useState } from "react";
+
+const Admin = lazy(() => import("./pages/Admin"));
+const GuideValleesAureLouron = lazy(() => import("./pages/GuideValleesAureLouron"));
+const LivretAccueil = lazy(() => import("./pages/LivretAccueil"));
+const ContactRedirect = lazy(() => import("./pages/ContactRedirect"));
+const AppelerRedirect = lazy(() => import("./pages/AppelerRedirect"));
+const MentionsLegales = lazy(() => import("./pages/MentionsLegales"));
+const PolitiqueConfidentialite = lazy(() => import("./pages/PolitiqueConfidentialite"));
 import { getArrivalLinkMode } from "./utils/arrivalLink";
 import SiteAnalyticsTracker from "./components/SiteAnalyticsTracker";
 function PaymentSuccess() {
@@ -344,8 +345,20 @@ export default function App() {
     );
   }
 
+  function withLazyAnalytics(page) {
+    return withAnalytics(
+      <Suspense fallback={<main style={{ padding: "24px", fontFamily: "Inter, sans-serif" }}>Chargement…</main>}>
+        {page}
+      </Suspense>,
+    );
+  }
+
   if (path === "/admin") {
-    return <Admin />;
+    return (
+      <Suspense fallback={<main style={{ padding: "24px", fontFamily: "Inter, sans-serif" }}>Chargement de l’administration…</main>}>
+        <Admin />
+      </Suspense>
+    );
   }
 
   if (path === "/success") {
@@ -362,27 +375,27 @@ export default function App() {
 
   
   if (path === "/guide-vallees-aure-louron") {
-    return withAnalytics(<GuideValleesAureLouron />);
+    return withLazyAnalytics(<GuideValleesAureLouron />);
   }
   
   if (path === "/livret" || path === "/livret-accueil") {
-    return withAnalytics(<LivretAccueil />);
+    return withLazyAnalytics(<LivretAccueil />);
   }
 
   if (path === "/mentions-legales") {
-    return withAnalytics(<MentionsLegales />);
+    return withLazyAnalytics(<MentionsLegales />);
   }
 
   if (path === "/politique-confidentialite") {
-    return withAnalytics(<PolitiqueConfidentialite />);
+    return withLazyAnalytics(<PolitiqueConfidentialite />);
   }
 
   if (path === "/contact") {
-    return withAnalytics(<ContactRedirect />);
+    return withLazyAnalytics(<ContactRedirect />);
   }
 
   if (path === "/appeler") {
-    return withAnalytics(<AppelerRedirect />);
+    return withLazyAnalytics(<AppelerRedirect />);
   }
   
   return withAnalytics(<MaisonVerte />);

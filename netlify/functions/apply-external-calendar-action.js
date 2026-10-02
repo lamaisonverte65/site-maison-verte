@@ -186,7 +186,7 @@ async function createBookingFromExternalItem(item, context) {
       // Le champ message est réservé aux textes rédigés par le client.
       // Les infos saisies lors de l'import externe restent en notes admin.
       message: null,
-      owner_message: cleanText(item.notes) || `${sourceLabel} créée depuis un import calendrier externe.`,
+      internal_notes: cleanText(item.notes) || `${sourceLabel} créée depuis un import calendrier externe.`,
       housekeeping_notes: cleanText(item.notes),
       payment_link: null,
       accepted_at: now,

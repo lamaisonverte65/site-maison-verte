@@ -120,6 +120,29 @@ test("a deposit is calculated as thirty percent of owner_price on the server", a
   assert.equal(state.creates[0].parameters.line_items[0].price_data.unit_amount, 9600);
 });
 
+test("a V4.10 checkout consumes the contractual snapshots and ignores legacy totals", async () => {
+  assert.equal(typeof createInitialCheckout, "function");
+  const storedBooking = booking({
+    contract_total: 411.44,
+    deposit_rate: 0.40,
+    deposit_basis: 410,
+    deposit_amount: 164,
+    owner_price: 999,
+    estimated_total: 888,
+    balance_amount: 1,
+  });
+  const { state, dependencies: deps } = dependencies({ storedBooking });
+
+  const result = await createInitialCheckout({ bookingId: BOOKING_ID, now: NOW, dependencies: deps });
+
+  assert.equal(result.paymentType, "deposit");
+  assert.equal(result.amount, 164);
+  assert.equal(result.totalPrice, 411.44);
+  assert.equal(state.creates[0].parameters.line_items[0].price_data.unit_amount, 16400);
+  assert.equal(state.saves[0].values.deposit_amount, undefined);
+  assert.equal(state.saves[0].values.balance_amount, 247.44);
+});
+
 test("a stay within thirty days uses the full server price", async () => {
   assert.equal(typeof createInitialCheckout, "function");
   const { state, dependencies: deps } = dependencies({ storedBooking: booking({ start_date: "2026-09-20" }) });
@@ -368,49 +391,75 @@ test("an accepted booking creates a replacement only when no current Stripe Sess
   assert.equal(state.saves[0].values.acceptance_expires_at, expiry);
 });
 
-function pendingWriteSupabase({ row = { id: BOOKING_ID }, error = null } = {}) {
-  const state = { table: null, values: null, filters: [] };
-  const query = {
-    eq(field, value) { state.filters.push([field, value]); return query; },
-    select() { return query; },
-    async maybeSingle() { return { data: row, error }; },
-  };
+function adminAuthSupabase(accessToken = "admin-token") {
   return {
-    state,
-    client: {
-      from(table) {
-        state.table = table;
-        return {
-          update(values) { state.values = values; return query; },
-        };
+    auth: {
+      async getSession() {
+        return { data: { session: accessToken ? { access_token: accessToken } : null } };
       },
     },
   };
 }
 
-test("owner_price is persisted only while the booking is still pending", async () => {
+test("special accommodation is prepared server-side before initial Checkout", async () => {
   assert.equal(typeof prepareInitialCheckoutBooking, "function");
-  const { state, client } = pendingWriteSupabase();
+  const previousFetch = globalThis.fetch;
+  let captured = null;
 
-  await prepareInitialCheckoutBooking(client, booking(), 320, "Tarif proposé");
+  globalThis.fetch = async (url, options) => {
+    captured = { url, options, body: JSON.parse(options.body) };
+    return {
+      ok: true,
+      async json() { return { contract_total: 355, deposit_amount: 106.5 }; },
+    };
+  };
 
-  assert.equal(state.table, "booking_requests");
-  assert.deepEqual(state.filters, [["id", BOOKING_ID], ["status", "pending"]]);
-  assert.equal(state.values.owner_price, 320);
-  assert.equal(state.values.owner_message, "Tarif proposé");
+  try {
+    const result = await prepareInitialCheckoutBooking(
+      adminAuthSupabase(),
+      booking(),
+      320,
+      "Tarif proposé",
+    );
+
+    assert.equal(captured.url, "/.netlify/functions/prepare-initial-checkout-booking");
+    assert.equal(captured.options.method, "POST");
+    assert.equal(captured.options.headers.Authorization, "Bearer admin-token");
+    assert.deepEqual(captured.body, {
+      bookingId: BOOKING_ID,
+      specialAccommodation: 320,
+      ownerMessage: "Tarif proposé",
+    });
+    assert.equal(result.contract_total, 355);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 });
 
-test("a failed or stale pending owner_price write stops before Checkout creation", async () => {
+test("a failed or stale server-side preparation stops before Checkout creation", async () => {
   assert.equal(typeof prepareInitialCheckoutBooking, "function");
-  const stale = pendingWriteSupabase({ row: null });
-  const failed = pendingWriteSupabase({ error: { message: "database unavailable" } });
+  const previousFetch = globalThis.fetch;
+  const supabase = adminAuthSupabase();
 
-  await assert.rejects(
-    prepareInitialCheckoutBooking(stale.client, booking(), 320, "Tarif proposé"),
-    /plus en attente/i,
-  );
-  await assert.rejects(
-    prepareInitialCheckoutBooking(failed.client, booking(), 320, "Tarif proposé"),
-    /database unavailable/i,
-  );
+  try {
+    globalThis.fetch = async () => ({
+      ok: false,
+      async text() { return "La réservation n’est plus en attente."; },
+    });
+    await assert.rejects(
+      prepareInitialCheckoutBooking(supabase, booking(), 320, "Tarif proposé"),
+      /plus en attente/i,
+    );
+
+    globalThis.fetch = async () => ({
+      ok: false,
+      async text() { return "database unavailable"; },
+    });
+    await assert.rejects(
+      prepareInitialCheckoutBooking(supabase, booking(), 320, "Tarif proposé"),
+      /database unavailable/i,
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 });

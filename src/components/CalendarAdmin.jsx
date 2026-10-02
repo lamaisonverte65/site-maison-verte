@@ -97,6 +97,23 @@ function updateHalfDayEdge(info) {
   info.el.style.setProperty("--reservation-edge", `${dayWidth / 2}px`);
 }
 
+function mountCalendarEvent(info) {
+  if (!info?.event || !info?.el) return;
+
+  const fullTitle = String(
+    info.event.extendedProps?.calendar_display_title || info.event.title || ""
+  ).trim();
+
+  // Le libellé peut être tronqué sur un séjour court. Le title natif permet
+  // de retrouver le contenu complet au survol sans modifier le clic existant.
+  if (fullTitle) {
+    info.el.setAttribute("title", fullTitle);
+    info.el.setAttribute("aria-label", fullTitle);
+  }
+
+  updateHalfDayEdge(info);
+}
+
 export default function CalendarAdmin({
   mode = "admin",
   onSelectReservation,
@@ -299,11 +316,22 @@ export default function CalendarAdmin({
         .filter((reservation) => !["refused", "expired", "cancelled"].includes(reservation.status))
         .map((reservation) => {
           const status = reservation.status || "pending";
-          const isAdminPersonal = reservation.source === "admin_personal" || reservation.contract_version === "admin_personal";
-          const isAdminClient = reservation.source === "admin_client";
-          const color = isAdminPersonal ? COLORS.personal : getColor(status);
-          const price = reservation.owner_price || reservation.estimated_total;
-          const prefix = isAdminPersonal ? "Perso" : isAdminClient ? "Admin" : status === "pending" ? "Demande" : "Direct";
+          const reservationSource = String(reservation.source || reservation.contract_version || "").toLowerCase();
+          const isAdminPersonal = reservationSource === "admin_personal";
+          const isAdminClient = reservationSource === "admin_client";
+          const isBooking = reservationSource.includes("booking");
+          const isAirbnb = reservationSource.includes("airbnb");
+          const color = isAdminPersonal ? COLORS.personal : isBooking ? COLORS.booking : isAirbnb ? COLORS.airbnb : getColor(status);
+          const price = reservation.contract_total ?? reservation.owner_price ?? reservation.estimated_total;
+          const prefix = isAdminPersonal
+            ? "Perso"
+            : isAdminClient
+              ? "Admin"
+              : isBooking
+                ? "Booking"
+                : isAirbnb
+                  ? "Airbnb"
+                  : status === "pending" ? "Demande" : "Direct";
           const name = [reservation.guest_first_name, reservation.guest_last_name].filter(Boolean).join(" ") || "Client";
           return {
             id: reservation.id,
@@ -452,7 +480,7 @@ export default function CalendarAdmin({
 
     const action = getActionFromReservation(reservation);
     const editSelection = buildSelectionFromDates(startStr, endStr);
-    const total = Number(reservation.owner_price ?? reservation.estimated_total ?? reservation.gross_amount ?? 0) || 0;
+    const total = Number(reservation.contract_total ?? reservation.owner_price ?? reservation.estimated_total ?? reservation.gross_amount ?? 0) || 0;
 
     setSelectedExternalEvent(null);
     setSelectedCalendarReservation(null);
@@ -483,7 +511,7 @@ export default function CalendarAdmin({
       amountPaid: String(reservation.amount_paid || 0),
       sendPaymentLink: false,
       clientMessage: reservation.message || "",
-      internalNotes: reservation.owner_message || "",
+      internalNotes: reservation.internal_notes || "",
       housekeepingNotes: reservation.housekeeping_notes || "",
       notes: "",
       nightPrice: String(getPriceForDate(startStr)),
@@ -635,6 +663,9 @@ export default function CalendarAdmin({
           babyBedNeeded: Boolean(selectionForm.babyBedNeeded),
           arrivalTime: selectionForm.arrivalTime,
           total,
+          cleaningOption: selectionForm.cleaningOption !== false,
+          promotionCode: selectionForm.promotionCode || "",
+          paymentPreference: selectionForm.paymentPreference || "deposit",
           amountPaid: 0,
           sendPaymentLink: selectionForm.action === "site" && !editingReservation ? Boolean(selectionForm.sendPaymentLink) : false,
           clientMessage: selectionForm.clientMessage,
@@ -918,7 +949,7 @@ export default function CalendarAdmin({
                 `fc-reservation-${arg.event.extendedProps.type}`,
               ];
             }}
-            eventDidMount={updateHalfDayEdge}
+            eventDidMount={mountCalendarEvent}
             dayCellContent={(arg) => {
               const key = formatLocalDate(arg.date);
               const isPendingStart = pendingRangeStart === key;

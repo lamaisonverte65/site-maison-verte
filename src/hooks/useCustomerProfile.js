@@ -33,7 +33,7 @@ export function useCustomerProfile({ customer, reservations = [] }) {
 
     const totals = safeReservations.reduce((acc, reservation) => {
       const amounts = getAmounts(reservation);
-      const stayTotal = Number(reservation.owner_price || reservation.estimated_total || amounts.total || 0);
+      const stayTotal = Number(reservation.contract_total ?? reservation.owner_price ?? reservation.estimated_total ?? amounts.total ?? 0);
       const paid = Number(amounts.paid || reservation.amount_paid || 0);
       const refunded = Number(reservation.refunded_amount || 0);
       acc.totalStay += stayTotal;

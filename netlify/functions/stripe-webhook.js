@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { escapeHtml } from "./_lib/html.js";
 import { processCheckoutSessionCompleted } from "./_lib/stripe-checkout-completed.js";
 import { listAllBalanceTransactions } from "./_lib/stripe-balance-transactions.js";
+import { contractualDeposit, contractualTotal, remainingContractualDue } from "./_lib/booking-financial-authority.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -260,9 +261,9 @@ async function reconcilePayout(payout) {
 }
 
 async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
-  const total = Number(booking.owner_price || booking.estimated_total || 0);
-  const deposit = Number(booking.deposit_amount || Math.round(total * 0.3));
-  const balance = Number(booking.balance_amount || Math.max(total - deposit, 0));
+  const total = contractualTotal(booking);
+  const deposit = contractualDeposit(booking);
+  const balance = remainingContractualDue(booking);
   const arrivalUrl = extra.arrivalToken && booking?.id
     ? `https://lamaisonverte65.fr/arrival?booking=${encodeURIComponent(booking.id)}&token=${encodeURIComponent(extra.arrivalToken)}`
     : null;
@@ -284,7 +285,7 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
   const paymentLine = isFull
     ? `<strong>Total payé :</strong> ${formatCurrency(total)}<br />`
     : isBalance
-    ? `<strong>Solde reçu :</strong> ${formatCurrency(balance)}<br /><strong>Total payé :</strong> ${formatCurrency(total)}<br />`
+    ? `<strong>Solde reçu :</strong> ${formatCurrency(manualAmount)}<br /><strong>Total payé :</strong> ${formatCurrency(total)}<br />`
     : isManual
     ? `<strong>${getReasonLabel(manualReason)} reçu :</strong> ${formatCurrency(manualAmount)}<br />`
     : `<strong>Acompte reçu :</strong> ${formatCurrency(deposit)}<br /><strong>Solde restant :</strong> ${formatCurrency(balance)}`;

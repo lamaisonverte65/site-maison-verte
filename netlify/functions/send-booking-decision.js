@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
 import { escapeHtml } from "./_lib/html.js";
+import { contractualDeposit, contractualTotal } from "./_lib/booking-financial-authority.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -40,7 +41,6 @@ function formatMoney(value) {
 function getPaymentContext({ paymentType, paymentAmount, displayedPrice, daysBeforeArrival }) {
   const total = Number(displayedPrice || 0);
   const amount = Number(paymentAmount || 0);
-  const depositAmount = total > 0 ? Math.round(total * 0.3) : null;
   const days = Number(daysBeforeArrival);
 
   const isFullPayment = paymentType === "full";
@@ -50,7 +50,7 @@ function getPaymentContext({ paymentType, paymentAmount, displayedPrice, daysBef
       title: "Paiement de l’acompte",
       buttonLabel: "Payer l’acompte",
       amountLabel: "Acompte à payer",
-      amountToPay: amount || depositAmount || total,
+      amountToPay: amount || total,
       explanation: `
         <p>
           Pour confirmer définitivement votre réservation, il vous reste simplement à régler l’acompte
@@ -153,7 +153,10 @@ export async function handler(event) {
     let title = "";
     let content = "";
 
-    const displayedPrice = ownerPrice || estimatedTotal;
+    const displayedPrice = contractualTotal(storedBooking);
+    const authoritativePaymentAmount = paymentType === "full"
+      ? displayedPrice
+      : contractualDeposit(storedBooking);
     const travelersSummary = [
       adultsCount ? `${adultsCount} adulte${Number(adultsCount) > 1 ? "s" : ""}` : null,
       Number(childrenCount || 0) > 0 ? `${childrenCount} enfant${Number(childrenCount) > 1 ? "s" : ""}` : null,
@@ -163,7 +166,7 @@ export async function handler(event) {
     const acceptanceDeadline = formatDateTime(acceptanceExpiresAt);
     const paymentContext = getPaymentContext({
       paymentType,
-      paymentAmount,
+      paymentAmount: authoritativePaymentAmount,
       displayedPrice,
       daysBeforeArrival,
     });

@@ -64,7 +64,7 @@ export default function ReservationsTable({
   }
 
   return (
-    <div style={styles.tableWrapper}>
+    <div style={styles.reservationTableCompact}>
       <table style={styles.table}>
         <thead style={styles.stickyHead}>
           <tr>

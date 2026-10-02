@@ -48,6 +48,11 @@ export default function SelectionPanel({ selection, form, setForm, total, custom
   const needsCustomer = ["site", "booking", "airbnb"].includes(form.action);
   const isSiteReservation = form.action === "site";
   const isPersonalReservation = form.action === "personal";
+  const isV410Edit = mode === "edit" && isSiteReservation
+    && editingReservation?.contract_total != null
+    && editingReservation?.deposit_rate != null
+    && editingReservation?.deposit_basis != null
+    && editingReservation?.deposit_amount != null;
   const totalNumber = Number(String(form.total || "0").replace(",", "."));
   const needsPaymentEmail = isSiteReservation && totalNumber > 0 && form.sendPaymentLink;
 
@@ -281,19 +286,35 @@ export default function SelectionPanel({ selection, form, setForm, total, custom
               {isSiteReservation && (
                 <>
                   <h4 style={styles.panelSubtitle || undefined}>Paiement</h4>
-                  <p style={styles.muted}>Prix théorique selon les tarifs actuels : <strong>{formatMoney(total)}</strong></p>
-                  <input
-                    style={styles.input}
-                    placeholder="Montant du séjour (€)"
-                    value={form.total}
-                    onChange={(event) => setForm({ ...form, total: event.target.value })}
-                  />
-                  <label style={styles.checkboxLine}>
-                    <input type="checkbox" checked={Boolean(form.sendPaymentLink)} onChange={(event) => setForm({ ...form, sendPaymentLink: event.target.checked })} />
-                    Envoyer le lien Stripe après création
-                  </label>
-                  {needsPaymentEmail && !form.email && (
-                    <p style={styles.muted}>Un email est obligatoire pour envoyer le lien Stripe.</p>
+                  {isV410Edit ? (
+                    <p style={styles.muted}>Total contractuel actuel : <strong>{formatMoney(editingReservation.contract_total)}</strong>. Il sera recalculé automatiquement si les dates ou les voyageurs changent. Aucun paiement ni remboursement n'est déclenché automatiquement.</p>
+                  ) : (
+                    <>
+                      <p style={styles.muted}>Prix théorique selon les tarifs actuels : <strong>{formatMoney(total)}</strong></p>
+                      <input
+                        style={styles.input}
+                        placeholder="Tarif spécial hébergement (€)"
+                        value={form.total}
+                        onChange={(event) => setForm({ ...form, total: event.target.value })}
+                      />
+                      <p style={styles.muted}>Ce montant remplace uniquement le tarif d’hébergement. Le ménage, la taxe de séjour et l’acompte sont calculés ensuite par le moteur V4.10.</p>
+                      <label style={styles.checkboxLine}>
+                        <input type="checkbox" checked={form.cleaningOption !== false} onChange={(event) => setForm({ ...form, cleaningOption: event.target.checked })} />
+                        Ajouter le forfait ménage
+                      </label>
+                      <input style={styles.input} placeholder="Code promotion (optionnel)" value={form.promotionCode || ""} onChange={(event) => setForm({ ...form, promotionCode: event.target.value.toUpperCase() })} />
+                      <select style={styles.input} value={form.paymentPreference || "deposit"} onChange={(event) => setForm({ ...form, paymentPreference: event.target.value })}>
+                        <option value="deposit">Acompte puis solde</option>
+                        <option value="full">Paiement intégral</option>
+                      </select>
+                      <label style={styles.checkboxLine}>
+                        <input type="checkbox" checked={Boolean(form.sendPaymentLink)} onChange={(event) => setForm({ ...form, sendPaymentLink: event.target.checked })} />
+                        Envoyer le lien Stripe après création
+                      </label>
+                      {needsPaymentEmail && !form.email && (
+                        <p style={styles.muted}>Un email est obligatoire pour envoyer le lien Stripe.</p>
+                      )}
+                    </>
                   )}
                 </>
               )}

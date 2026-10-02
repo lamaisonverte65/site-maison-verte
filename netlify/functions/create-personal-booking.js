@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
 import { DATE_CONFLICT_MESSAGE, isBookingDateConflictError } from "./_lib/public-booking-request.js";
+import { calculatePublicBookingQuote, quoteToBookingMoney } from "./_lib/booking-quote.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(
@@ -134,7 +135,7 @@ async function sendAdminBookingPaymentEmail({ booking, paymentLink, paymentType,
         <strong>Arrivée :</strong> ${formatDate(booking.start_date)}<br />
         <strong>Départ :</strong> ${formatDate(booking.end_date)}<br />
         <strong>Nombre de nuits :</strong> ${booking.nights || "-"}<br />
-        <strong>Montant total :</strong> ${formatMoney(booking.owner_price || booking.estimated_total)}<br />
+        <strong>Montant total :</strong> ${formatMoney(booking.contract_total ?? booking.owner_price ?? booking.estimated_total)}<br />
         <strong>Montant à régler maintenant :</strong> ${formatMoney(paymentAmount)}
       </p>
 
@@ -279,47 +280,33 @@ async function findOrCreateCustomer(body, startDate, endDate) {
   return data;
 }
 
-async function createCheckoutForBooking({ booking, total }) {
+async function createCheckoutForBooking({ booking }) {
+  const total = Number(booking.contract_total);
+  const depositAmount = Number(booking.deposit_amount);
+  if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(depositAmount) || depositAmount < 0) {
+    throw new Error("Snapshot financier V4.10 incomplet pour le paiement.");
+  }
   const arrivalInDays = daysUntil(booking.start_date);
   const paymentType = arrivalInDays !== null && arrivalInDays <= 30 ? "full" : "deposit";
-  const depositAmount = Math.round(total * 0.3);
   const balanceAmount = Math.max(total - depositAmount, 0);
   const amountToPay = paymentType === "full" ? total : depositAmount;
 
   const session = await stripe.checkout.sessions.create({
-    payment_method_types: ["card"],
-    mode: "payment",
-    customer_email: booking.guest_email,
+    payment_method_types: ["card"], mode: "payment", customer_email: booking.guest_email,
     metadata: {
-      booking_id: booking.id,
-      payment_type: paymentType,
-      total_price: String(total),
-      deposit_amount: String(depositAmount),
-      balance_amount: String(balanceAmount),
-      guest_first_name: booking.guest_first_name || "",
-      guest_last_name: booking.guest_last_name || "",
-      start_date: booking.start_date || "",
-      end_date: booking.end_date || "",
-      created_from: "calendar_admin",
+      booking_id: booking.id, payment_type: paymentType, total_price: String(total),
+      deposit_amount: String(depositAmount), balance_amount: String(balanceAmount),
+      guest_first_name: booking.guest_first_name || "", guest_last_name: booking.guest_last_name || "",
+      start_date: booking.start_date || "", end_date: booking.end_date || "", created_from: "calendar_admin",
     },
-    line_items: [
-      {
-        price_data: {
-          currency: "eur",
-          product_data: {
-            name: paymentType === "full" ? "Paiement séjour - La Maison Verte" : "Acompte réservation - La Maison Verte",
-            description: `${booking.start_date} → ${booking.end_date}`,
-          },
-          unit_amount: Math.round(amountToPay * 100),
-        },
-        quantity: 1,
-      },
-    ],
+    line_items: [{ price_data: { currency: "eur", product_data: {
+      name: paymentType === "full" ? "Paiement séjour - La Maison Verte" : "Acompte réservation - La Maison Verte",
+      description: `${booking.start_date} → ${booking.end_date}`,
+    }, unit_amount: Math.round(amountToPay * 100) }, quantity: 1 }],
     success_url: "https://lamaisonverte65.fr/success?session_id={CHECKOUT_SESSION_ID}",
     cancel_url: "https://lamaisonverte65.fr/cancel",
   });
-
-  return { session, paymentType, amountToPay, depositAmount, balanceAmount };
+  return { session, paymentType, amountToPay, depositAmount, balanceAmount, total };
 }
 
 export async function handler(event) {
@@ -340,15 +327,19 @@ export async function handler(event) {
     }
 
     const bookingKind = normalizeBookingKind(body.bookingKind);
-    const total = bookingKind === "site" ? Math.max(Number(body.total || 0), 0) : 0;
+    const specialAccommodation = bookingKind === "site" && body.total !== null && body.total !== undefined && body.total !== ""
+      ? Number(body.total)
+      : null;
+    if (bookingKind === "site" && specialAccommodation !== null && (!Number.isFinite(specialAccommodation) || specialAccommodation < 0)) {
+      return { statusCode: 400, body: JSON.stringify({ error: "Tarif spécial d’hébergement invalide." }) };
+    }
     const amountPaid = 0;
     const sendPaymentLink = bookingKind === "site" && body.sendPaymentLink !== false;
-    const shouldCreatePaymentLink = bookingKind === "site" && total > 0 && sendPaymentLink;
     const nights = nightsBetween(startDate, endDate);
     const clientMessage = cleanText(body.clientMessage);
     const internalNotes = cleanText(body.internalNotes);
     const housekeepingNotes = cleanText(body.housekeepingNotes);
-    const acceptanceExpiresAt = shouldCreatePaymentLink ? addHours(24) : null;
+    const acceptanceExpiresAt = bookingKind === "site" && sendPaymentLink ? addHours(24) : null;
 
     const customer = await findOrCreateCustomer(body, startDate, endDate);
 
@@ -376,17 +367,27 @@ export async function handler(event) {
       throw new Error("Nom client manquant.");
     }
 
+    let financialSnapshot = null;
+    if (bookingKind === "site") {
+      const adults = Number(body.adults || 0);
+      const children = Number(body.children || 0);
+      const quote = await calculatePublicBookingQuote(supabase, {
+        startDate, endDate, adultsCount: adults, childrenCount: children,
+        cleaningOption: body.cleaningOption !== false,
+        promotionCode: cleanText(body.promotionCode) || "",
+        financialContext: specialAccommodation === null ? {} : { accommodationGrossCents: Math.round(specialAccommodation * 100) },
+      });
+      financialSnapshot = quoteToBookingMoney(quote);
+      financialSnapshot.cleaning_option = body.cleaningOption !== false;
+      financialSnapshot.cleaning_fee = Math.round(quote.cleaningFeeCents / 100);
+      financialSnapshot.payment_preference = daysUntil(startDate) !== null && daysUntil(startDate) <= 30 ? "full" : (body.paymentPreference === "full" ? "full" : "deposit");
+    }
+    const total = Number(financialSnapshot?.contract_total || 0);
+    const shouldCreatePaymentLink = bookingKind === "site" && total > 0 && sendPaymentLink;
     if (shouldCreatePaymentLink && !guestEmail) {
       throw new Error("Email obligatoire pour envoyer un lien de paiement Stripe.");
     }
-
-    const paymentTypePreview = shouldCreatePaymentLink && daysUntil(startDate) !== null && daysUntil(startDate) <= 30 ? "full" : "deposit";
-    const depositAmount = shouldCreatePaymentLink && paymentTypePreview !== "full" ? Math.round(total * 0.3) : 0;
-    const balanceAmount = shouldCreatePaymentLink
-      ? (paymentTypePreview === "full" ? total : Math.max(total - depositAmount, 0))
-      : Math.max(total - amountPaid, 0);
-
-    const initialStatus = shouldCreatePaymentLink ? "accepted" : "confirmed";
+    const initialStatus = shouldCreatePaymentLink ? "accepted" : (bookingKind === "site" ? "pending" : "confirmed");
     const now = new Date().toISOString();
 
     const { data: booking, error } = await supabase
@@ -400,17 +401,19 @@ export async function handler(event) {
         start_date: startDate,
         end_date: endDate,
         nights,
-        estimated_total: total,
-        owner_price: total,
-        gross_amount: total,
+        ...(bookingKind === "site" ? {
+          ...financialSnapshot,
+          owner_price: financialSnapshot.contract_total,
+          gross_amount: financialSnapshot.contract_total,
+        } : {
+          estimated_total: 0, owner_price: 0, gross_amount: 0, deposit_amount: 0, balance_amount: 0,
+        }),
         amount_paid: shouldCreatePaymentLink ? 0 : amountPaid,
         source,
         status: initialStatus,
         payment_status: shouldCreatePaymentLink ? "pending" : (amountPaid > 0 ? "manual_paid" : "not_required"),
-        deposit_amount: shouldCreatePaymentLink ? depositAmount : 0,
-        balance_amount: balanceAmount,
-        deposit_status: shouldCreatePaymentLink && paymentTypePreview !== "full" ? "à payer" : "non applicable",
-        balance_status: shouldCreatePaymentLink ? (paymentTypePreview === "full" ? "à payer" : "en attente") : "non applicable",
+        deposit_status: shouldCreatePaymentLink && financialSnapshot.payment_preference !== "full" ? "à payer" : "non applicable",
+        balance_status: shouldCreatePaymentLink ? (financialSnapshot.payment_preference === "full" ? "à payer" : "en attente") : "non applicable",
         adults_count: Number(body.adults || 0) || null,
         children_count: Number(body.children || 0) || null,
         baby_bed_needed: Boolean(body.babyBedNeeded),
@@ -418,12 +421,12 @@ export async function handler(event) {
         // Le champ message est réservé aux textes réellement rédigés par le client.
         // Les consignes propriétaire/ménage restent dans housekeeping_notes.
         message: clientMessage,
-        owner_message: internalNotes,
+        internal_notes: internalNotes,
         housekeeping_notes: housekeepingNotes,
         payment_link: null,
         acceptance_expires_at: acceptanceExpiresAt,
         accepted_at: shouldCreatePaymentLink ? now : null,
-        confirmed_at: shouldCreatePaymentLink ? null : now,
+        confirmed_at: bookingKind === "site" ? null : now,
         contract_accepted: false,
         contract_status: "not_sent",
         contract_version: contractVersion,
@@ -440,7 +443,7 @@ export async function handler(event) {
     let paymentAmount = 0;
 
     if (shouldCreatePaymentLink) {
-      const checkout = await createCheckoutForBooking({ booking, total });
+      const checkout = await createCheckoutForBooking({ booking });
       paymentLink = checkout.session.url;
       stripeSessionId = checkout.session.id;
       paymentType = checkout.paymentType;
@@ -449,7 +452,6 @@ export async function handler(event) {
       const { error: updateError } = await supabase.from("booking_requests").update({
         payment_link: paymentLink,
         stripe_checkout_session_id: stripeSessionId,
-        deposit_amount: paymentType === "full" ? 0 : checkout.depositAmount,
         balance_amount: paymentType === "full" ? total : checkout.balanceAmount,
         deposit_status: paymentType === "full" ? "non applicable" : "à payer",
         balance_status: paymentType === "full" ? "à payer" : "en attente",
@@ -462,7 +464,6 @@ export async function handler(event) {
         ...booking,
         payment_link: paymentLink,
         stripe_checkout_session_id: stripeSessionId,
-        deposit_amount: paymentType === "full" ? 0 : checkout.depositAmount,
         balance_amount: paymentType === "full" ? total : checkout.balanceAmount,
         deposit_status: paymentType === "full" ? "non applicable" : "à payer",
         balance_status: paymentType === "full" ? "à payer" : "en attente",
@@ -482,7 +483,7 @@ export async function handler(event) {
         eventType: "admin_booking_payment_link_sent",
         label: paymentType === "full" ? "Lien paiement total envoyé" : "Lien acompte envoyé",
         message: `Lien Stripe envoyé pour ${formatMoney(paymentAmount)}.`,
-        metadata: { source: "calendar_admin", bookingKind, total, paymentType, paymentAmount, stripeSessionId },
+        metadata: { source: "calendar_admin", bookingKind, contractTotal: total, paymentType, paymentAmount, stripeSessionId },
       });
 
       return {
@@ -502,7 +503,7 @@ export async function handler(event) {
       eventType: `${bookingKind}_booking_created_from_calendar`,
       label: `${getBookingKindLabel(bookingKind)} créée`,
       message: housekeepingNotes || "Créée depuis le calendrier admin.",
-      metadata: { source: "calendar_admin", bookingKind, total, amountPaid },
+      metadata: { source: "calendar_admin", bookingKind, contractTotal: total, amountPaid },
     });
 
     return { statusCode: 200, body: JSON.stringify({ success: true, booking }) };

@@ -183,9 +183,11 @@ export function shortId(id) {
 }
 
 export function getAmounts(request) {
-  const total = Number(request?.owner_price || request?.estimated_total || 0);
-  const deposit = Number(request?.deposit_amount || Math.round(total * 0.3) || 0);
-  const balance = Number(request?.balance_amount || Math.max(total - deposit, 0));
+  const isV410 = request?.contract_total !== null && request?.contract_total !== undefined
+    && request?.deposit_amount !== null && request?.deposit_amount !== undefined;
+  const total = Number(isV410 ? request.contract_total : (request?.owner_price || request?.estimated_total || 0));
+  const deposit = Number(request?.deposit_amount ?? (isV410 ? 0 : Math.round(total * 0.3)));
+  const balance = Number(isV410 ? Math.max(total - deposit, 0) : (request?.balance_amount ?? Math.max(total - deposit, 0)));
   const storedPaid = request?.amount_paid ?? request?.total_paid;
   const hasStoredPaid = storedPaid !== null && storedPaid !== undefined && storedPaid !== "";
   const amountPaid = Number(hasStoredPaid ? storedPaid : 0);
@@ -252,5 +254,5 @@ export function getRefundedAmount(request) {
 
 export function getConfirmedStayAmount(request) {
   if (!isConfirmedFinancialStatus(request?.status)) return 0;
-  return Number(request?.gross_amount || request?.owner_price || request?.estimated_total || 0);
+  return Number(request?.contract_total ?? request?.gross_amount ?? request?.owner_price ?? request?.estimated_total ?? 0);
 }

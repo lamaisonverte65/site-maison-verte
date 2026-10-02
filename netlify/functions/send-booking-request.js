@@ -89,6 +89,7 @@ export default async function handler(request, context) {
     validated.emailModel.promotionDiscountAmount = Number(validated.booking.promotion_discount_amount || 0);
     validated.emailModel.accommodationTotal = centsToEuros(quote.accommodationNetCents);
     validated.emailModel.touristTaxAmount = Number(validated.booking.tourist_tax_amount || 0);
+    validated.emailModel.depositRate = quote.depositRate;
     validated.emailModel.total = centsToEuros(quote.totalCents);
 
     const ownerEmail = String(process.env.BOOKING_NOTIFICATION_EMAIL || "lamaisonverte65@gmail.com").trim().toLowerCase();

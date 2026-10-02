@@ -83,6 +83,9 @@ export function emptySelectionForm(selection = null) {
     babyBedNeeded: false,
     arrivalTime: "",
     total: "0",
+    cleaningOption: true,
+    promotionCode: "",
+    paymentPreference: "deposit",
     amountPaid: "0",
     sendPaymentLink: true,
     priceLabel: "Tarif spécifique",
@@ -130,12 +133,18 @@ export function getExternalImportStatus(reservation = {}, linkedClient = null) {
 }
 
 export function getExternalTitle({ reservation, linkedClient, sourceLabel }) {
-  const clientName = linkedClient
+  const linkedClientName = linkedClient
     ? [linkedClient.guest_first_name, linkedClient.guest_last_name].filter(Boolean).join(" ")
+    : "";
+  const importedGuestName = String(reservation?.guest_name || "").trim();
+  const genericNames = new Set([`Client ${sourceLabel}`.toLowerCase(), sourceLabel.toLowerCase()]);
+  const accountingClientName = importedGuestName && !genericNames.has(importedGuestName.toLowerCase())
+    ? importedGuestName
     : "";
 
   const status = getExternalImportStatus(reservation, linkedClient);
-  if (clientName) return `${sourceLabel} - ${clientName}`;
+  if (linkedClientName) return `${sourceLabel} - ${linkedClientName}`;
+  if (accountingClientName) return `${sourceLabel} - ${accountingClientName}`;
   if (status === "needs_action") return `À renseigner - ${sourceLabel}`;
   if (status === "needs_info") return `${sourceLabel} - Infos à compléter`;
   return sourceLabel;

@@ -28,7 +28,7 @@ export default function CustomerReservationsBlock({ reservations, customerAction
                     <td style={styles.td}>{reservationView.displayName || getRequestName(reservationView)}</td>
                     <td style={styles.td}>{formatDate(reservationView.stay?.startDate || reservationView.start_date)} → {formatDate(reservationView.stay?.endDate || reservationView.end_date)}</td>
                     <td style={styles.td}>{reservationView.status || "-"}</td>
-                    <td style={styles.td}>{formatMoney(reservationView.financial?.confirmedAmount || reservationView.owner_price || reservationView.estimated_total || reservationView.amount_paid || 0)}</td>
+                    <td style={styles.td}>{formatMoney(reservationView.financial?.confirmedAmount || (reservationView.contract_total ?? reservationView.owner_price ?? reservationView.estimated_total ?? reservationView.amount_paid ?? 0))}</td>
                     <td style={styles.td}>
                       <button style={styles.smallButton} onClick={() => customerActions.selectReservation(reservationView)}>
                         Ouvrir la réservation

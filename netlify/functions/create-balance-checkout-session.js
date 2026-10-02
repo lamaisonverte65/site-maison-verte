@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
 import { createBalancePaymentUrl } from "./_lib/balance-link.js";
+import { contractualTotal, recordedPaidAmount, remainingContractualDue } from "./_lib/booking-financial-authority.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -91,9 +92,9 @@ export async function handler(event) {
     const { data: booking, error } = await supabase.from("booking_requests").select("*").eq("id", bookingId).single();
     if (error) throw error;
 
-    const total = Number(booking.owner_price || booking.estimated_total || 0);
-    const alreadyPaid = Number(booking.amount_paid || booking.deposit_amount || 0);
-    const balance = Number(booking.balance_amount || Math.max(total - alreadyPaid, 0));
+    const total = contractualTotal(booking);
+    const alreadyPaid = recordedPaidAmount(booking);
+    const balance = remainingContractualDue(booking);
 
     if (!balance || balance <= 0) return { statusCode: 400, body: JSON.stringify({ error: "Aucun solde à payer" }) };
 

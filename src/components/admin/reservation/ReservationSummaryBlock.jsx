@@ -29,6 +29,7 @@ export default function ReservationSummaryBlock({ reservation, status, amounts }
         <Info label="Client" value={getRequestName(reservation)} />
         <Info label="Téléphone" value={reservation.guest_phone || "-"} />
         <Info label="Email" value={reservation.guest_email || "-"} />
+        <Info label="Adresse" value={[reservation.guest_address, reservation.guest_postal_code, reservation.guest_city, reservation.guest_country].filter(Boolean).join(", ") || "-"} />
         <Info label="Statut" value={STATUS_LABELS[status] || status} />
         <Info label="Arrivée" value={formatDate(reservation.start_date)} />
         <Info label="Départ" value={formatDate(reservation.end_date)} />

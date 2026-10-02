@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { fetchAdminData } from "../services/adminDataService";
 import {
@@ -18,8 +18,7 @@ import {
   sendDecisionEmail,
   logBookingEvent,
 } from "../services/bookingActionsService";
-import CalendarAdmin from "../components/CalendarAdmin";
-import PricingAdmin from "../components/PricingAdmin";
+
 import AdminLogin from "./AdminLogin";
 import { styles } from "../components/admin/adminStyles";
 import RequestsPanel from "../components/admin/RequestsPanel";
@@ -28,6 +27,7 @@ import ReservationPanel from "../components/admin/ReservationPanel";
 import CustomersPanel from "../components/admin/CustomersPanel";
 import PaymentsPanel from "../components/admin/PaymentsPanel";
 import AdminTopBar from "../components/admin/AdminTopBar";
+import AdminHomePanel from "../components/admin/AdminHomePanel";
 import VisitsPanel from "../components/admin/VisitsPanel";
 import SummaryPanel from "../components/admin/SummaryPanel";
 import ReviewsPanel from "../components/admin/ReviewsPanel";
@@ -35,6 +35,7 @@ import StripePayoutsPanel from "../components/admin/StripePayoutsPanel";
 import CommunicationPanel from "../components/admin/communication/CommunicationPanel";
 import CrmPanel from "../components/admin/crm/CrmPanel";
 import UsersPanel from "../components/admin/users/UsersPanel";
+
 import { shouldRenderAdminCalendar } from "../components/admin/calendar/calendarRefreshPolicy";
 import { ActionModal } from "../components/admin/AdminUi";
 import {
@@ -53,7 +54,21 @@ import { useCrmData } from "../hooks/useCrmData";
 import { useAdminPermissions } from "../hooks/useAdminPermissions";
 import { useAdminUsers } from "../hooks/useAdminUsers";
 
+
+const CalendarAdmin = lazy(() => import("../components/CalendarAdmin"));
+const PricingAdmin = lazy(() => import("../components/PricingAdmin"));
+const DeclarationsPanel = lazy(() => import("../components/admin/DeclarationsPanel"));
+const InvoicesPanel = lazy(() => import("../components/admin/InvoicesPanel"));
+
 const ACTIVE_BLOCKING_STATUSES = ["accepted", "deposit_paid", "paid", "fully_paid", "confirmed"];
+
+function LazyAdminSection({ children }) {
+  return (
+    <Suspense fallback={<p style={styles.info}>Chargement du module…</p>}>
+      {children}
+    </Suspense>
+  );
+}
 
 export default function Admin() {
   const [session, setSession] = useState(null);
@@ -61,6 +76,7 @@ export default function Admin() {
   const [bookingRequests, setBookingRequests] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [customerInvoices, setCustomerInvoices] = useState([]);
   const [bookingEvents, setBookingEvents] = useState([]);
   const [emailLogs, setEmailLogs] = useState([]);
   const [guestReviews, setGuestReviews] = useState([]);
@@ -74,7 +90,7 @@ export default function Admin() {
   const [ownerHousekeepingNotes, setOwnerHousekeepingNotes] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [calendarEditRequest, setCalendarEditRequest] = useState(null);
-  const [activeTab, setActiveTab] = useState("requests");
+  const [activeTab, setActiveTab] = useState("home");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [customerFilter, setCustomerFilter] = useState("all");
@@ -162,6 +178,7 @@ export default function Admin() {
       setBookingRequests(nextRequests);
       setCustomers(adminData.customers);
       setPayments(adminData.payments);
+      setCustomerInvoices(adminData.customerInvoices || []);
       setBookingEvents(adminData.bookingEvents);
       setEmailLogs(adminData.emailLogs);
       setGuestReviews(adminData.guestReviews);
@@ -251,13 +268,13 @@ export default function Admin() {
       ? untilArrival !== null && untilArrival <= 30
         ? "La réservation est à 30 jours ou moins : le lien Stripe demandera le paiement total."
         : "Le client a choisi le paiement intégral : le lien Stripe demandera la totalité du séjour."
-      : `Le client a choisi l’acompte de 30 %. Le solde sera demandé à J-30, soit dans ${Math.max((untilArrival ?? 30) - 30, 0)} jour${Math.max((untilArrival ?? 30) - 30, 0) > 1 ? "s" : ""}.`;
+      : `Le client a choisi l’acompte de ${Math.round(Number(request.deposit_rate ?? 0.30) * 100)} %. Le solde sera demandé à J-30, soit dans ${Math.max((untilArrival ?? 30) - 30, 0)} jour${Math.max((untilArrival ?? 30) - 30, 0) > 1 ? "s" : ""}.`;
 
     setModal({
       type: "accept",
       request,
       title: "Accepter la demande",
-      price: request.owner_price || request.estimated_total || "",
+      price: request.accommodation_gross ?? request.contract_total ?? request.owner_price ?? request.estimated_total ?? "",
       message: paymentMode === "total"
         ? "Votre demande est acceptée. La réservation sera confirmée après paiement du montant total du séjour."
         : "Votre demande est acceptée. La réservation sera confirmée après paiement de l’acompte.",
@@ -399,7 +416,6 @@ export default function Admin() {
         await sendDecisionEmail(supabase, request, "refused", null, values.message);
         const { error } = await supabase.from("booking_requests").update({
           status: "refused",
-          owner_message: values.message,
           refused_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }).eq("id", request.id);
@@ -409,11 +425,10 @@ export default function Admin() {
       }
 
       if (modal.type === "confirm") {
-        await sendDecisionEmail(supabase, request, "confirmed", request.owner_price || request.estimated_total, values.message);
+        await sendDecisionEmail(supabase, request, "confirmed", request.contract_total ?? request.owner_price ?? request.estimated_total, values.message);
         const { error } = await supabase.from("booking_requests").update({
           status: "confirmed",
           payment_status: request.payment_status || "manual_confirmed",
-          owner_message: values.message,
           confirmed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }).eq("id", request.id);
@@ -485,17 +500,33 @@ export default function Admin() {
     await loadAdminData();
   }
 
-  async function addCustomer() {
+  async function addCustomer(values = {}) {
+    const firstName = String(values.firstName || "").trim();
+    const lastName = String(values.lastName || "").trim();
+    const email = String(values.email || "").trim();
+    const phone = String(values.phone || "").trim();
+    const address = String(values.address || "").trim();
+    const postalCode = String(values.postalCode || "").trim();
+    const city = String(values.city || "").trim();
+    const country = String(values.country || "").trim();
+
+    if (!firstName || !lastName) throw new Error("Le prénom et le nom sont obligatoires.");
+
     const { data, error } = await supabase.from("customers").insert([{
-      first_name: "",
-      last_name: "Nouveau client",
+      first_name: firstName,
+      last_name: lastName,
+      email: email || null,
+      phone: phone || null,
+      address: address || null,
+      postal_code: postalCode || null,
+      city: city || null,
+      country: country || null,
       source: "admin",
       booking_count: 0,
     }]).select().single();
 
-    if (error) return alert("Erreur : " + error.message);
+    if (error) throw error;
     await loadAdminData();
-    alert("Client créé. Ouvre sa fiche pour compléter les champs, puis clique sur Enregistrer.");
     return data;
   }
 
@@ -742,12 +773,14 @@ export default function Admin() {
         {error && <p style={styles.error}>Erreur Supabase : {error}</p>}
 
         {!loading && !error && (
-          <CalendarAdmin
+          <LazyAdminSection>
+            <CalendarAdmin
             mode="housekeeping"
             housekeepingReservations={housekeepingReservations}
             onHousekeepingNoteCreate={saveHousekeepingNote}
             onCalendarUpdated={loadAdminData}
-          />
+            />
+          </LazyAdminSection>
         )}
       </main>
     );
@@ -774,6 +807,16 @@ export default function Admin() {
         onLogout={handleLogout}
         permissions={permissions}
       />
+
+      {!loading && !error && activeTab === "home" && (
+        <AdminHomePanel
+          bookingRequests={bookingRequests}
+          stats={stats}
+          guestReviews={guestReviews}
+          onNavigate={setActiveTab}
+          onOpenReservation={(request) => { selectReservation(request); setActiveTab("reservations"); }}
+        />
+      )}
 
       {!loading && !error && activeTab === "summary" && (
         <SummaryPanel
@@ -808,17 +851,33 @@ export default function Admin() {
       {shouldRenderAdminCalendar({ activeTab, loading, error }) && (
         <section style={styles.panel}>
           <h2 style={styles.panelTitle}>Calendrier central</h2>
-          <CalendarAdmin
-            mode="admin"
-            onSelectReservation={openCalendarReservation}
-            onCalendarUpdated={loadAdminData}
-            reservationToEdit={calendarEditRequest}
-            onReservationEditHandled={() => setCalendarEditRequest(null)}
-          />
+          <LazyAdminSection>
+            <CalendarAdmin
+              mode="admin"
+              onSelectReservation={openCalendarReservation}
+              onCalendarUpdated={loadAdminData}
+              reservationToEdit={calendarEditRequest}
+              onReservationEditHandled={() => setCalendarEditRequest(null)}
+            />
+          </LazyAdminSection>
         </section>
       )}
 
-      {!loading && !error && activeTab === "pricing" && <section style={styles.panel}><h2 style={styles.panelTitle}>Gestion des tarifs</h2><PricingAdmin /></section>}
+      {!loading && !error && activeTab === "pricing" && <section style={styles.panel}><h2 style={styles.panelTitle}>Gestion des tarifs</h2><LazyAdminSection><PricingAdmin mode="pricing" /></LazyAdminSection></section>}
+
+      {!loading && !error && activeTab === "tourist_tax" && (
+        <section style={styles.panel}>
+          <h2 style={styles.panelTitle}>Taxe de séjour</h2>
+          <LazyAdminSection><PricingAdmin mode="tax" /></LazyAdminSection>
+        </section>
+      )}
+
+      {!loading && !error && activeTab === "declarations" && (
+        <section style={styles.panel}>
+          <h2 style={styles.panelTitle}>Déclarations</h2>
+          <LazyAdminSection><DeclarationsPanel /></LazyAdminSection>
+        </section>
+      )}
 
       {!loading && !error && activeTab === "customers" && (
         <CustomersPanel
@@ -892,6 +951,19 @@ export default function Admin() {
         <PaymentsPanel paymentRows={paymentRows} />
       )}
 
+      {!loading && !error && activeTab === "invoices" && (
+        <LazyAdminSection>
+          <InvoicesPanel
+            invoices={customerInvoices}
+            onRefresh={loadAdminData}
+            onOpenReservation={(bookingId) => {
+              const booking = bookingRequests.find((item) => item.id === bookingId);
+              if (booking) { setSelectedRequest(booking); setActiveTab("reservations"); }
+            }}
+          />
+        </LazyAdminSection>
+      )}
+
       {!loading && !error && activeTab === "stripe_payouts" && (
         <StripePayoutsPanel
           stripePayouts={stripePayouts}
@@ -916,6 +988,9 @@ export default function Admin() {
             events={openedReservationEvents}
             emailLogs={openedReservationEmailLogs}
             housekeepingNotes={ownerHousekeepingNotes}
+            invoice={customerInvoices.find((invoice) => invoice.booking_request_id === openedReservation.id && (invoice.source === "direct" || invoice.source === "booking")) || null}
+            onInvoiceRefresh={loadAdminData}
+            onOpenInvoices={() => setActiveTab("invoices")}
             onAccept={openAcceptModal}
             onRefuse={openRefuseModal}
             onConfirm={openConfirmModal}

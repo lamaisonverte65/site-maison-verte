@@ -52,10 +52,18 @@ export function ActionModal({ modal, onClose, onSubmit }) {
   const [refundAmount, setRefundAmount] = useState(modal.refundAmount || "");
   const [cancellationType, setCancellationType] = useState(modal.cancellationType || "client");
   const [confirmed, setConfirmed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  function submit(event) {
+  async function submit(event) {
     event.preventDefault();
-    onSubmit({ price, reason, message, refundMode, refundAmount, cancellationType, confirmed });
+    if (submitting) return;
+
+    setSubmitting(true);
+    try {
+      await onSubmit({ price, reason, message, refundMode, refundAmount, cancellationType, confirmed });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -63,13 +71,13 @@ export function ActionModal({ modal, onClose, onSubmit }) {
       <form style={styles.modal} onSubmit={submit}>
         <div style={styles.modalHeader}>
           <h2 style={{ margin: 0 }}>{modal.title}</h2>
-          <button type="button" style={styles.closeButton} onClick={onClose}>×</button>
+          <button type="button" style={styles.closeButton} onClick={onClose} disabled={submitting}>×</button>
         </div>
 
         <p style={styles.empty}>{modal.helper}</p>
 
         {modal.type === "accept" && (
-          <label style={styles.label}>Tarif proposé (€)<input style={styles.input} value={price} onChange={(event) => setPrice(event.target.value)} /></label>
+          <label style={styles.label}>Tarif spécial hébergement (€)<input style={styles.input} value={price} onChange={(event) => setPrice(event.target.value)} /></label>
         )}
 
         {modal.type === "manual_payment" && (
@@ -117,8 +125,8 @@ export function ActionModal({ modal, onClose, onSubmit }) {
         <label style={styles.securityBox}><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>{modal.confirmText || "Je confirme cette action."}</span></label>
 
         <div style={styles.modalActions}>
-          <button type="button" style={styles.cancelButton} onClick={onClose}>Retour</button>
-          <button type="submit" style={styles.acceptButton}>Valider</button>
+          <button type="button" style={styles.cancelButton} onClick={onClose} disabled={submitting}>Retour</button>
+          <button type="submit" style={styles.acceptButton} disabled={submitting}>{submitting ? "Traitement…" : "Valider"}</button>
         </div>
       </form>
     </div>

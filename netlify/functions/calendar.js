@@ -53,10 +53,46 @@ function getDatesBetween(startDate, endDate) {
   return dates;
 }
 
+
+export function enrichExternalReservationsFromAccounting(externalReservations = [], accountingEntries = []) {
+  const candidates = new Map();
+
+  for (const entry of accountingEntries || []) {
+    const source = String(entry?.source || "").toLowerCase();
+    const metadata = entry?.metadata || {};
+    const guestName = String(metadata.guest_name || "").trim();
+    const startDate = String(metadata.arrival_date || "").slice(0, 10);
+    const endDate = String(metadata.checkout_date || "").slice(0, 10);
+    const uid = String(metadata.external_calendar_uid || "").trim();
+    if (!guestName || !["booking", "airbnb"].includes(source)) continue;
+
+    const keys = [];
+    if (uid) keys.push(`${source}|uid|${uid}`);
+    if (startDate && endDate) keys.push(`${source}|dates|${startDate}|${endDate}`);
+    for (const key of keys) {
+      if (!candidates.has(key)) candidates.set(key, new Set());
+      candidates.get(key).add(guestName);
+    }
+  }
+
+  return (externalReservations || []).map((reservation) => {
+    const source = String(reservation?.source || "").toLowerCase();
+    const uidKey = `${source}|uid|${String(reservation?.uid || "").trim()}`;
+    const datesKey = `${source}|dates|${String(reservation?.start_date || "").slice(0, 10)}|${String(reservation?.end_date || "").slice(0, 10)}`;
+    const uidNames = reservation?.uid ? candidates.get(uidKey) : null;
+    const dateNames = candidates.get(datesKey);
+    const names = uidNames?.size ? uidNames : dateNames;
+    if (!names || names.size !== 1) return reservation;
+    const [guestName] = [...names];
+    return { ...reservation, guest_name: guestName, title: guestName, accounting_match: true };
+  });
+}
+
 export async function handler() {
   try {
     const supabase = createCalendarSupabaseClient();
     const unavailableDates = [];
+    const departureOnlyDates = [];
     const persistentCalendar = await loadPersistedExternalCalendar({
       async getCurrentOccupancies() {
         const { data, error } = await supabase.from("external_occupancies")
@@ -73,7 +109,26 @@ export async function handler() {
       },
     });
     unavailableDates.push(...persistentCalendar.unavailableDates);
-    const externalReservations = persistentCalendar.externalReservations;
+    departureOnlyDates.push(
+      ...persistentCalendar.externalReservations.map((reservation) => reservation.start_date)
+    );
+    let externalReservations = persistentCalendar.externalReservations;
+
+    // Les exports comptables Booking/Airbnb contiennent le nom du voyageur.
+    // On les utilise uniquement comme enrichissement d'affichage : l'iCal reste
+    // l'autorité sur l'occupation et aucune réservation externe n'est transformée
+    // en réservation directe. Un rapprochement ambigu reste volontairement sans nom.
+    const { data: accountingEntries, error: accountingEntriesError } = await supabase
+      .from("accounting_entries")
+      .select("source,metadata")
+      .in("source", ["booking", "airbnb"])
+      .eq("entry_kind", "income");
+
+    if (accountingEntriesError) {
+      console.error("Erreur enrichissement comptable calendrier :", accountingEntriesError);
+    } else {
+      externalReservations = enrichExternalReservationsFromAccounting(externalReservations, accountingEntries || []);
+    }
 
     const { data: bookingRequests, error: bookingRequestsError } = await supabase
       .from("booking_requests")
@@ -85,6 +140,7 @@ export async function handler() {
     }
 
     for (const booking of bookingRequests || []) {
+      departureOnlyDates.push(booking.start_date);
       unavailableDates.push(
         ...getDatesBetween(booking.start_date, booking.end_date)
       );
@@ -99,6 +155,7 @@ export async function handler() {
     }
 
     for (const block of calendarBlocks || []) {
+      departureOnlyDates.push(block.start_date);
       unavailableDates.push(
         ...getDatesBetween(block.start_date, block.end_date)
       );
@@ -143,6 +200,7 @@ export async function handler() {
       },
       body: JSON.stringify({
         unavailableDates: [...new Set(unavailableDates)].sort(),
+        departureOnlyDates: [...new Set(departureOnlyDates)].sort(),
         externalReservations,
         externalCalendarSyncStatus: persistentCalendar.syncStatus,
         defaultNightPrice: Number(pricingSettings?.default_night_price || 80),

@@ -1,6 +1,7 @@
 import { schedule } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 import { createBalancePaymentUrl } from "./_lib/balance-link.js";
+import { contractualTotal, recordedPaidAmount } from "./_lib/booking-financial-authority.js";
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -64,35 +65,11 @@ function normalizeStatus(value) {
 }
 
 function getTotalDue(booking) {
-  return Number(booking.owner_price || booking.estimated_total || 0);
+  return contractualTotal(booking);
 }
 
 function getTotalPaid(booking) {
-  const storedPaid = Number(booking.amount_paid || booking.total_paid || 0);
-
-  if (storedPaid > 0) return storedPaid;
-
-  const total = getTotalDue(booking);
-  const deposit = Number(booking.deposit_amount || Math.round(total * 0.3) || 0);
-  const manualPaid =
-    normalizeStatus(booking.manual_payment_status) === "paid"
-      ? Number(booking.manual_payment_amount || 0)
-      : 0;
-
-  let derived = manualPaid;
-
-  if (normalizeStatus(booking.deposit_status) === "paid") {
-    derived += deposit;
-  }
-
-  if (
-    normalizeStatus(booking.balance_status) === "paid" ||
-    ["fully_paid", "confirmed"].includes(booking.status)
-  ) {
-    return total;
-  }
-
-  return derived;
+  return recordedPaidAmount(booking);
 }
 
 function shouldStopBalanceLoop(booking) {

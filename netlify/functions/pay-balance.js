@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { verifyBalanceToken } from "./_lib/balance-link.js";
+import { contractualTotal, recordedPaidAmount } from "./_lib/booking-financial-authority.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -9,19 +10,8 @@ const STOP_STATUSES = ["cancelled", "refused", "expired"];
 const PAID_STATUSES = ["fully_paid", "confirmed"];
 
 function normalize(value) { return String(value || "").trim().toLowerCase(); }
-function totalDue(b) { return Number(b.owner_price || b.estimated_total || 0); }
-function totalPaid(b) {
-  const stored = Number(b.amount_paid || b.total_paid || 0);
-  if (stored > 0) return stored;
-  const total = totalDue(b);
-  if (["paid", "remboursé", "rembourse", "annulé", "annule", "cancelled"].includes(normalize(b.balance_status))) {
-    if (normalize(b.balance_status) === "paid") return total;
-  }
-  let paid = 0;
-  if (normalize(b.deposit_status) === "paid") paid += Number(b.deposit_amount || Math.round(total * 0.3) || 0);
-  if (normalize(b.manual_payment_status) === "paid") paid += Number(b.manual_payment_amount || 0);
-  return paid;
-}
+function totalDue(b) { return contractualTotal(b); }
+function totalPaid(b) { return recordedPaidAmount(b); }
 function page(title, message) {
   return `<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><body style="font-family:Arial,sans-serif;background:#f6f7f3;color:#1f2933;margin:0"><main style="max-width:680px;margin:8vh auto;background:white;padding:32px;border-radius:20px"><h1>${title}</h1><p style="line-height:1.6">${message}</p><p><a href="${SITE_URL}" style="color:#166534">Retour à La Maison Verte</a></p></main></body></html>`;
 }

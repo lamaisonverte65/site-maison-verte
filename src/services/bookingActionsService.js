@@ -9,31 +9,23 @@ async function getAdminFetchHeaders(supabase) {
   };
 }
 
-export async function prepareInitialCheckoutBooking(supabase, request, ownerPrice, ownerMessage) {
-  const total = Number(ownerPrice);
-  if (!Number.isFinite(total) || total <= 0) {
-    throw new Error("Tarif invalide.");
+export async function prepareInitialCheckoutBooking(supabase, request, specialAccommodation, ownerMessage) {
+  const amount = Number(specialAccommodation);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Tarif spécial d’hébergement invalide.");
   }
 
-  const estimatedTotal = Number(request.estimated_total || 0);
-  const discountAmount = Math.max(estimatedTotal - total, 0);
-  const { data, error } = await supabase
-    .from("booking_requests")
-    .update({
-      owner_price: total,
-      owner_message: ownerMessage,
-      discount_amount: discountAmount,
-      discount_reason: discountAmount > 0 ? "Tarif spécial propriétaire" : null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", request.id)
-    .eq("status", "pending")
-    .select("id")
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("La réservation n’est plus en attente.");
-  return data;
+  const response = await fetch("/.netlify/functions/prepare-initial-checkout-booking", {
+    method: "POST",
+    headers: await getAdminFetchHeaders(supabase),
+    body: JSON.stringify({
+      bookingId: request.id,
+      specialAccommodation: amount,
+      ownerMessage,
+    }),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return await response.json();
 }
 
 export async function createCheckoutSession(supabase, request) {

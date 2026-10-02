@@ -22,6 +22,11 @@ export async function fetchAdminData(supabase) {
     .select("*")
     .order("created_at", { ascending: false });
 
+  const { data: customerInvoicesData } = await supabase
+    .from("customer_invoices")
+    .select("*")
+    .order("created_at", { ascending: false });
+
   const { data: eventsData } = await supabase
     .from("booking_events")
     .select("*")
@@ -77,6 +82,7 @@ export async function fetchAdminData(supabase) {
     bookingRequests: requestsData || [],
     customers: customersData || [],
     payments: paymentsData || [],
+    customerInvoices: customerInvoicesData || [],
     bookingEvents: eventsData || [],
     emailLogs: emailLogsData || [],
     guestReviews: guestReviewsData || [],
