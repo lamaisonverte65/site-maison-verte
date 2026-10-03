@@ -221,7 +221,7 @@ export function buildDirectInvoiceDraft({ booking, payments = [] }) {
       promotion_discount_rate: money(booking.promotion_discount_rate),
       promotion_discount_amount: money(booking.promotion_discount_amount),
       accommodation_net: money(booking.accommodation_net),
-      cleaning_fee: money(booking.cleaning_fee) ?? 0,
+      cleaning_fee: booking.cleaning_option === true ? (money(booking.cleaning_fee) ?? 0) : 0,
       tourist_tax_amount: money(booking.tourist_tax_amount) ?? 0,
       tourist_tax_collected: money(booking.tourist_tax_collected) ?? 0,
       tourist_tax_refunded: money(booking.tourist_tax_refunded) ?? 0,

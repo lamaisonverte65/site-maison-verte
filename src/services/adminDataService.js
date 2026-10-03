@@ -27,6 +27,11 @@ export async function fetchAdminData(supabase) {
     .select("*")
     .order("created_at", { ascending: false });
 
+  const { data: customerCreditNotesData } = await supabase
+    .from("customer_credit_notes")
+    .select("*")
+    .order("created_at", { ascending: false });
+
   const { data: eventsData } = await supabase
     .from("booking_events")
     .select("*")
@@ -83,6 +88,7 @@ export async function fetchAdminData(supabase) {
     customers: customersData || [],
     payments: paymentsData || [],
     customerInvoices: customerInvoicesData || [],
+    customerCreditNotes: customerCreditNotesData || [],
     bookingEvents: eventsData || [],
     emailLogs: emailLogsData || [],
     guestReviews: guestReviewsData || [],

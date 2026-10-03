@@ -1,0 +1,8 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { validateCreditNoteDraft, creditNoteLines, creditNoteKind } from '../netlify/functions/_lib/customer-credit-note.js';
+const base=(overrides={})=>({status:'draft',total_amount:100,financial_snapshot:{manual_required:false,credit_note_kind:'partial',accommodation_refund:92,cleaning_refund:0,tourist_tax_refund:8},refund_snapshot:{refunded_amount_cents:10000,tourist_tax_refund_cents:800},...overrides});
+test('valid draft with no cleaning is ready and produces exact lines',()=>{const n=base();assert.equal(validateCreditNoteDraft(n).valid,true);assert.deepEqual(creditNoteLines(n),[{key:'accommodation',label:'Hébergement remboursé',amount:92},{key:'tourist_tax',label:'Taxe de séjour remboursée',amount:8}]);});
+test('manual required blocks issuance until explicit split',()=>{const n=base({financial_snapshot:{manual_required:true,credit_note_kind:'partial',accommodation_refund:null,cleaning_refund:null,tourist_tax_refund:8}});const r=validateCreditNoteDraft(n);assert.equal(r.valid,false);assert.match(r.reason,/manual/i);});
+test('cent comparisons reject 99.99 when refund is 100.00',()=>{const n=base({financial_snapshot:{manual_required:false,credit_note_kind:'partial',accommodation_refund:70,cleaning_refund:21.99,tourist_tax_refund:8}});assert.equal(validateCreditNoteDraft(n).valid,false);});
+test('credit note kind comes from frozen snapshot',()=>{const n=base({financial_snapshot:{manual_required:false,credit_note_kind:'full',accommodation_refund:92,cleaning_refund:0,tourist_tax_refund:8}});assert.equal(creditNoteKind(n),'full');});

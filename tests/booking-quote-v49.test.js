@@ -111,7 +111,7 @@ test("V4.9 booking money snapshot preserves promotion and tourist-tax evidence",
   const money = quoteToBookingMoney(quote);
   assert.deepEqual(Object.keys(money).sort(), [
     "accommodation_gross", "accommodation_net", "contract_total", "deposit_amount",
-    "deposit_basis", "deposit_rate", "estimated_total", "promotion_code",
+    "deposit_basis", "deposit_rate", "promotion_code",
     "promotion_discount_amount", "promotion_discount_rate", "tourist_tax_amount",
     "tourist_tax_collector", "tourist_tax_snapshot",
   ].sort());
@@ -129,7 +129,7 @@ test("V4.9 booking money snapshot preserves promotion and tourist-tax evidence",
   assert.equal(money.deposit_basis, money.accommodation_net + 50);
   assert.equal(money.deposit_amount, 69);
   assert.equal(money.contract_total, money.accommodation_net + 50 + money.tourist_tax_amount);
-  assert.equal(money.estimated_total, money.contract_total);
+  assert.equal("estimated_total" in money, false);
 });
 
 test("migration 002 opens the validated operational rule and persists every V4.9 money snapshot field atomically", () => {
@@ -139,7 +139,7 @@ test("migration 002 opens the validated operational rule and persists every V4.9
   assert.match(sql, /effective_to\s*=\s*date\s*'2026-12-31'/i);
   for (const field of [
     "accommodation_gross", "promotion_code", "promotion_discount_rate", "promotion_discount_amount",
-    "accommodation_net", "tourist_tax_amount", "tourist_tax_collector", "tourist_tax_snapshot", "estimated_total",
+    "accommodation_net", "tourist_tax_amount", "tourist_tax_collector", "tourist_tax_snapshot",
   ]) {
     assert.match(sql, new RegExp(`\\b${field}\\b`, "i"), `${field} must be persisted by the atomic RPC`);
   }

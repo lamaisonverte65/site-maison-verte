@@ -3,10 +3,11 @@ import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
 import { escapeHtml } from "./_lib/html.js";
 import { contractualDeposit, contractualTotal } from "./_lib/booking-financial-authority.js";
+import { resendEmail } from "./_lib/resend-email.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null }) {
+async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null, retryPayload = null }) {
   const { error } = await supabase.from("email_logs").insert([{
     booking_request_id: bookingId || null,
     email_type: emailType,
@@ -15,6 +16,7 @@ async function logEmail({ bookingId, emailType, toEmail, subject, status, errorM
     status,
     error_message: errorMessage,
     provider_id: providerId,
+    retry_payload: retryPayload,
     sent_at: new Date().toISOString(),
   }]);
   if (error) console.error("Erreur log email_logs:", error.message);
@@ -36,6 +38,20 @@ function formatMoney(value) {
     style: "currency",
     currency: "EUR",
   }).format(Number(value));
+}
+
+function daysUntil(dateString, now = new Date()) {
+  const today = new Date(now);
+  today.setUTCHours(0, 0, 0, 0);
+  const target = new Date(`${dateString}T00:00:00.000Z`);
+  return Math.ceil((target.getTime() - today.getTime()) / 86400000);
+}
+
+function formatDiscountRate(gross, net) {
+  const grossValue = Number(gross || 0);
+  const netValue = Number(net || 0);
+  if (!(grossValue > 0) || netValue >= grossValue) return null;
+  return ((grossValue - netValue) / grossValue * 100).toLocaleString("fr-FR", { maximumFractionDigits: 2 });
 }
 
 function getPaymentContext({ paymentType, paymentAmount, displayedPrice, daysBeforeArrival }) {
@@ -111,41 +127,36 @@ export async function handler(event) {
   try {
     const data = JSON.parse(event.body || "{}");
 
-    const {
-      bookingId,
-      type,
-      guestEmail,
-      guestFirstName,
-      guestLastName,
-      startDate,
-      endDate,
-      nights,
-      estimatedTotal,
-      ownerPrice,
-      ownerMessage,
-      arrivalTime,
-      adultsCount,
-      childrenCount,
-      childrenAges,
-      babyBedNeeded,
-      acceptanceExpiresAt,
-      paymentLink,
-      paymentType,
-      paymentAmount,
-      daysBeforeArrival,
-    } = data;
+    const { bookingId, type, ownerMessage } = data;
 
     if (!bookingId) return { statusCode: 400, body: JSON.stringify({ error: "bookingId obligatoire." }) };
     const { data: storedBooking, error: bookingError } = await supabase.from("booking_requests").select("*").eq("id", bookingId).single();
     if (bookingError || !storedBooking?.guest_email) return { statusCode: 404, body: JSON.stringify({ error: "Réservation introuvable." }) };
     const recipientEmail = storedBooking.guest_email;
-    const safeOwnerMessage = escapeHtml(ownerMessage).replace(/\r?\n/g, "<br />");
+    const safeOwnerMessage = escapeHtml(ownerMessage || "").replace(/\r?\n/g, "<br />");
+
+    const guestFirstName = storedBooking.guest_first_name || "";
+    const guestLastName = storedBooking.guest_last_name || "";
+    const startDate = storedBooking.start_date;
+    const endDate = storedBooking.end_date;
+    const nights = storedBooking.nights;
+    const arrivalTime = storedBooking.arrival_time;
+    const adultsCount = storedBooking.adults_count;
+    const childrenCount = storedBooking.children_count;
+    const childrenAges = storedBooking.children_ages;
+    const babyBedNeeded = storedBooking.baby_bed_needed;
+    const acceptanceExpiresAt = storedBooking.acceptance_expires_at;
+    const paymentLink = storedBooking.payment_link;
+    const paymentType = storedBooking.deposit_status === "non applicable" ? "full" : "deposit";
+    const daysBeforeArrival = daysUntil(startDate);
+
     if (paymentLink) {
       try {
         const url = new URL(paymentLink);
         if (url.protocol !== "https:" || !["checkout.stripe.com", "buy.stripe.com"].includes(url.hostname)) throw new Error("invalid");
+        if (storedBooking.stripe_checkout_session_id && !paymentLink.includes(storedBooking.stripe_checkout_session_id)) throw new Error("invalid");
       } catch {
-        return { statusCode: 400, body: JSON.stringify({ error: "Lien de paiement non autorisé." }) };
+        return { statusCode: 400, body: JSON.stringify({ error: "Lien de paiement stocké non autorisé." }) };
       }
     }
 
@@ -170,6 +181,12 @@ export async function handler(event) {
       displayedPrice,
       daysBeforeArrival,
     });
+    const accommodationGross = Number(storedBooking.accommodation_gross ?? storedBooking.accommodation_net ?? 0);
+    const accommodationNet = Number(storedBooking.accommodation_net ?? storedBooking.accommodation_gross ?? 0);
+    const cleaningApplied = storedBooking.cleaning_option === true ? Number(storedBooking.cleaning_fee || 0) : 0;
+    const touristTax = Number(storedBooking.tourist_tax_amount || 0);
+    const actualDiscount = Math.max(accommodationGross - accommodationNet, 0);
+    const actualDiscountRate = formatDiscountRate(accommodationGross, accommodationNet);
 
     if (type === "accepted") {
       subject = "Votre demande est acceptée — La Maison Verte";
@@ -189,7 +206,11 @@ export async function handler(event) {
           Départ : ${endDate}<br />
           Nombre de nuits : ${nights}<br />
           Voyageurs : ${travelersSummary}<br />
-          Tarif du séjour : ${formatMoney(displayedPrice)}<br />
+          Hébergement : ${formatMoney(accommodationNet)}<br />
+          ${actualDiscount > 0 ? `Remise appliquée : -${formatMoney(actualDiscount)}${actualDiscountRate ? ` (${actualDiscountRate} %)` : ""}<br />` : ""}
+          Ménage : ${formatMoney(cleaningApplied)}<br />
+          Taxe de séjour : ${formatMoney(touristTax)}<br />
+          <strong>Total du séjour : ${formatMoney(displayedPrice)}</strong><br />
           <strong>${paymentContext.amountLabel} : ${formatMoney(paymentContext.amountToPay)}</strong>
         </p>
 
@@ -374,25 +395,19 @@ export async function handler(event) {
       </div>
     `;
 
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    const retryPayload = {
         from: "La Maison Verte <contact@lamaisonverte65.fr>",
         to: [recipientEmail],
         reply_to: "contact@lamaisonverte65.fr",
         subject,
         html,
-      }),
-    });
+      };
+    const response = await resendEmail(retryPayload);
 
     if (!response.ok) {
       const error = await response.text();
       console.error("Erreur Resend :", error);
-      await logEmail({ bookingId, emailType: `booking_decision:${type}`, toEmail: recipientEmail, subject, status: "error", errorMessage: error });
+      await logEmail({ bookingId, emailType: `booking_decision:${type}`, toEmail: recipientEmail, subject, status: "error", errorMessage: error, retryPayload});
 
       return {
         statusCode: 500,

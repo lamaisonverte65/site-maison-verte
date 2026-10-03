@@ -10,27 +10,23 @@ test("B3.4 initial acceptance delegates financial preparation to the server", ()
   assert.doesNotMatch(source, /estimatedTotal - total/);
 });
 
-test("B3.4 server acceptance recalculates a V4.10 snapshot with central quote engine", () => {
+test("B3.4 server acceptance preserves the V4.10 tax snapshot and adjusts accommodation only", () => {
   const source = read("netlify/functions/prepare-initial-checkout-booking.js");
-  assert.match(source, /calculatePublicBookingQuote\(supabase/);
-  assert.match(source, /quoteToBookingMoney\(quote\)/);
+  assert.match(source, /buildV410AcceptanceFinancials/);
+  assert.doesNotMatch(source, /calculatePublicBookingQuote/);
+  assert.doesNotMatch(source, /quoteToBookingMoney/);
   assert.match(source, /canMutateReservationData\(auth\)/);
-  assert.match(source, /accommodationGrossCents: Math\.round\(specialAccommodation \* 100\)/);
 });
 
-test("B3.4 acceptance preserves snapshotted financial parameters", () => {
-  const source = read("netlify/functions/prepare-initial-checkout-booking.js");
-  assert.match(source, /depositRate: Number\(booking\.deposit_rate\)/);
-  assert.match(source, /touristTaxClassification: taxSnapshot\.classification/);
-  assert.match(source, /cleaningFeeCents: Math\.round\(Number\(booking\.cleaning_fee/);
-});
-
-test("B3.4 accept modal edits accommodation price rather than contract total", () => {
+test("B3.4 accept modal shows current accommodation separately and leaves special price empty", () => {
   const admin = read("src/pages/Admin.jsx");
   const ui = read("src/components/admin/AdminUi.jsx");
-  assert.match(admin, /price: request\.accommodation_gross \?\?/);
+  assert.match(admin, /currentAccommodationPrice:/);
+  assert.match(admin, /price:\s*""/);
+  assert.match(ui, /Tarif hébergement actuel/);
   assert.match(ui, /Tarif spécial hébergement/);
 });
+
 
 test("B3.4 pending requests display authoritative total without estimatif wording", () => {
   const source = read("src/components/admin/RequestsPanel.jsx");

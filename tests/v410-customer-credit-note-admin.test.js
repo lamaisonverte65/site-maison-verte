@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
+const data=fs.readFileSync('src/services/adminDataService.js','utf8');const admin=fs.readFileSync('src/pages/Admin.jsx','utf8');const ui=fs.readFileSync('src/components/admin/InvoicesPanel.jsx','utf8');
+test('admin data loads credit notes separately',()=>{assert.match(data,/from\("customer_credit_notes"\)/);assert.match(data,/customerCreditNotes/);assert.match(admin,/customerCreditNotes/);assert.match(admin,/creditNotes=\{customerCreditNotes\}/);});
+test('invoice register exposes Facture and Avoir types and searches linked invoice',()=>{assert.match(ui,/Type/);assert.match(ui,/Facture/);assert.match(ui,/Avoir/);assert.match(ui,/credit_note_number/);assert.match(ui,/invoice_number/);});
+test('invoice detail totals issued credit notes only and shows net after credit notes',()=>{assert.match(ui,/issuedCreditNotes/);assert.match(ui,/Avoirs émis/);assert.match(ui,/Net après avoirs/);});
+test('credit note detail supports manual split preview issue archive and navigation',()=>{for(const term of ['updateCreditNoteDraft','openCreditNotePreviewPdf','issueCreditNote','archiveCreditNotePdf','openCreditNotePdf','Ouvrir la facture','Ouvrir la réservation'])assert.match(ui,new RegExp(term));});

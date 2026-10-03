@@ -174,6 +174,5 @@ export function quoteToBookingMoney(quote) {
     deposit_basis: centsToEuros(quote.depositBasisCents),
     deposit_amount: centsToEuros(quote.depositCents),
     contract_total: centsToEuros(quote.contractTotalCents),
-    estimated_total: centsToEuros(quote.contractTotalCents),
   };
 }

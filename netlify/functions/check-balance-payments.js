@@ -2,6 +2,7 @@ import { schedule } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 import { createBalancePaymentUrl } from "./_lib/balance-link.js";
 import { contractualTotal, recordedPaidAmount } from "./_lib/booking-financial-authority.js";
+import { resendEmail } from "./_lib/resend-email.js";
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -22,7 +23,7 @@ async function logBookingEvent({ bookingId, eventType, label, message, metadata 
   if (error) console.error("Erreur log booking_events:", error.message);
 }
 
-async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null }) {
+async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null, retryPayload = null }) {
   const { error } = await supabase.from("email_logs").insert([{
     booking_request_id: bookingId || null,
     email_type: emailType,
@@ -31,6 +32,7 @@ async function logEmail({ bookingId, emailType, toEmail, subject, status, errorM
     status,
     error_message: errorMessage,
     provider_id: providerId,
+    retry_payload: retryPayload,
     sent_at: new Date().toISOString(),
   }]);
   if (error) console.error("Erreur log email_logs:", error.message);
@@ -96,6 +98,16 @@ function getStep(booking, days) {
   return null;
 }
 
+function balanceStepMarker(step) {
+  const markers = {
+    request: "balance_requested_at",
+    reminder_1: "balance_reminder_1_sent_at",
+    reminder_2: "balance_reminder_2_sent_at",
+    urgent: "balance_alert_sent_at",
+  };
+  return markers[step] || null;
+}
+
 async function markFullyPaidIfNeeded(booking, total, totalPaid) {
   if (!total || totalPaid < total) return false;
 
@@ -157,24 +169,18 @@ async function sendEmail(booking, paymentLink, amount, step) {
     </div>
   `;
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [booking.guest_email],
       reply_to: "contact@lamaisonverte65.fr",
       subject: `${labels[step]} - La Maison Verte`,
       html,
-    }),
-  });
+    };
+  const response = await resendEmail(retryPayload);
 
   if (!response.ok) {
     const errorText = await response.text();
-    await logEmail({ bookingId: booking.id, emailType: `balance:${step}`, toEmail: booking.guest_email, subject: `${labels[step]} - La Maison Verte`, status: "error", errorMessage: errorText });
+    await logEmail({ bookingId: booking.id, emailType: `balance:${step}`, toEmail: booking.guest_email, subject: `${labels[step]} - La Maison Verte`, status: "error", errorMessage: errorText, retryPayload});
     throw new Error(errorText);
   }
 
@@ -189,7 +195,8 @@ async function sendOwnerJ17Alert(booking, balance) {
   const adminUrl = `${process.env.URL || "https://lamaisonverte65.fr"}/admin?booking=${encodeURIComponent(booking.id)}`;
   const subject = `⚠️ Solde impayé — contacter ${name || "le client"} — arrivée le ${formatDate(booking.start_date)}`;
   const html = `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>Solde impayé à J-17</h2><p>La relance automatique J-17 vient d’être envoyée au client.</p><p><strong>Client :</strong> ${name || "-"}<br><strong>Téléphone :</strong> <a href="tel:${booking.guest_phone || ""}">${booking.guest_phone || "-"}</a><br><strong>Email :</strong> <a href="mailto:${booking.guest_email || ""}">${booking.guest_email || "-"}</a></p><p><strong>Séjour :</strong> ${formatDate(booking.start_date)} → ${formatDate(booking.end_date)}<br><strong>Total du séjour :</strong> ${formatMoney(getTotalDue(booking))}<br><strong>Acompte reçu :</strong> ${formatMoney(booking.deposit_amount || 0)}<br><strong>Solde restant :</strong> ${formatMoney(balance)}</p><p><strong>Action :</strong> contacter le client par téléphone pour vérifier qu’il a reçu les demandes de paiement et confirmer que le séjour est maintenu.</p><p>La réservation reste active, les dates restent bloquées et le solde demeure dû.</p><p><a href="${adminUrl}" style="background:#166534;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Ouvrir la réservation dans l’admin</a></p></div>`;
-  const response = await fetch("https://api.resend.com/emails", { method:"POST", headers:{ Authorization:`Bearer ${process.env.RESEND_API_KEY}`, "Content-Type":"application/json" }, body:JSON.stringify({ from:"La Maison Verte <contact@lamaisonverte65.fr>", to:[ownerEmail], subject, html }) });
+  const retryPayload = { from:"La Maison Verte <contact@lamaisonverte65.fr>", to:[ownerEmail], subject, html };
+  const response = await resendEmail(retryPayload);
   if (!response.ok) throw new Error(await response.text());
 }
 
@@ -240,15 +247,6 @@ export const handler = schedule("0 8 * * *", async (event) => {
       }
 
       const paymentLink = createBalancePaymentUrl(process.env.URL || "https://lamaisonverte65.fr", booking.id);
-      await sendEmail(booking, paymentLink, balance, step);
-      if (step === "reminder_2") {
-        try {
-          await sendOwnerJ17Alert(booking, balance);
-        } catch (ownerAlertError) {
-          console.error("Erreur email interne J-17:", ownerAlertError);
-        }
-      }
-
       const now = new Date().toISOString();
       const updatePayload = {
         balance_amount: balance,
@@ -268,6 +266,31 @@ export const handler = schedule("0 8 * * *", async (event) => {
         .eq("id", booking.id);
 
       if (updateError) throw updateError;
+
+      try {
+        await sendEmail(booking, paymentLink, balance, step);
+      } catch (emailError) {
+        const marker = balanceStepMarker(step);
+        if (marker) {
+          const { error: rollbackError } = await supabase
+            .from("booking_requests")
+            .update({ [marker]: null, updated_at: new Date().toISOString() })
+            .eq("id", booking.id);
+          if (rollbackError) {
+            console.error("Erreur remise à zéro marqueur relance solde:", rollbackError.message);
+          }
+        }
+        skipped.push({ bookingId: booking.id, reason: "balance_email_failed_retryable", step, error: emailError.message });
+        continue;
+      }
+
+      if (step === "reminder_2") {
+        try {
+          await sendOwnerJ17Alert(booking, balance);
+        } catch (ownerAlertError) {
+          console.error("Erreur email interne J-17:", ownerAlertError);
+        }
+      }
 
       await logBookingEvent({
         bookingId: booking.id,

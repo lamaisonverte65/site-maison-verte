@@ -4,6 +4,7 @@ import { buildPublicBookingEmails, validatePublicBookingPayload } from "./_lib/p
 import { createSupabaseAtomicBookingRepository, DATE_CONFLICT_MESSAGE, runAtomicPublicBookingWorkflow } from "./_lib/public-booking-request.js";
 import { calculatePublicBookingQuote, quoteToBookingMoney } from "./_lib/booking-quote.js";
 import { centsToEuros } from "./_lib/tourist-tax.js";
+import { resendEmail } from "./_lib/resend-email.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const json = (statusCode, body) => new Response(JSON.stringify(body), {
@@ -16,29 +17,27 @@ const ipHash = (value) => createHmac("sha256", process.env.SUPABASE_SERVICE_ROLE
   .update(`public-booking-ip:${String(value || "")}`, "utf8")
   .digest("hex");
 
-async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null }) {
+async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null, retryPayload = null }) {
   const { error } = await supabase.from("email_logs").insert([{
     booking_request_id: bookingId, email_type: emailType, to_email: toEmail, subject, status,
     error_message: errorMessage, provider_id: providerId, sent_at: new Date().toISOString(),
+    retry_payload: retryPayload,
   }]);
   if (error) console.error("Erreur log email_logs:", error.message);
 }
 
 async function sendEmail(email, bookingId, emailType) {
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
+  const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [email.to],
       reply_to: "contact@lamaisonverte65.fr",
       subject: email.subject,
       html: email.html,
-    }),
-  });
+    };
+  const response = await resendEmail(retryPayload);
   if (!response.ok) {
     const providerError = await response.text();
-    await logEmail({ bookingId, emailType, toEmail: email.to, subject: email.subject, status: "error", errorMessage: providerError.slice(0, 500) });
+    await logEmail({ bookingId, emailType, toEmail: email.to, subject: email.subject, status: "error", errorMessage: providerError.slice(0, 500), retryPayload});
     throw new Error("Envoi email indisponible.");
   }
   const responseData = await response.json().catch(() => null);

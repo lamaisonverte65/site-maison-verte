@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { styles } from "./adminStyles";
 import { formatMoney } from "../../utils/adminFormatters";
-import { archiveInvoicePdf, createDirectInvoiceDraft, issueInvoice, openInvoicePdf, openInvoicePreviewPdf, updateInvoiceCustomerSnapshot, updateLegacyInvoiceFinancialSnapshot } from "../../services/invoiceService";
+import { archiveInvoicePdf, archiveCreditNotePdf, createDirectInvoiceDraft, issueInvoice, issueCreditNote, openInvoicePdf, openInvoicePreviewPdf, openCreditNotePdf, openCreditNotePreviewPdf, updateCreditNoteDraft, updateInvoiceCustomerSnapshot, updateLegacyInvoiceFinancialSnapshot } from "../../services/invoiceService";
 
 const fmtDate = (value) => value ? new Date(value).toLocaleDateString("fr-FR") : "—";
 const sourceLabel = (source) => ({ direct: "Direct", booking: "Booking", airbnb: "Airbnb" }[source] || source || "—");
@@ -120,77 +120,88 @@ function LegacyFinancialEditor({ invoice, onChanged }) {
     <p style={Math.abs(computed-reference)<0.009?styles.info:styles.error}>Total du détail : {formatMoney(computed)} / {formatMoney(reference)}</p><button style={styles.smallButton} disabled={busy} onClick={save}>{busy?"Enregistrement…":"Valider le détail financier"}</button>{message&&<p style={message.startsWith("Erreur")?styles.error:styles.info}>{message}</p>}</div>;
 }
 
-export default function InvoicesPanel({ invoices = [], onRefresh, onOpenReservation }) {
+function CreditNoteDraftEditor({ note, onChanged }) {
+  const f = note.financial_snapshot || {};
+  const [form, setForm] = useState({ accommodationRefund: f.accommodation_refund ?? "", cleaningRefund: f.cleaning_refund ?? "" });
+  const [busy, setBusy] = useState(false); const [message, setMessage] = useState("");
+  const tax = Number(f.tourist_tax_refund || 0), total = Number(note.total_amount || 0);
+  const computed = (Number(form.accommodationRefund)||0) + (Number(form.cleaningRefund)||0) + tax;
+  async function save(){setBusy(true);setMessage("");try{const result=await updateCreditNoteDraft(note.id,form);await onChanged?.(result.creditNote);setMessage("Ventilation de l’avoir enregistrée.");}catch(e){setMessage(`Erreur : ${e.message}`);}finally{setBusy(false);}}
+  return <div style={{marginTop:14,padding:12,border:"1px solid #f59e0b",borderRadius:12}}>
+    <strong>Ventilation de l’avoir</strong>
+    <p style={styles.muted}>Le total et la taxe remboursée proviennent du remboursement réel. Si la répartition n’est pas démontrable automatiquement, répartis uniquement hébergement et ménage.</p>
+    <div style={styles.detailGrid}>
+      <label style={{display:"grid",gap:4}}><span>Hébergement remboursé</span><input type="number" step="0.01" min="0" style={styles.input} value={form.accommodationRefund} onChange={(e)=>setForm((x)=>({...x,accommodationRefund:e.target.value}))}/></label>
+      <label style={{display:"grid",gap:4}}><span>Ménage remboursé</span><input type="number" step="0.01" min="0" style={styles.input} value={form.cleaningRefund} onChange={(e)=>setForm((x)=>({...x,cleaningRefund:e.target.value}))}/></label>
+      <span>Taxe remboursée : <strong>{formatMoney(tax)}</strong></span><span>Total de l’avoir : <strong>{formatMoney(total)}</strong></span>
+    </div>
+    <p style={Math.round(computed*100)===Math.round(total*100)?styles.info:styles.error}>Ventilation : {formatMoney(computed)} / {formatMoney(total)}</p>
+    <button style={styles.smallButton} disabled={busy} onClick={save}>{busy?"Enregistrement…":"Valider la ventilation"}</button>{message&&<p style={message.startsWith("Erreur")?styles.error:styles.info}>{message}</p>}
+  </div>;
+}
+
+export default function InvoicesPanel({ invoices = [], creditNotes = [], onRefresh, onOpenReservation }) {
   const [search, setSearch] = useState("");
   const [year, setYear] = useState("all");
   const [source, setSource] = useState("all");
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedKey, setSelectedKey] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [message, setMessage] = useState("");
-  const years = useMemo(() => [...new Set(invoices.map((i) => String(new Date(i.issued_at || i.created_at).getFullYear())))].sort().reverse(), [invoices]);
-  const rows = useMemo(() => invoices.filter((invoice) => {
-    const haystack = `${invoice.invoice_number || ""} ${customerName(invoice)} ${invoice.external_reference || ""}`.toLowerCase();
-    const invoiceYear = String(new Date(invoice.issued_at || invoice.created_at).getFullYear());
-    return (!search || haystack.includes(search.toLowerCase())) && (year === "all" || invoiceYear === year) && (source === "all" || invoice.source === source);
-  }), [invoices, search, year, source]);
-  const selected = invoices.find((i) => i.id === selectedId) || null;
+  const invoiceById = useMemo(()=>new Map(invoices.map((invoice)=>[invoice.id,invoice])),[invoices]);
+  const documents = useMemo(()=>[
+    ...invoices.map((invoice)=>({...invoice,documentType:"invoice",documentKey:`invoice:${invoice.id}`})),
+    ...creditNotes.map((note)=>{const linked=invoiceById.get(note.invoice_id);return {...note,source:linked?.source||"direct",external_reference:linked?.external_reference||null,invoice_number:linked?.invoice_number||note.refund_snapshot?.invoice_number||null,documentType:"credit_note",documentKey:`credit_note:${note.id}`};}),
+  ],[invoices,creditNotes,invoiceById]);
+  const years = useMemo(() => [...new Set(documents.map((d) => String(new Date(d.issued_at || d.created_at).getFullYear())))].sort().reverse(), [documents]);
+  const rows = useMemo(() => documents.filter((doc) => {
+    const number = doc.documentType === "credit_note" ? doc.credit_note_number : doc.invoice_number;
+    const haystack = `${number || ""} ${doc.invoice_number || ""} ${customerName(doc)} ${doc.external_reference || ""} ${doc.refund_operation_id || ""}`.toLowerCase();
+    const docYear = String(new Date(doc.issued_at || doc.created_at).getFullYear());
+    return (!search || haystack.includes(search.toLowerCase())) && (year === "all" || docYear === year) && (source === "all" || doc.source === source);
+  }), [documents, search, year, source]);
+  const selected = documents.find((d)=>d.documentKey===selectedKey) || null;
+  const selectedInvoice = selected?.documentType === "invoice" ? selected : null;
+  const selectedCreditNote = selected?.documentType === "credit_note" ? selected : null;
+  const linkedCreditNotes = selectedInvoice ? creditNotes.filter((note)=>note.invoice_id===selectedInvoice.id) : [];
+  const issuedCreditNotes = linkedCreditNotes.filter((note)=>note.status==="issued");
+  const issuedCreditTotal = issuedCreditNotes.reduce((sum,note)=>sum+Number(note.total_amount||0),0);
 
   async function issueAndArchive(invoice) {
     if (!window.confirm("Émettre cette facture ? Le numéro sera attribué et son contenu deviendra définitif.")) return;
     setBusyId(invoice.id); setMessage("");
-    try {
-      const issued = await issueInvoice(invoice.id);
-      try { await archiveInvoicePdf(issued.id); }
-      catch (pdfError) { setMessage(`Facture ${issued.invoice_number} émise, mais PDF non archivé : ${pdfError.message}. Tu peux relancer l’archivage.`); await onRefresh?.(); return; }
-      setMessage(`Facture ${issued.invoice_number} émise et PDF archivé.`); await onRefresh?.();
-    } catch (error) { setMessage(`Erreur : ${error.message}`); }
-    finally { setBusyId(null); }
+    try { const issued=await issueInvoice(invoice.id); try{await archiveInvoicePdf(issued.id);}catch(pdfError){setMessage(`Facture ${issued.invoice_number} émise, mais PDF non archivé : ${pdfError.message}. Tu peux relancer l’archivage.`);await onRefresh?.();return;} setMessage(`Facture ${issued.invoice_number} émise et PDF archivé.`);await onRefresh?.(); }
+    catch(error){setMessage(`Erreur : ${error.message}`);} finally{setBusyId(null);}
   }
-
-  async function archive(invoice) {
-    setBusyId(invoice.id); setMessage("");
-    try { await archiveInvoicePdf(invoice.id); setMessage("PDF archivé."); await onRefresh?.(); }
-    catch (error) { setMessage(`Erreur : ${error.message}`); }
-    finally { setBusyId(null); }
+  async function issueCreditAndArchive(note){
+    if(!window.confirm("Émettre cet avoir ? Le numéro sera attribué et son contenu deviendra définitif."))return;
+    setBusyId(note.id);setMessage("");try{const issued=await issueCreditNote(note.id);try{await archiveCreditNotePdf(issued.id);}catch(pdfError){setMessage(`Avoir ${issued.credit_note_number} émis, mais PDF non archivé : ${pdfError.message}. Tu peux relancer l’archivage.`);await onRefresh?.();return;}setMessage(`Avoir ${issued.credit_note_number} émis et PDF archivé.`);await onRefresh?.();}catch(error){setMessage(`Erreur : ${error.message}`);}finally{setBusyId(null);}
   }
-
-  async function viewPdf(invoice) {
-    try { await openInvoicePdf(invoice.id); } catch (error) { setMessage(`Erreur : ${error.message}`); }
-  }
-
-  async function previewPdf(invoice) {
-    try { await openInvoicePreviewPdf(invoice.id); } catch (error) { setMessage(`Erreur : ${error.message}`); }
-  }
+  async function archive(invoice){setBusyId(invoice.id);setMessage("");try{await archiveInvoicePdf(invoice.id);setMessage("PDF archivé.");await onRefresh?.();}catch(error){setMessage(`Erreur : ${error.message}`);}finally{setBusyId(null);}}
+  async function archiveCredit(note){setBusyId(note.id);setMessage("");try{await archiveCreditNotePdf(note.id);setMessage("PDF d’avoir archivé.");await onRefresh?.();}catch(error){setMessage(`Erreur : ${error.message}`);}finally{setBusyId(null);}}
+  async function viewPdf(invoice){try{await openInvoicePdf(invoice.id);}catch(error){setMessage(`Erreur : ${error.message}`);}}
+  async function previewPdf(invoice){try{await openInvoicePreviewPdf(invoice.id);}catch(error){setMessage(`Erreur : ${error.message}`);}}
+  async function viewCreditPdf(note){try{await openCreditNotePdf(note.id);}catch(error){setMessage(`Erreur : ${error.message}`);}}
+  async function previewCreditPdf(note){try{await openCreditNotePreviewPdf(note.id);}catch(error){setMessage(`Erreur : ${error.message}`);}}
 
   return <section style={styles.panel}>
-    <div style={styles.panelHeader}><div><h2 style={styles.panelTitle}>Factures clients</h2><p style={styles.muted}>Brouillons, factures émises et PDF archivés. Le numéro n’est attribué qu’à l’émission.</p></div></div>
-    <div style={styles.toolbar}>
-      <input style={styles.searchInput} placeholder="N° facture, client, référence…" value={search} onChange={(e)=>setSearch(e.target.value)} />
-      <select style={styles.select} value={year} onChange={(e)=>setYear(e.target.value)}><option value="all">Toutes les années</option>{years.map((y)=><option key={y} value={y}>{y}</option>)}</select>
-      <select style={styles.select} value={source} onChange={(e)=>setSource(e.target.value)}><option value="all">Toutes les sources</option><option value="direct">Direct</option><option value="booking">Booking</option><option value="airbnb">Airbnb</option></select>
-    </div>
-    {message && <p style={message.startsWith("Erreur") ? styles.error : styles.info}>{message}</p>}
-    {!rows.length ? <p style={styles.muted}>Aucune facture pour ces critères.</p> : <div style={{ overflowX:"auto" }}><table style={{ width:"100%", borderCollapse:"collapse" }}><thead><tr>{["N°","Date","Client","Séjour","Source","Montant","Statut","PDF"].map((h)=><th key={h} style={{ textAlign:"left", padding:"9px", borderBottom:"1px solid #e5e7eb" }}>{h}</th>)}</tr></thead><tbody>{rows.map((invoice)=><tr key={invoice.id} onClick={()=>setSelectedId(invoice.id)} style={{ cursor:"pointer" }}>
-      <td style={{padding:9}}>{invoice.invoice_number || "Brouillon"}</td><td style={{padding:9}}>{fmtDate(invoice.issued_at || invoice.created_at)}</td><td style={{padding:9}}>{customerName(invoice)}</td><td style={{padding:9}}>{stayLabel(invoice)}</td><td style={{padding:9}}>{sourceLabel(invoice.source)}</td><td style={{padding:9}}>{formatMoney(invoice.total_amount)}</td><td style={{padding:9}}>{invoice.status === "issued" ? "Émise" : "Brouillon"}</td><td style={{padding:9}}>{invoice.pdf_storage_path ? "Archivé" : "—"}</td>
-    </tr>)}</tbody></table></div>}
-    {selected && <section style={{ marginTop:18, padding:14, border:"1px solid #e5e7eb", borderRadius:16 }}>
-      <div style={styles.panelHeader}><div><h3 style={styles.subTitle}>{selected.invoice_number || "Brouillon de facture"}</h3><p style={styles.muted}>{customerName(selected)} — {stayLabel(selected)} — {formatMoney(selected.total_amount)}</p></div><button style={styles.smallButton} onClick={()=>setSelectedId(null)}>Fermer</button></div>
-      {selected.booking_request_id && <button style={styles.smallButton} onClick={()=>onOpenReservation?.(selected.booking_request_id)}>Ouvrir la réservation</button>}
-      {selected.status === "draft" && <><DraftEditor invoice={selected} onChanged={async()=>{ await onRefresh?.(); }} />{selected.source === "booking" && <BookingInvoiceSummary invoice={selected} />}{selected.financial_snapshot?.draft_origin === "legacy_direct_manual" && (selected.financial_snapshot?.reconstruction?.method === "historical_tariff_match" ? <ReconstructedLegacyNotice invoice={selected} /> : <LegacyFinancialEditor invoice={selected} onChanged={async()=>{ await onRefresh?.(); }} />)}{(() => {
-        const legacyNotReady = selected.financial_snapshot?.draft_origin === "legacy_direct_manual" && selected.financial_snapshot?.invoice_ready !== true;
-        const missing = missingCustomerFields(selected);
-        const optionalMissing = missingOptionalBillingFields(selected);
-        const customerNotReady = missing.length > 0;
-        const issueDisabled = busyId===selected.id || legacyNotReady || customerNotReady;
-        const reason = legacyNotReady ? "Valide d’abord le détail financier" : customerNotReady ? `À compléter : ${missing.join(", ")}` : "";
-        return <div style={{marginTop:12,display:"grid",gap:8,justifyItems:"start"}}>
-          {legacyNotReady && <p style={{...styles.muted,margin:0}}>Valide d’abord le détail financier pour pouvoir émettre la facture.</p>}
-          {customerNotReady && <p style={styles.error}>Identité client à compléter avant émission : {missing.join(", ")}. Enregistre ensuite le brouillon.</p>}
-          {!customerNotReady && optionalMissing.length > 0 && <p style={{...styles.muted,margin:0}}>Coordonnées de facturation non renseignées : {optionalMissing.join(", ")}. Tu peux les compléter et enregistrer le brouillon, mais elles ne verrouillent pas l’émission pour ce client particulier.</p>}
-          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button style={styles.smallButton} disabled={busyId===selected.id} onClick={()=>previewPdf(selected)}>Aperçu PDF</button><button style={issueDisabled ? {...(styles.primaryButton || styles.refreshButton),background:"#9ca3af",color:"#f8fafc",cursor:"not-allowed",boxShadow:"none",opacity:0.75} : (styles.primaryButton || styles.refreshButton)} disabled={issueDisabled} aria-disabled={issueDisabled} title={reason} onClick={()=>issueAndArchive(selected)}>{busyId===selected.id ? "Traitement…" : issueDisabled ? "Émission verrouillée" : "Émettre la facture"}</button></div>
-        </div>;
-      })()}</>}
-      {selected.status === "issued" && <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>{selected.pdf_storage_path ? <button style={styles.smallButton} onClick={()=>viewPdf(selected)}>Voir le PDF</button> : <button style={styles.smallButton} disabled={busyId===selected.id} onClick={()=>archive(selected)}>Archiver le PDF</button>}</div>}
+    <div style={styles.panelHeader}><div><h2 style={styles.panelTitle}>Factures clients</h2><p style={styles.muted}>Factures et avoirs, brouillons ou émis. Les numéros définitifs ne sont attribués qu’à l’émission.</p></div></div>
+    <div style={styles.toolbar}><input style={styles.searchInput} placeholder="N° facture/avoir, client, référence…" value={search} onChange={(e)=>setSearch(e.target.value)}/><select style={styles.select} value={year} onChange={(e)=>setYear(e.target.value)}><option value="all">Toutes les années</option>{years.map((y)=><option key={y} value={y}>{y}</option>)}</select><select style={styles.select} value={source} onChange={(e)=>setSource(e.target.value)}><option value="all">Toutes les sources</option><option value="direct">Direct</option><option value="booking">Booking</option><option value="airbnb">Airbnb</option></select></div>
+    {message&&<p style={message.startsWith("Erreur")?styles.error:styles.info}>{message}</p>}
+    {!rows.length?<p style={styles.muted}>Aucun document pour ces critères.</p>:<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Type","N°","Date","Client","Séjour","Source","Montant","Statut","PDF"].map((h)=><th key={h} style={{textAlign:"left",padding:"9px",borderBottom:"1px solid #e5e7eb"}}>{h}</th>)}</tr></thead><tbody>{rows.map((doc)=>{const isCredit=doc.documentType==="credit_note";return <tr key={doc.documentKey} onClick={()=>setSelectedKey(doc.documentKey)} style={{cursor:"pointer"}}><td style={{padding:9}}>{isCredit?"Avoir":"Facture"}</td><td style={{padding:9}}>{isCredit?(doc.credit_note_number||"Brouillon"):(doc.invoice_number||"Brouillon")}</td><td style={{padding:9}}>{fmtDate(doc.issued_at||doc.created_at)}</td><td style={{padding:9}}>{customerName(doc)}</td><td style={{padding:9}}>{stayLabel(doc)}</td><td style={{padding:9}}>{sourceLabel(doc.source)}</td><td style={{padding:9}}>{formatMoney(doc.total_amount)}</td><td style={{padding:9}}>{doc.status==="issued"?"Émis":"Brouillon"}</td><td style={{padding:9}}>{doc.pdf_storage_path?"Archivé":"—"}</td></tr>;})}</tbody></table></div>}
+
+    {selectedInvoice&&<section style={{marginTop:18,padding:14,border:"1px solid #e5e7eb",borderRadius:16}}>
+      <div style={styles.panelHeader}><div><h3 style={styles.subTitle}>{selectedInvoice.invoice_number||"Brouillon de facture"}</h3><p style={styles.muted}>{customerName(selectedInvoice)} — {stayLabel(selectedInvoice)} — {formatMoney(selectedInvoice.total_amount)}</p></div><button style={styles.smallButton} onClick={()=>setSelectedKey(null)}>Fermer</button></div>
+      {selectedInvoice.booking_request_id&&<button style={styles.smallButton} onClick={()=>onOpenReservation?.(selectedInvoice.booking_request_id)}>Ouvrir la réservation</button>}
+      {selectedInvoice.status==="issued"&&<div style={{marginTop:12,padding:10,border:"1px solid #cbd5e1",borderRadius:10}}><strong>Avoirs émis : {formatMoney(issuedCreditTotal)}</strong><p style={{...styles.muted,margin:"4px 0"}}>Net après avoirs : <strong>{formatMoney(Math.max(Number(selectedInvoice.total_amount||0)-issuedCreditTotal,0))}</strong></p>{linkedCreditNotes.map((note)=><button key={note.id} style={{...styles.smallButton,marginRight:6}} onClick={()=>setSelectedKey(`credit_note:${note.id}`)}>{note.credit_note_number||"Brouillon d’avoir"} — {formatMoney(note.total_amount)}</button>)}</div>}
+      {selectedInvoice.status==="draft"&&<><DraftEditor invoice={selectedInvoice} onChanged={async()=>{await onRefresh?.();}}/>{selectedInvoice.source==="booking"&&<BookingInvoiceSummary invoice={selectedInvoice}/>} {selectedInvoice.financial_snapshot?.draft_origin==="legacy_direct_manual"&&(selectedInvoice.financial_snapshot?.reconstruction?.method==="historical_tariff_match"?<ReconstructedLegacyNotice invoice={selectedInvoice}/>:<LegacyFinancialEditor invoice={selectedInvoice} onChanged={async()=>{await onRefresh?.();}}/>)}{(()=>{const legacyNotReady=selectedInvoice.financial_snapshot?.draft_origin==="legacy_direct_manual"&&selectedInvoice.financial_snapshot?.invoice_ready !== true;const missing=missingCustomerFields(selectedInvoice);const optionalMissing=missingOptionalBillingFields(selectedInvoice);const customerNotReady=missing.length>0;const issueDisabled=busyId===selectedInvoice.id||legacyNotReady||customerNotReady;return <div style={{marginTop:12,display:"grid",gap:8,justifyItems:"start"}}>{legacyNotReady&&<p style={styles.muted}>Valide d’abord le détail financier pour pouvoir émettre la facture.</p>}{customerNotReady&&<p style={styles.error}>Identité client à compléter avant émission : {missing.join(", ")}. Enregistre ensuite le brouillon.</p>}{!customerNotReady&&optionalMissing.length>0&&<p style={styles.muted}>Coordonnées de facturation non renseignées : {optionalMissing.join(", ")}. Tu peux les compléter et enregistrer le brouillon, mais elles ne verrouillent pas l’émission pour ce client particulier.</p>}<div style={{display:"flex",gap:8}}><button style={styles.smallButton} onClick={()=>previewPdf(selectedInvoice)}>Aperçu PDF</button><button style={issueDisabled ? {...styles.smallButton,cursor:"not-allowed",opacity:0.75} : styles.smallButton} disabled={issueDisabled} onClick={()=>issueAndArchive(selectedInvoice)}>{busyId===selectedInvoice.id?"Traitement…":issueDisabled?"Émission verrouillée":"Émettre la facture"}</button></div></div>;})()}</>}
+      {selectedInvoice.status==="issued"&&<div style={{display:"flex",gap:8,marginTop:12}}>{selectedInvoice.pdf_storage_path?<button style={styles.smallButton} onClick={()=>viewPdf(selectedInvoice)}>Voir le PDF</button>:<button style={styles.smallButton} onClick={()=>archive(selectedInvoice)}>Archiver le PDF</button>}</div>}
+    </section>}
+
+    {selectedCreditNote&&<section style={{marginTop:18,padding:14,border:"1px solid #e5e7eb",borderRadius:16}}>
+      <div style={styles.panelHeader}><div><h3 style={styles.subTitle}>{selectedCreditNote.credit_note_number||"Brouillon d’avoir"}</h3><p style={styles.muted}>{customerName(selectedCreditNote)} — {formatMoney(selectedCreditNote.total_amount)} — {selectedCreditNote.financial_snapshot?.credit_note_kind==="full"?"Avoir total":"Avoir partiel"}</p></div><button style={styles.smallButton} onClick={()=>setSelectedKey(null)}>Fermer</button></div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button style={styles.smallButton} onClick={()=>setSelectedKey(`invoice:${selectedCreditNote.invoice_id}`)}>Ouvrir la facture</button>{selectedCreditNote.booking_request_id&&<button style={styles.smallButton} onClick={()=>onOpenReservation?.(selectedCreditNote.booking_request_id)}>Ouvrir la réservation</button>}</div>
+      {selectedCreditNote.status==="draft"&&<><CreditNoteDraftEditor note={selectedCreditNote} onChanged={async()=>{await onRefresh?.();}}/><div style={{display:"flex",gap:8,marginTop:12}}><button style={styles.smallButton} onClick={()=>previewCreditPdf(selectedCreditNote)}>Aperçu PDF</button><button style={styles.smallButton} disabled={busyId===selectedCreditNote.id||selectedCreditNote.financial_snapshot?.manual_required===true} onClick={()=>issueCreditAndArchive(selectedCreditNote)}>{busyId===selectedCreditNote.id?"Traitement…":"Émettre l’avoir"}</button></div></>}
+      {selectedCreditNote.status==="issued"&&<div style={{display:"flex",gap:8,marginTop:12}}>{selectedCreditNote.pdf_storage_path?<button style={styles.smallButton} onClick={()=>viewCreditPdf(selectedCreditNote)}>Voir le PDF</button>:<button style={styles.smallButton} onClick={()=>archiveCredit(selectedCreditNote)}>Archiver le PDF</button>}</div>}
     </section>}
   </section>;
 }

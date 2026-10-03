@@ -77,6 +77,7 @@ export default function Admin() {
   const [customers, setCustomers] = useState([]);
   const [payments, setPayments] = useState([]);
   const [customerInvoices, setCustomerInvoices] = useState([]);
+  const [customerCreditNotes, setCustomerCreditNotes] = useState([]);
   const [bookingEvents, setBookingEvents] = useState([]);
   const [emailLogs, setEmailLogs] = useState([]);
   const [guestReviews, setGuestReviews] = useState([]);
@@ -179,6 +180,7 @@ export default function Admin() {
       setCustomers(adminData.customers);
       setPayments(adminData.payments);
       setCustomerInvoices(adminData.customerInvoices || []);
+      setCustomerCreditNotes(adminData.customerCreditNotes || []);
       setBookingEvents(adminData.bookingEvents);
       setEmailLogs(adminData.emailLogs);
       setGuestReviews(adminData.guestReviews);
@@ -215,31 +217,6 @@ export default function Admin() {
     setSelectedRequest(request);
   }
 
-  async function deleteReservation(request) {
-    if (!request?.id) return;
-    const label = [request.guest_first_name, request.guest_last_name].filter(Boolean).join(" ") || "cette réservation";
-    if (!window.confirm(`Supprimer ${label} ?`)) return;
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch("/.netlify/functions/delete-booking-request", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-        },
-        body: JSON.stringify({ bookingId: request.id }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Erreur suppression réservation.");
-      alert("Réservation supprimée.");
-      setSelectedRequest(null);
-      setCalendarEditRequest(null);
-      await loadAdminData();
-    } catch (error) {
-      alert("Erreur : " + error.message);
-    }
-  }
 
   function closeReservation() {
     setSelectedRequest(null);
@@ -274,7 +251,9 @@ export default function Admin() {
       type: "accept",
       request,
       title: "Accepter la demande",
-      price: request.accommodation_gross ?? request.contract_total ?? request.owner_price ?? request.estimated_total ?? "",
+      currentAccommodationPrice: request.accommodation_net ?? request.accommodation_gross ?? "",
+      normalAccommodationPrice: request.accommodation_gross ?? request.accommodation_net ?? "",
+      price: "",
       message: paymentMode === "total"
         ? "Votre demande est acceptée. La réservation sera confirmée après paiement du montant total du séjour."
         : "Votre demande est acceptée. La réservation sera confirmée après paiement de l’acompte.",
@@ -381,8 +360,9 @@ export default function Admin() {
 
     try {
       if (modal.type === "accept") {
-        const proposedPrice = Number(values.price || 0);
-        if (!proposedPrice || proposedPrice <= 0) return alert("Tarif invalide.");
+        const hasSpecialPrice = values.price !== null && values.price !== undefined && String(values.price).trim() !== "";
+        const proposedPrice = hasSpecialPrice ? Number(values.price) : null;
+        if (hasSpecialPrice && (!Number.isFinite(proposedPrice) || proposedPrice <= 0)) return alert("Tarif spécial invalide.");
 
         if (request.status === "pending") {
           await prepareInitialCheckoutBooking(supabase, request, proposedPrice, values.message);
@@ -392,14 +372,7 @@ export default function Admin() {
         const daysBeforeArrival = daysUntil(request.start_date);
         const acceptanceContext = buildInitialCheckoutAcceptanceContext(checkoutSession, daysBeforeArrival);
 
-        await sendDecisionEmail(
-          supabase,
-          request,
-          "accepted",
-          acceptanceContext.totalPrice,
-          values.message,
-          acceptanceContext.emailExtras,
-        );
+        await sendDecisionEmail(supabase, request, "accepted", values.message);
 
         await logBookingEvent(
           supabase,
@@ -413,19 +386,18 @@ export default function Admin() {
       }
 
       if (modal.type === "refuse") {
-        await sendDecisionEmail(supabase, request, "refused", null, values.message);
         const { error } = await supabase.from("booking_requests").update({
           status: "refused",
           refused_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }).eq("id", request.id);
         if (error) throw error;
+        await sendDecisionEmail(supabase, request, "refused", values.message);
         await logBookingEvent(supabase, request.id, "booking_refused", "Demande refusée", values.message, {});
         alert("Demande refusée et email envoyé.");
       }
 
       if (modal.type === "confirm") {
-        await sendDecisionEmail(supabase, request, "confirmed", request.contract_total ?? request.owner_price ?? request.estimated_total, values.message);
         const { error } = await supabase.from("booking_requests").update({
           status: "confirmed",
           payment_status: request.payment_status || "manual_confirmed",
@@ -438,6 +410,7 @@ export default function Admin() {
           .in("status", ["pending", "accepted"])
           .lt("start_date", request.end_date)
           .gt("end_date", request.start_date);
+        await sendDecisionEmail(supabase, request, "confirmed", values.message);
         await logBookingEvent(supabase, request.id, "booking_confirmed_manual", "Réservation confirmée manuellement", values.message, {});
         alert("Réservation confirmée.");
       }
@@ -462,21 +435,8 @@ export default function Admin() {
         const amount = Number(values.price || 0);
         if (!amount || amount <= 0) return alert("Montant invalide.");
 
-        const payment = await createManualPayment(supabase, request, amount, values.reason || "solde", values.message);
-
-        const { error } = await supabase.from("booking_requests").update({
-          manual_payment_amount: amount,
-          manual_payment_link: payment.url,
-          manual_payment_reason: values.reason || "solde",
-          manual_payment_message: values.message,
-          manual_payment_status: "à payer",
-          manual_payment_requested_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }).eq("id", request.id);
-
-        if (error) throw error;
-        await logBookingEvent(supabase, request.id, "manual_payment_requested", "Lien de paiement manuel envoyé", `${values.reason || "autre"} · ${amount} €`, { amount, reason: values.reason || "autre", url: payment.url });
-        alert("Lien de paiement créé et email envoyé au client.");
+        await createManualPayment(supabase, request, amount, values.reason || "solde", values.message);
+        alert("Lien de paiement créé, enregistré et email envoyé au client.");
       }
 
       setModal(null);
@@ -955,6 +915,7 @@ export default function Admin() {
         <LazyAdminSection>
           <InvoicesPanel
             invoices={customerInvoices}
+            creditNotes={customerCreditNotes}
             onRefresh={loadAdminData}
             onOpenReservation={(bookingId) => {
               const booking = bookingRequests.find((item) => item.id === bookingId);
@@ -1003,7 +964,6 @@ export default function Admin() {
             onOpenCustomer={navigation.openCustomerFromReservation}
             onOpenCommunication={openCommunicationContext}
             onEdit={canManageOpenedReservation ? editReservation : undefined}
-            onDelete={canManageOpenedReservation ? deleteReservation : undefined}
             onReservationUpdated={loadAdminData}
             permissions={permissions}
             mode="admin"

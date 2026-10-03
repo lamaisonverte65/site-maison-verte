@@ -3,9 +3,13 @@ import { createClient } from "@supabase/supabase-js";
 import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
 import { escapeHtml } from "./_lib/html.js";
+import { expireOpenCheckoutSession } from "./_lib/stripe-checkout-session.js";
+import { contractualTotal, recordedPaidAmount } from "./_lib/booking-financial-authority.js";
+import { resendEmail } from "./_lib/resend-email.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const PAYABLE_MANUAL_STATUSES = new Set(["accepted", "deposit_paid", "paid"]);
 
 async function logBookingEvent({ bookingId, eventType, label, message, metadata = {} }) {
   if (!bookingId) return;
@@ -19,7 +23,7 @@ async function logBookingEvent({ bookingId, eventType, label, message, metadata 
   if (error) console.error("Erreur log booking_events:", error.message);
 }
 
-async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null }) {
+async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null, retryPayload = null }) {
   const { error } = await supabase.from("email_logs").insert([{
     booking_request_id: bookingId || null,
     email_type: emailType,
@@ -28,6 +32,7 @@ async function logEmail({ bookingId, emailType, toEmail, subject, status, errorM
     status,
     error_message: errorMessage,
     provider_id: providerId,
+    retry_payload: retryPayload,
     sent_at: new Date().toISOString(),
   }]);
   if (error) console.error("Erreur log email_logs:", error.message);
@@ -40,6 +45,10 @@ function formatDate(value) {
 
 function formatMoney(value) {
   return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(value || 0));
+}
+
+function toCents(value) {
+  return Math.round(Number(value || 0) * 100);
 }
 
 function getReasonLabel(reason) {
@@ -106,24 +115,18 @@ async function sendManualPaymentEmail({ bookingId, guestEmail, guestFirstName, g
     </div>
   `;
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [guestEmail],
       reply_to: "contact@lamaisonverte65.fr",
       subject: `${reasonLabel} à régler - La Maison Verte`,
       html,
-    }),
-  });
+    };
+  const response = await resendEmail(retryPayload);
 
   if (!response.ok) {
     const errorText = await response.text();
-    await logEmail({ bookingId, emailType: `manual_payment:${reason}`, toEmail: guestEmail, subject: `${reasonLabel} à régler - La Maison Verte`, status: "error", errorMessage: errorText });
+    await logEmail({ bookingId, emailType: `manual_payment:${reason}`, toEmail: guestEmail, subject: `${reasonLabel} à régler - La Maison Verte`, status: "error", errorMessage: errorText, retryPayload});
     throw new Error(errorText);
   }
 
@@ -167,6 +170,9 @@ export async function handler(event) {
 
     const { data: booking, error: bookingError } = await supabase.from("booking_requests").select("*").eq("id", bookingId).single();
     if (bookingError || !booking) return { statusCode: 404, body: JSON.stringify({ error: "Réservation introuvable" }) };
+    if (!PAYABLE_MANUAL_STATUSES.has(String(booking.status || "").toLowerCase())) {
+      return { statusCode: 409, body: JSON.stringify({ error: "Cette réservation n’est pas dans un état permettant de demander un paiement." }) };
+    }
     const guestEmail = booking.guest_email;
     const guestFirstName = booking.guest_first_name;
     const guestLastName = booking.guest_last_name;
@@ -174,7 +180,27 @@ export async function handler(event) {
     const endDate = booking.end_date;
     if (!guestEmail) return { statusCode: 400, body: JSON.stringify({ error: "Email client manquant dans la réservation" }) };
 
+    if (booking.contract_total != null) {
+      const remainingDue = Math.max(contractualTotal(booking) - recordedPaidAmount(booking), 0);
+      if (toCents(numericAmount) > toCents(remainingDue)) {
+        return {
+          statusCode: 400,
+          body: JSON.stringify({
+            error: "Le montant demandé dépasse le restant contractuel à encaisser.",
+            remainingDue,
+          }),
+        };
+      }
+      if (remainingDue <= 0) {
+        return { statusCode: 400, body: JSON.stringify({ error: "Cette réservation est déjà soldée." }) };
+      }
+    }
+
     const reasonLabel = getReasonLabel(safeReason);
+
+    if (booking.manual_payment_stripe_session_id) {
+      await expireOpenCheckoutSession(stripe, booking.manual_payment_stripe_session_id);
+    }
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -207,6 +233,22 @@ export async function handler(event) {
       cancel_url: "https://lamaisonverte65.fr/cancel",
     });
 
+    const { error } = await supabase.from("booking_requests").update({
+      manual_payment_amount: numericAmount,
+      manual_payment_link: session.url,
+      manual_payment_reason: safeReason,
+      manual_payment_message: message,
+      manual_payment_status: "à payer",
+      manual_payment_requested_at: new Date().toISOString(),
+      manual_payment_stripe_session_id: session.id,
+      updated_at: new Date().toISOString(),
+    }).eq("id", bookingId);
+
+    if (error) {
+      try { await stripe.checkout.sessions.expire(session.id); } catch (expireError) { console.error("Erreur expiration session paiement manuel orpheline:", expireError); }
+      throw error;
+    }
+
     await sendManualPaymentEmail({
       bookingId,
       guestEmail,
@@ -219,19 +261,6 @@ export async function handler(event) {
       message,
       paymentLink: session.url,
     });
-
-    const { error } = await supabase.from("booking_requests").update({
-      manual_payment_amount: numericAmount,
-      manual_payment_link: session.url,
-      manual_payment_reason: safeReason,
-      manual_payment_message: message,
-      manual_payment_status: "à payer",
-      manual_payment_requested_at: new Date().toISOString(),
-      manual_payment_stripe_session_id: session.id,
-      updated_at: new Date().toISOString(),
-    }).eq("id", bookingId);
-
-    if (error) throw error;
 
     await logBookingEvent({
       bookingId,

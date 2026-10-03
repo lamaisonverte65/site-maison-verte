@@ -1,11 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
+import Stripe from "stripe";
 import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
+import { expireBookingOpenCheckoutSessions } from "./_lib/stripe-checkout-session.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 async function logBookingEvent({ bookingId, userEmail }) {
   if (!bookingId) return;
@@ -35,7 +38,7 @@ export async function handler(event) {
 
     const { data: existing, error: fetchError } = await supabase
       .from("booking_requests")
-      .select("id,status")
+      .select("*")
       .eq("id", bookingId)
       .maybeSingle();
 
@@ -58,6 +61,9 @@ export async function handler(event) {
       .single();
 
     if (error) throw error;
+
+    await expireBookingOpenCheckoutSessions(stripe, existing);
+
     return { statusCode: 200, body: JSON.stringify({ success: true, booking: data }) };
   } catch (error) {
     console.error("Erreur delete-booking-request :", error);

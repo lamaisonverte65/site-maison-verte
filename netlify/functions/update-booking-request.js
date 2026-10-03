@@ -58,6 +58,14 @@ function getBookingKindLabel(kind) {
   return "Réservation personnelle";
 }
 
+function getStoredBookingKind(booking = {}) {
+  const source = String(booking.source || booking.contract_version || "").toLowerCase();
+  if (source.includes("booking")) return "booking";
+  if (source.includes("airbnb")) return "airbnb";
+  if (source.includes("personal")) return "personal";
+  return "site";
+}
+
 function splitDisplayName(displayName) {
   const clean = cleanText(displayName) || "Réservation personnelle";
   return { firstName: clean, lastName: "" };
@@ -224,7 +232,23 @@ export async function handler(event) {
 
     if (!startDate || !endDate || endDate <= startDate) return { statusCode: 400, body: JSON.stringify({ error: "Période invalide." }) };
 
-    const bookingKind = normalizeBookingKind(body.bookingKind);
+    const existingBookingKind = getStoredBookingKind(existingBooking);
+    const existingStatus = normalizeStatus(existingBooking.status, "pending");
+    const requestedBookingKind = fieldProvided(body, "bookingKind") ? normalizeBookingKind(body.bookingKind) : existingBookingKind;
+    const requestedStatus = fieldProvided(body, "status") ? normalizeStatus(body.status, null) : existingStatus;
+    const isExistingV410 = existingBookingKind === "site" && hasV410FinancialSnapshot(existingBooking);
+
+    if (isExistingV410 && requestedBookingKind !== existingBookingKind) {
+      return { statusCode: 400, body: JSON.stringify({ error: "Le type d’une réservation V4.10 est verrouillé." }) };
+    }
+    if (isExistingV410 && requestedStatus !== existingStatus) {
+      return { statusCode: 400, body: JSON.stringify({ error: "Le statut d’une réservation V4.10 doit être modifié uniquement via les actions métier." }) };
+    }
+    if (fieldProvided(body, "status") && !requestedStatus) {
+      return { statusCode: 400, body: JSON.stringify({ error: "Statut de réservation invalide." }) };
+    }
+
+    const bookingKind = requestedBookingKind;
     const legacyTotal = bookingKind === "site" ? Math.max(Number(body.total || 0), 0) : 0;
     const isV410 = bookingKind === "site" && hasV410FinancialSnapshot(existingBooking);
 
@@ -300,7 +324,6 @@ export async function handler(event) {
     const now = new Date().toISOString();
     const source = getBookingSource(bookingKind);
     const contractVersion = getBookingContractVersion(bookingKind);
-    const requestedStatus = normalizeStatus(body.status, existingBooking.status || "pending");
 
     const adults = Number(body.adults || 0) || null;
     const children = Number(body.children || 0) || null;
@@ -337,7 +360,6 @@ export async function handler(event) {
       const quote = await calculateV410ModificationQuote(existingBooking, { startDate, endDate, adults, children });
       Object.assign(updatePayload, quoteToBookingMoney(quote));
       updatePayload.cleaning_fee = Number(existingBooking.cleaning_fee || 0);
-      updatePayload.gross_amount = updatePayload.contract_total;
     } else if (bookingKind === "site" && !isV410) {
       // Compatibilité legacy : le champ total reste utilisable uniquement sans snapshot V4.10.
       updatePayload.estimated_total = legacyTotal;

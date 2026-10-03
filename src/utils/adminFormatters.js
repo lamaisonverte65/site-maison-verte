@@ -185,9 +185,14 @@ export function shortId(id) {
 export function getAmounts(request) {
   const isV410 = request?.contract_total !== null && request?.contract_total !== undefined
     && request?.deposit_amount !== null && request?.deposit_amount !== undefined;
+  const fullPayment = isV410 && request?.payment_preference === "full";
   const total = Number(isV410 ? request.contract_total : (request?.owner_price || request?.estimated_total || 0));
-  const deposit = Number(request?.deposit_amount ?? (isV410 ? 0 : Math.round(total * 0.3)));
-  const balance = Number(isV410 ? Math.max(total - deposit, 0) : (request?.balance_amount ?? Math.max(total - deposit, 0)));
+  const deposit = fullPayment
+    ? 0
+    : Number(request?.deposit_amount ?? (isV410 ? 0 : Math.round(total * 0.3)));
+  const balance = fullPayment
+    ? total
+    : Number(isV410 ? Math.max(total - deposit, 0) : (request?.balance_amount ?? Math.max(total - deposit, 0)));
   const storedPaid = request?.amount_paid ?? request?.total_paid;
   const hasStoredPaid = storedPaid !== null && storedPaid !== undefined && storedPaid !== "";
   const amountPaid = Number(hasStoredPaid ? storedPaid : 0);

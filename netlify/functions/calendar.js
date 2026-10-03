@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { loadPersistedExternalCalendar } from "./_lib/external-calendar-display.js";
+import { computeDepartureOnlyBoundaryDates } from "./_lib/public-calendar-boundaries.js";
 
 export function createCalendarSupabaseClient(env = process.env, factory = createClient) {
   if (!env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -92,7 +93,7 @@ export async function handler() {
   try {
     const supabase = createCalendarSupabaseClient();
     const unavailableDates = [];
-    const departureOnlyDates = [];
+    const departureBoundaryCandidates = [];
     const persistentCalendar = await loadPersistedExternalCalendar({
       async getCurrentOccupancies() {
         const { data, error } = await supabase.from("external_occupancies")
@@ -109,7 +110,7 @@ export async function handler() {
       },
     });
     unavailableDates.push(...persistentCalendar.unavailableDates);
-    departureOnlyDates.push(
+    departureBoundaryCandidates.push(
       ...persistentCalendar.externalReservations.map((reservation) => reservation.start_date)
     );
     let externalReservations = persistentCalendar.externalReservations;
@@ -140,7 +141,7 @@ export async function handler() {
     }
 
     for (const booking of bookingRequests || []) {
-      departureOnlyDates.push(booking.start_date);
+      departureBoundaryCandidates.push(booking.start_date);
       unavailableDates.push(
         ...getDatesBetween(booking.start_date, booking.end_date)
       );
@@ -155,7 +156,7 @@ export async function handler() {
     }
 
     for (const block of calendarBlocks || []) {
-      departureOnlyDates.push(block.start_date);
+      departureBoundaryCandidates.push(block.start_date);
       unavailableDates.push(
         ...getDatesBetween(block.start_date, block.end_date)
       );
@@ -200,7 +201,7 @@ export async function handler() {
       },
       body: JSON.stringify({
         unavailableDates: [...new Set(unavailableDates)].sort(),
-        departureOnlyDates: [...new Set(departureOnlyDates)].sort(),
+        departureOnlyDates: computeDepartureOnlyBoundaryDates(departureBoundaryCandidates, unavailableDates),
         externalReservations,
         externalCalendarSyncStatus: persistentCalendar.syncStatus,
         defaultNightPrice: Number(pricingSettings?.default_night_price || 80),

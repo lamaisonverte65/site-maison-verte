@@ -2,6 +2,7 @@ import { schedule } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 import { createArrivalToken, shouldSendSecureArrivalReminder } from "./_lib/arrival-token.js";
 import { escapeHtml } from "./_lib/html.js";
+import { resendEmail } from "./_lib/resend-email.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -63,6 +64,7 @@ async function logEmail({
   errorMessage = null,
   providerId = null,
   metadata = {},
+  retryPayload = null,
 }) {
   const { error } = await supabase.from("email_logs").insert([
     {
@@ -73,6 +75,7 @@ async function logEmail({
       status,
       error_message: errorMessage,
       provider_id: providerId,
+    retry_payload: retryPayload,
       sent_at: nowIso(),
       metadata,
     },
@@ -169,20 +172,14 @@ async function sendArrivalReminderEmail(booking) {
     </div>
   `;
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [booking.guest_email],
       reply_to: "contact@lamaisonverte65.fr",
       subject,
       html,
-    }),
-  });
+    };
+  const response = await resendEmail(retryPayload);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -195,6 +192,7 @@ async function sendArrivalReminderEmail(booking) {
       status: "error",
       errorMessage: errorText,
       metadata: { tokenExpiresAt: capability.expiresAt },
+      retryPayload,
     });
 
     return { sent: false, reason: errorText };

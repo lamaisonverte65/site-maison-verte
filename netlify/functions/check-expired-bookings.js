@@ -1,10 +1,14 @@
 import { schedule } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
+import Stripe from "stripe";
+import { expireBookingOpenCheckoutSessions } from "./_lib/stripe-checkout-session.js";
+import { resendEmail } from "./_lib/resend-email.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 function nowIso() {
   return new Date().toISOString();
@@ -43,6 +47,7 @@ async function logEmail({
   errorMessage = null,
   providerId = null,
   metadata = {},
+  retryPayload = null,
 }) {
   const { error } = await supabase.from("email_logs").insert([
     {
@@ -53,6 +58,7 @@ async function logEmail({
       status,
       error_message: errorMessage,
       provider_id: providerId,
+    retry_payload: retryPayload,
       sent_at: nowIso(),
       metadata,
     },
@@ -102,20 +108,14 @@ async function sendExpiredEmail(booking) {
     </div>
   `;
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [booking.guest_email],
       reply_to: "contact@lamaisonverte65.fr",
       subject,
       html,
-    }),
-  });
+    };
+  const response = await resendEmail(retryPayload);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -128,6 +128,7 @@ async function sendExpiredEmail(booking) {
       status: "error",
       errorMessage: errorText,
       metadata: { status: booking.status, acceptanceExpiresAt: booking.acceptance_expires_at },
+      retryPayload,
     });
 
     return { sent: false, reason: errorText };
@@ -148,6 +149,37 @@ async function sendExpiredEmail(booking) {
     metadata: { status: booking.status, acceptanceExpiresAt: booking.acceptance_expires_at },
   });
 
+  return { sent: true };
+}
+
+async function sendOwnerPaymentNotReceivedAlert(booking, clientEmailResult) {
+  const ownerEmail = process.env.OWNER_EMAIL || "contact@lamaisonverte65.fr";
+  const isFull = booking.payment_preference === "full";
+  const label = isFull ? "Paiement intégral non reçu" : "Acompte non reçu";
+  const name = `${booking.guest_first_name || ""} ${booking.guest_last_name || ""}`.trim() || "Client";
+  const adminUrl = `${process.env.URL || "https://lamaisonverte65.fr"}/admin?booking=${encodeURIComponent(booking.id)}`;
+  const subject = `${label} — ${name} — demande expirée`;
+  const clientEmailStatus = clientEmailResult?.sent ? "envoyé" : `ÉCHEC${clientEmailResult?.reason ? ` — ${clientEmailResult.reason}` : ""}`;
+  const html = `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>${label}</h2><p>La demande acceptée a expiré sans réception du paiement initial.</p><p><strong>Client :</strong> ${name}<br><strong>Séjour :</strong> ${formatDate(booking.start_date)} → ${formatDate(booking.end_date)}<br><strong>Email d’expiration client :</strong> ${clientEmailStatus}</p><p>Les dates ont été remises à disposition et les sessions Stripe ouvertes ont été neutralisées.</p><p><a href="${adminUrl}" style="background:#166534;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Ouvrir la réservation dans l’admin</a></p></div>`;
+
+  const retryPayload = {
+      from: "La Maison Verte <contact@lamaisonverte65.fr>",
+      to: [ownerEmail],
+      subject,
+      html,
+    };
+  const response = await resendEmail(retryPayload);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    await logEmail({ bookingId: booking.id, emailType: "owner_initial_payment_not_received", toEmail: ownerEmail, subject, status: "error", errorMessage: errorText, retryPayload});
+    console.error("Erreur email propriétaire paiement initial non reçu:", errorText);
+    return { sent: false, reason: errorText };
+  }
+
+  let responseData = null;
+  try { responseData = await response.json(); } catch (_) {}
+  await logEmail({ bookingId: booking.id, emailType: "owner_initial_payment_not_received", toEmail: ownerEmail, subject, status: "sent", providerId: responseData?.id || null });
   return { sent: true };
 }
 
@@ -179,6 +211,16 @@ async function runExpiredBookingsCheck() {
       continue;
     }
 
+    try {
+      await expireBookingOpenCheckoutSessions(stripe, booking);
+    } catch (stripeError) {
+      skipped.push({
+        bookingId: booking.id,
+        reason: `stripe_expiration_failed:${stripeError.message}`,
+      });
+      continue;
+    }
+
     const { error: updateError } = await supabase
       .from("booking_requests")
       .update({
@@ -200,6 +242,7 @@ async function runExpiredBookingsCheck() {
     }
 
     const emailResult = await sendExpiredEmail(booking);
+    const ownerEmailResult = await sendOwnerPaymentNotReceivedAlert(booking, emailResult);
 
     await logBookingEvent({
       bookingId: booking.id,
@@ -210,12 +253,16 @@ async function runExpiredBookingsCheck() {
         acceptanceExpiresAt: booking.acceptance_expires_at,
         emailSent: emailResult.sent,
         emailReason: emailResult.reason || null,
+        ownerEmailSent: ownerEmailResult.sent,
+        ownerEmailReason: ownerEmailResult.reason || null,
       },
     });
 
     processed.push({
       bookingId: booking.id,
       emailSent: emailResult.sent,
+      ownerEmailSent: ownerEmailResult.sent,
+      stripeSessionsExpired: true,
     });
   }
 

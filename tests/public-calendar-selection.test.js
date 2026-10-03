@@ -32,9 +32,9 @@ test("the public calendar exposes and consumes departure-only boundary dates", (
   const api = readFileSync("netlify/functions/calendar.js", "utf8");
   const page = readFileSync("src/pages/MaisonVerte.jsx", "utf8");
 
-  assert.match(api, /departureOnlyDates\.push\(booking\.start_date\)/);
-  assert.match(api, /departureOnlyDates\.push\(block\.start_date\)/);
-  assert.match(api, /departureOnlyDates:\s*\[\.\.\.new Set\(departureOnlyDates\)\]\.sort\(\)/);
+  assert.match(api, /departureBoundaryCandidates\.push\(booking\.start_date\)/);
+  assert.match(api, /departureBoundaryCandidates\.push\(block\.start_date\)/);
+  assert.match(api, /departureOnlyDates:\s*computeDepartureOnlyBoundaryDates\(departureBoundaryCandidates, unavailableDates\)/);
   assert.match(page, /setDepartureOnlyDates\(data\.departureOnlyDates \|\| \[\]\)/);
   assert.match(page, /selectionContainsUnavailableNight\(realStart, end, unavailableDates\)/);
 });

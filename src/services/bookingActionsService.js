@@ -10,8 +10,10 @@ async function getAdminFetchHeaders(supabase) {
 }
 
 export async function prepareInitialCheckoutBooking(supabase, request, specialAccommodation, ownerMessage) {
-  const amount = Number(specialAccommodation);
-  if (!Number.isFinite(amount) || amount <= 0) {
+  const raw = specialAccommodation;
+  const hasSpecial = raw !== null && raw !== undefined && String(raw).trim() !== "";
+  const amount = hasSpecial ? Number(raw) : null;
+  if (hasSpecial && (!Number.isFinite(amount) || amount <= 0)) {
     throw new Error("Tarif spécial d’hébergement invalide.");
   }
 
@@ -62,7 +64,7 @@ export function buildInitialCheckoutAcceptanceContext(checkoutSession, daysBefor
   };
 }
 
-export async function sendDecisionEmail(supabase, request, type, ownerPrice, ownerMessage, extras = {}) {
+export async function sendDecisionEmail(supabase, request, type, ownerMessage) {
   const { data: { session: currentSession } } = await supabase.auth.getSession();
   const response = await fetch("/.netlify/functions/send-booking-decision", {
     method: "POST",
@@ -73,21 +75,7 @@ export async function sendDecisionEmail(supabase, request, type, ownerPrice, own
     body: JSON.stringify({
       bookingId: request.id,
       type,
-      guestEmail: request.guest_email,
-      guestFirstName: request.guest_first_name,
-      guestLastName: request.guest_last_name,
-      startDate: request.start_date,
-      endDate: request.end_date,
-      nights: request.nights,
-      estimatedTotal: request.estimated_total,
-      ownerPrice,
       ownerMessage,
-      arrivalTime: request.arrival_time,
-      adultsCount: request.adults_count,
-      childrenCount: request.children_count,
-      childrenAges: request.children_ages,
-      babyBedNeeded: request.baby_bed_needed,
-      ...extras,
     }),
   });
   if (!response.ok) throw new Error(await response.text());
@@ -99,11 +87,6 @@ export async function createManualPayment(supabase, request, amount, reason, mes
     headers: await getAdminFetchHeaders(supabase),
     body: JSON.stringify({
       bookingId: request.id,
-      guestEmail: request.guest_email,
-      guestFirstName: request.guest_first_name,
-      guestLastName: request.guest_last_name,
-      startDate: request.start_date,
-      endDate: request.end_date,
       amount,
       reason,
       message,

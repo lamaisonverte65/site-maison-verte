@@ -22,6 +22,7 @@ function formatManualPayment(manualPayment) {
 
 export default function PaymentBlock({ request, status, amounts }) {
   const payment = toPaymentView(request, amounts);
+  const fullPayment = request?.payment_preference === "full";
 
   return (
     <>
@@ -35,21 +36,25 @@ export default function PaymentBlock({ request, status, amounts }) {
         <Info label="Payé par le client" value={formatMoney(payment.realPaid)} />
       </div>
 
-      <h4 style={{ margin: "14px 0 8px" }}>Acompte</h4>
-      <div style={styles.detailGrid}>
-        <Info label="Statut acompte" value={payment.deposit.status} />
-        <Info label="Montant acompte" value={formatMoney(payment.deposit.amount)} />
-        <Info label="Acompte payé le" value={formatDateTime(payment.deposit.paidAt)} />
-        <Info label="Acompte prévu pour" value={formatDateTime(payment.deposit.dueAt)} />
-        <Info label="Expiration lien acompte" value={formatDateTime(payment.deposit.linkExpiresAt)} />
-      </div>
+      {!fullPayment && (
+        <>
+          <h4 style={{ margin: "14px 0 8px" }}>Acompte</h4>
+          <div style={styles.detailGrid}>
+            <Info label="Statut acompte" value={payment.deposit.status} />
+            <Info label="Montant acompte" value={formatMoney(payment.deposit.amount)} />
+            <Info label="Acompte payé le" value={formatDateTime(payment.deposit.paidAt)} />
+            <Info label="Acompte prévu pour" value={formatDateTime(payment.deposit.dueAt)} />
+            <Info label="Expiration lien acompte" value={formatDateTime(payment.deposit.linkExpiresAt)} />
+          </div>
+        </>
+      )}
 
-      <h4 style={{ margin: "14px 0 8px" }}>Solde</h4>
+      <h4 style={{ margin: "14px 0 8px" }}>{fullPayment ? "Paiement total" : "Solde"}</h4>
       <div style={styles.detailGrid}>
-        <Info label="Statut solde" value={payment.balance.status} />
-        <Info label="Montant solde" value={formatMoney(payment.balance.amount)} />
-        <Info label="Solde payé le" value={formatDateTime(payment.balance.paidAt)} />
-        <Info label="Solde prévu pour" value={formatDateTime(payment.balance.dueAt)} />
+        <Info label={fullPayment ? "Statut paiement" : "Statut solde"} value={payment.balance.status} />
+        <Info label={fullPayment ? "Montant paiement total" : "Montant solde"} value={formatMoney(payment.balance.amount)} />
+        <Info label={fullPayment ? "Paiement reçu le" : "Solde payé le"} value={formatDateTime(payment.balance.paidAt)} />
+        <Info label={fullPayment ? "Paiement prévu pour" : "Solde prévu pour"} value={formatDateTime(payment.balance.dueAt)} />
         <Info label="Paiement manuel" value={formatManualPayment(payment.manualPayment)} />
       </div>
     </>

@@ -4,6 +4,7 @@ import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
 import { DATE_CONFLICT_MESSAGE, isBookingDateConflictError } from "./_lib/public-booking-request.js";
 import { calculatePublicBookingQuote, quoteToBookingMoney } from "./_lib/booking-quote.js";
+import { resendEmail } from "./_lib/resend-email.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(
@@ -96,7 +97,7 @@ async function logBookingEvent({ bookingId, eventType, label, message, metadata 
   if (error) console.error("Erreur historique booking_events:", error.message);
 }
 
-async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null }) {
+async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null, retryPayload = null }) {
   const { error } = await supabase.from("email_logs").insert([{
     booking_request_id: bookingId || null,
     email_type: emailType,
@@ -105,6 +106,7 @@ async function logEmail({ bookingId, emailType, toEmail, subject, status, errorM
     status,
     error_message: errorMessage,
     provider_id: providerId,
+    retry_payload: retryPayload,
     sent_at: new Date().toISOString(),
   }]);
   if (error) console.error("Erreur log email_logs:", error.message);
@@ -158,24 +160,18 @@ async function sendAdminBookingPaymentEmail({ booking, paymentLink, paymentType,
     </div>
   `;
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [booking.guest_email],
       reply_to: "contact@lamaisonverte65.fr",
       subject,
       html,
-    }),
-  });
+    };
+  const response = await resendEmail(retryPayload);
 
   if (!response.ok) {
     const errorText = await response.text();
-    await logEmail({ bookingId: booking.id, emailType: `admin_booking_payment:${paymentType}`, toEmail: booking.guest_email, subject, status: "error", errorMessage: errorText });
+    await logEmail({ bookingId: booking.id, emailType: `admin_booking_payment:${paymentType}`, toEmail: booking.guest_email, subject, status: "error", errorMessage: errorText, retryPayload});
     throw new Error(errorText);
   }
 
@@ -403,7 +399,6 @@ export async function handler(event) {
         nights,
         ...(bookingKind === "site" ? {
           ...financialSnapshot,
-          gross_amount: financialSnapshot.contract_total,
         } : {
           estimated_total: 0, owner_price: 0, gross_amount: 0, deposit_amount: 0, balance_amount: 0,
         }),

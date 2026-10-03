@@ -1,5 +1,6 @@
 import { schedule } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
+import { resendEmail } from "./_lib/resend-email.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -47,7 +48,7 @@ async function logBookingEvent({ bookingId, eventType, label, message, metadata 
   if (error) console.error("Erreur log booking_events :", error.message);
 }
 
-async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null, metadata = {} }) {
+async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null, metadata = {}, retryPayload = null }) {
   const { error } = await supabase.from("email_logs").insert([
     {
       booking_request_id: bookingId || null,
@@ -57,6 +58,7 @@ async function logEmail({ bookingId, emailType, toEmail, subject, status, errorM
       status,
       error_message: errorMessage,
       provider_id: providerId,
+    retry_payload: retryPayload,
       sent_at: nowIso(),
       metadata,
     },
@@ -129,25 +131,19 @@ Raphaël & Emmanuelle
 07 95 93 83 15
 La Maison Verte — Arreau`;
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [booking.guest_email],
       reply_to: "contact@lamaisonverte65.fr",
       subject,
       html,
       text,
-    }),
-  });
+    };
+  const response = await resendEmail(retryPayload);
 
   if (!response.ok) {
     const errorText = await response.text();
-    await logEmail({ bookingId: booking.id, emailType: "review_request", toEmail: booking.guest_email, subject, status: "error", errorMessage: errorText, metadata: { reviewUrl, googleReviewUrl: GOOGLE_REVIEW_URL } });
+    await logEmail({ bookingId: booking.id, emailType: "review_request", toEmail: booking.guest_email, subject, status: "error", errorMessage: errorText, metadata: { reviewUrl, googleReviewUrl: GOOGLE_REVIEW_URL }, retryPayload});
     return { sent: false, reason: errorText };
   }
 

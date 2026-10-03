@@ -99,3 +99,34 @@ export async function updateLegacyInvoiceFinancialSnapshot(invoice, values) {
   if (error) throw error;
   return data;
 }
+
+export async function updateCreditNoteDraft(creditNoteId, values) {
+  const accommodationRefund = Number(values.accommodationRefund);
+  const cleaningRefund = Number(values.cleaningRefund);
+  const response = await fetch('/.netlify/functions/update-customer-credit-note-draft', {
+    method: 'POST',
+    headers: await authHeaders(true),
+    body: JSON.stringify({ creditNoteId, accommodationRefund, cleaningRefund }),
+  });
+  return readJson(response);
+}
+
+export async function issueCreditNote(creditNoteId) {
+  const { data, error } = await supabase.rpc('admin_issue_customer_credit_note', { p_credit_note_id: creditNoteId });
+  if (error) throw error;
+  return data;
+}
+export async function archiveCreditNotePdf(creditNoteId) {
+  const response = await fetch('/.netlify/functions/archive-customer-credit-note-pdf', { method:'POST', headers:await authHeaders(true), body:JSON.stringify({ creditNoteId }) });
+  return readJson(response);
+}
+async function openPdfResponse(response, fallback) {
+  if (!response.ok) { const payload=await response.json().catch(()=>({})); throw new Error(payload.error||fallback); }
+  const blob=await response.blob(); const url=URL.createObjectURL(blob); window.open(url,'_blank','noopener,noreferrer'); window.setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+export async function openCreditNotePreviewPdf(creditNoteId) {
+  return openPdfResponse(await fetch(`/.netlify/functions/preview-customer-credit-note-pdf?creditNoteId=${encodeURIComponent(creditNoteId)}`,{headers:await authHeaders(false)}),'Aperçu PDF indisponible.');
+}
+export async function openCreditNotePdf(creditNoteId) {
+  return openPdfResponse(await fetch(`/.netlify/functions/get-customer-credit-note-pdf?creditNoteId=${encodeURIComponent(creditNoteId)}`,{headers:await authHeaders(false)}),'PDF indisponible.');
+}

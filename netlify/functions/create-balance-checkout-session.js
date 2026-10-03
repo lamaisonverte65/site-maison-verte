@@ -3,6 +3,7 @@ import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
 import { createBalancePaymentUrl } from "./_lib/balance-link.js";
 import { contractualTotal, recordedPaidAmount, remainingContractualDue } from "./_lib/booking-financial-authority.js";
+import { resendEmail } from "./_lib/resend-email.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -60,22 +61,41 @@ async function sendBalanceEmail(booking, paymentLink, amount, step = "request") 
     </div>
   `;
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: "La Maison Verte <contact@lamaisonverte65.fr>",
-      to: [booking.guest_email],
-      reply_to: "contact@lamaisonverte65.fr",
-      subject: `${labels[step] || labels.request} - La Maison Verte`,
-      html,
-    }),
-  });
+  const subject = `${labels[step] || labels.request} - La Maison Verte`;
+  const retryPayload = {
+    from: "La Maison Verte <contact@lamaisonverte65.fr>",
+    to: [booking.guest_email],
+    reply_to: "contact@lamaisonverte65.fr",
+    subject,
+    html,
+  };
+  const response = await resendEmail(retryPayload);
 
-  if (!response.ok) throw new Error(await response.text());
+  if (!response.ok) {
+    const errorText = await response.text();
+    await supabase.from("email_logs").insert([{
+      booking_request_id: booking.id,
+      email_type: `balance:${step}`,
+      to_email: booking.guest_email,
+      subject,
+      status: "error",
+      error_message: errorText,
+      sent_at: new Date().toISOString(),
+      retry_payload: retryPayload,
+    }]);
+    throw new Error(errorText);
+  }
+
+  const responseData = await response.json().catch(() => null);
+  await supabase.from("email_logs").insert([{
+    booking_request_id: booking.id,
+    email_type: `balance:${step}`,
+    to_email: booking.guest_email,
+    subject,
+    status: "sent",
+    provider_id: responseData?.id || null,
+    sent_at: new Date().toISOString(),
+  }]);
 }
 
 
@@ -99,8 +119,6 @@ export async function handler(event) {
     if (!balance || balance <= 0) return { statusCode: 400, body: JSON.stringify({ error: "Aucun solde à payer" }) };
 
     const paymentLink = createBalancePaymentUrl(process.env.URL || "https://lamaisonverte65.fr", booking.id);
-    await sendBalanceEmail(booking, paymentLink, balance, step);
-
     const now = new Date().toISOString();
     const updatePayload = {
       balance_amount: balance,
@@ -116,6 +134,8 @@ export async function handler(event) {
 
     const { error: updateError } = await supabase.from("booking_requests").update(updatePayload).eq("id", booking.id);
     if (updateError) throw updateError;
+
+    await sendBalanceEmail(booking, paymentLink, balance, step);
 
     return { statusCode: 200, body: JSON.stringify({ url: paymentLink, amount: balance, step }) };
   } catch (error) {

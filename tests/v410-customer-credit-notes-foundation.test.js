@@ -1,0 +1,45 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const path='supabase/migrations/202610040002_v410_customer_credit_notes.sql';
+const sql=fs.existsSync(path)?fs.readFileSync(path,'utf8'):'';
+test('credit notes foundation exists separately with immutable issued docs',()=>{
+  assert.match(sql,/^\s*begin\s*;/i); assert.match(sql,/commit\s*;\s*$/i);
+  assert.match(sql,/create table public\.customer_credit_notes/i);
+  assert.match(sql,/create table public\.customer_credit_note_counters/i);
+  assert.match(sql,/invoice_id uuid not null references public\.customer_invoices\(id\)/i);
+  assert.match(sql,/refund_operation_id uuid not null references public\.refund_operations\(id\)/i);
+  assert.match(sql,/unique\s*\(refund_operation_id\)/i);
+  assert.match(sql,/status text not null default 'draft'.*'draft'.*'issued'/is);
+  assert.match(sql,/credit_note_number text unique/i);
+  assert.match(sql,/pdf_storage_path text unique/i);
+  assert.match(sql,/seller_snapshot jsonb/i); assert.match(sql,/customer_snapshot jsonb/i); assert.match(sql,/stay_snapshot jsonb/i); assert.match(sql,/financial_snapshot jsonb/i); assert.match(sql,/refund_snapshot jsonb/i);
+  assert.match(sql,/total_amount numeric\(12,2\)/i);
+  assert.match(sql,/customer_credit_notes_owner_only/i);
+  assert.match(sql,/grant select on table public\.customer_credit_notes to authenticated/i);
+  assert.doesNotMatch(sql,/grant select, update on table public\.customer_credit_notes to authenticated/i);
+  assert.match(sql,/protect_issued_customer_credit_note/i);
+  assert.match(sql,/credit_note_authoritative_fields_immutable/i);
+  assert.match(sql,/old\.status = 'draft'.*new\.status = 'draft'/is);
+  assert.match(sql,/new\.total_amount is distinct from old\.total_amount/is);
+  assert.match(sql,/new\.refund_snapshot is distinct from old\.refund_snapshot/is);
+  assert.match(sql,/before update on public\.customer_credit_notes/i);
+  assert.match(sql,/before delete on public\.customer_credit_notes/i);
+});
+test('issue rpc uses independent annual counter and AV-LMV numbering',()=>{
+  assert.match(sql,/admin_issue_customer_credit_note/i);
+  assert.match(sql,/for update/i);
+  assert.match(sql,/on conflict \(credit_note_year\) do update/i);
+  assert.match(sql,/AV-LMV-%s-%s/i);
+  assert.match(sql,/manual_required/i);
+  assert.doesNotMatch(sql,/max\s*\(/i);
+});
+test('future succeeded transition creates idempotent draft only when one issued invoice exists',()=>{
+  assert.match(sql,/after update of status on public\.refund_operations/i);
+  assert.match(sql,/old\.status is distinct from 'succeeded'.*new\.status = 'succeeded'/is);
+  assert.match(sql,/new\.refunded_amount_cents > 0/i);
+  assert.match(sql,/status = 'issued'/i);
+  assert.match(sql,/count\(\*\).*customer_invoices/is);
+  assert.match(sql,/on conflict \(refund_operation_id\) do nothing/i);
+  assert.doesNotMatch(sql,/insert into public\.customer_credit_notes[\s\S]*from public\.refund_operations[\s\S]*where ro\.status = 'succeeded'/i);
+});

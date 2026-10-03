@@ -13,7 +13,7 @@ const booking = {
   adults_count:2, children_count:1, children_ages:[12], accommodation_gross:330, promotion_discount_rate:10,
   promotion_discount_amount:33, accommodation_net:297, cleaning_fee:50, tourist_tax_amount:18,
   tourist_tax_collected:18, tourist_tax_refunded:0, tourist_tax_collector:'la_maison_verte',
-  tourist_tax_snapshot:{classification:'unclassified'}, deposit_rate:0.3, deposit_basis:347, deposit_amount:104.1, contract_total:365,
+  tourist_tax_snapshot:{classification:'unclassified'}, cleaning_option:true, deposit_rate:0.3, deposit_basis:347, deposit_amount:104.1, contract_total:365,
 };
 
 test('B2 construit le brouillon depuis les snapshots contractuels sans recalculer le total', () => {
@@ -70,4 +70,11 @@ test('B2 garantit une facture Direct unique par réservation sans toucher à la 
   assert.match(migration, /create unique index customer_invoices_direct_booking_unique_idx/i);
   assert.match(migration, /where source = 'direct' and booking_request_id is not null/i);
   assert.doesNotMatch(migration, /customer_invoice_counters|invoice_number|admin_issue_customer_invoice/i);
+});
+
+
+test('Lot 4 ne facture pas le ménage si cleaning_option est faux', () => {
+  const draft = buildDirectInvoiceDraft({ booking:{...booking, cleaning_option:false}, payments:[] });
+  assert.equal(draft.financial_snapshot.cleaning_fee, 0);
+  assert.equal(draft.total_amount, 365);
 });

@@ -4,11 +4,12 @@ import { escapeHtml } from "./_lib/html.js";
 import { processCheckoutSessionCompleted } from "./_lib/stripe-checkout-completed.js";
 import { listAllBalanceTransactions } from "./_lib/stripe-balance-transactions.js";
 import { contractualDeposit, contractualTotal, remainingContractualDue } from "./_lib/booking-financial-authority.js";
+import { resendEmail } from "./_lib/resend-email.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null }) {
+async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null, retryPayload = null }) {
   const { error } = await supabase.from("email_logs").insert([{
     booking_request_id: bookingId || null,
     email_type: emailType,
@@ -17,6 +18,7 @@ async function logEmail({ bookingId, emailType, toEmail, subject, status, errorM
     status,
     error_message: errorMessage,
     provider_id: providerId,
+    retry_payload: retryPayload,
     sent_at: new Date().toISOString(),
   }]);
   if (error) console.error("Erreur log email_logs:", error.message);
@@ -366,20 +368,14 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
     </div>
   `;
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [booking.guest_email],
       reply_to: "contact@lamaisonverte65.fr",
       subject: isFull ? "Paiement reçu - La Maison Verte" : isBalance ? "Solde reçu - La Maison Verte" : isManual ? "Paiement reçu - La Maison Verte" : "Acompte reçu - La Maison Verte",
       html,
-    }),
-  });
+    };
+  const response = await resendEmail(retryPayload);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -391,8 +387,9 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
       subject: isFull ? "Paiement reçu - La Maison Verte" : isBalance ? "Solde reçu - La Maison Verte" : isManual ? "Paiement reçu - La Maison Verte" : "Acompte reçu - La Maison Verte",
       status: "error",
       errorMessage: errorText,
+      retryPayload,
     });
-    return;
+    return { sent: false, reason: errorText };
   }
 
   let responseData = null;
@@ -408,6 +405,46 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
     status: "sent",
     providerId: responseData?.id || null,
   });
+  return { sent: true, providerId: responseData?.id || null };
+}
+
+async function sendOwnerPaymentStatusEmail(booking, paymentType, amount, clientEmailResult, manualReason = null) {
+  const ownerEmail = process.env.OWNER_EMAIL || "contact@lamaisonverte65.fr";
+  const total = contractualTotal(booking);
+  const paid = Number(booking.amount_paid || 0);
+  const remaining = Math.max(total - paid, 0);
+  const name = `${booking.guest_first_name || ""} ${booking.guest_last_name || ""}`.trim() || "Client";
+  const adminUrl = `${process.env.URL || "https://lamaisonverte65.fr"}/admin?booking=${encodeURIComponent(booking.id)}`;
+  const typeLabel = paymentType === "deposit"
+    ? "Acompte reçu"
+    : paymentType === "balance"
+    ? "Solde reçu"
+    : paymentType === "full"
+    ? "Paiement intégral reçu"
+    : `${getReasonLabel(manualReason || "complement")} reçu`;
+  const clientEmailStatus = clientEmailResult?.sent ? "envoyé" : `ÉCHEC${clientEmailResult?.reason ? ` — ${escapeHtml(clientEmailResult.reason)}` : ""}`;
+  const subject = `${typeLabel} — ${name} — La Maison Verte`;
+  const html = `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>${typeLabel}</h2><p><strong>Client :</strong> ${escapeHtml(name)}<br><strong>Séjour :</strong> ${formatDate(booking.start_date)} → ${formatDate(booking.end_date)}<br><strong>Montant reçu :</strong> ${formatCurrency(amount)}<br><strong>Total payé :</strong> ${formatCurrency(paid)}<br><strong>Reste à encaisser :</strong> ${formatCurrency(remaining)}<br><strong>Email client :</strong> ${clientEmailStatus}</p><p><a href="${escapeHtml(adminUrl)}" style="background:#166534;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Ouvrir la réservation dans l’admin</a></p></div>`;
+
+  const retryPayload = {
+      from: "La Maison Verte <contact@lamaisonverte65.fr>",
+      to: [ownerEmail],
+      subject,
+      html,
+    };
+  const response = await resendEmail(retryPayload);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    await logEmail({ bookingId: booking.id, emailType: `owner_payment_status:${paymentType}`, toEmail: ownerEmail, subject, status: "error", errorMessage: errorText, retryPayload});
+    console.error("Erreur email propriétaire paiement:", errorText);
+    return { sent: false, reason: errorText };
+  }
+
+  let responseData = null;
+  try { responseData = await response.json(); } catch (_) {}
+  await logEmail({ bookingId: booking.id, emailType: `owner_payment_status:${paymentType}`, toEmail: ownerEmail, subject, status: "sent", providerId: responseData?.id || null });
+  return { sent: true };
 }
 
 async function applyCheckoutPayment(payload) {
@@ -452,11 +489,12 @@ export async function handler(event) {
           getFinancialDetails: getStripeFinancialDetails,
           applyPayment: applyCheckoutPayment,
           sendConfirmationEmail: async ({ booking, paymentType, manualReason, amount, arrivalToken }) => {
-            await sendPaymentConfirmationEmail(booking, paymentType, {
+            const clientEmailResult = await sendPaymentConfirmationEmail(booking, paymentType, {
               manualReason,
               manualAmount: amount,
               arrivalToken,
             });
+            await sendOwnerPaymentStatusEmail(booking, paymentType, amount, clientEmailResult, manualReason);
           },
         },
       });

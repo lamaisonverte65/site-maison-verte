@@ -77,7 +77,23 @@ export function ActionModal({ modal, onClose, onSubmit }) {
         <p style={styles.empty}>{modal.helper}</p>
 
         {modal.type === "accept" && (
-          <label style={styles.label}>Tarif spécial hébergement (€)<input style={styles.input} value={price} onChange={(event) => setPrice(event.target.value)} /></label>
+          <>
+            <div style={styles.empty}>
+              Tarif hébergement actuel : <strong>{Number(modal.currentAccommodationPrice || 0).toFixed(2)} €</strong>
+              {Number(modal.normalAccommodationPrice || 0) > Number(modal.currentAccommodationPrice || 0) && (
+                <> · tarif normal : {Number(modal.normalAccommodationPrice).toFixed(2)} €</>
+              )}
+            </div>
+            <label style={styles.label}>
+              Tarif spécial hébergement (€) — optionnel
+              <input
+                style={styles.input}
+                value={price}
+                onChange={(event) => setPrice(event.target.value)}
+                placeholder="Laisser vide pour conserver le tarif actuel"
+              />
+            </label>
+          </>
         )}
 
         {modal.type === "manual_payment" && (

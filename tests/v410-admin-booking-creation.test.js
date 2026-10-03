@@ -14,7 +14,7 @@ test("B3.3 admin site creation uses the central V4.10 quote engine", () => {
 test("B3.3 manual admin amount is accommodation-only financial context", () => {
   const source = read("netlify/functions/create-personal-booking.js");
   assert.match(source, /accommodationGrossCents: Math\.round\(specialAccommodation \* 100\)/);
-  assert.match(source, /financialSnapshot\.contract_total/);
+  assert.match(source, /financialSnapshot\?\.contract_total/);
 });
 
 test("B3.3 checkout consumes snapshotted contract total and deposit", () => {

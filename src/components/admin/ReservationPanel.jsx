@@ -87,6 +87,8 @@ function EditableReservationForm({ request, form, onChange, onCancel, onPreview,
   const isPersonal = form.bookingKind === "personal";
   const isSite = form.bookingKind === "site";
   const isV410 = isSite && request?.contract_total != null && request?.deposit_rate != null && request?.deposit_basis != null && request?.deposit_amount != null;
+  const statusLabel = STATUS_OPTIONS.find(([value]) => value === form.status)?.[1] || form.status || "-";
+  const bookingKindLabel = { site: "Réservation client / site", booking: "Réservation Booking", airbnb: "Réservation Airbnb", personal: "Réservation personnelle" }[form.bookingKind] || form.bookingKind || "-";
 
   return (
     <section style={{ ...styles.panel, marginBottom: 18, border: "2px solid #0f766e" }}>
@@ -136,17 +138,25 @@ function EditableReservationForm({ request, form, onChange, onCancel, onPreview,
       <div style={{ display: "grid", gap: "18px" }}>
         <div style={styles.detailGrid}>
           <label style={fieldStyle}><span style={labelStyle}>Statut</span>
-            <select style={inputStyle} value={form.status} onChange={(event) => update("status", event.target.value)}>
-              {STATUS_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
+            {isV410 ? (
+              <div style={{ ...inputStyle, background: "#f1f5f9", color: "#475569" }}>{statusLabel} — lecture seule, utiliser les actions métier</div>
+            ) : (
+              <select style={inputStyle} value={form.status} onChange={(event) => update("status", event.target.value)}>
+                {STATUS_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            )}
           </label>
           <label style={fieldStyle}><span style={labelStyle}>Type</span>
-            <select style={inputStyle} value={form.bookingKind} onChange={(event) => update("bookingKind", event.target.value)}>
-              <option value="site">Réservation client / site</option>
-              <option value="booking">Réservation Booking</option>
-              <option value="airbnb">Réservation Airbnb</option>
-              <option value="personal">Réservation personnelle</option>
-            </select>
+            {isV410 ? (
+              <div style={{ ...inputStyle, background: "#f1f5f9", color: "#475569" }}>{bookingKindLabel} — verrouillé</div>
+            ) : (
+              <select style={inputStyle} value={form.bookingKind} onChange={(event) => update("bookingKind", event.target.value)}>
+                <option value="site">Réservation client / site</option>
+                <option value="booking">Réservation Booking</option>
+                <option value="airbnb">Réservation Airbnb</option>
+                <option value="personal">Réservation personnelle</option>
+              </select>
+            )}
           </label>
           <label style={fieldStyle}><span style={labelStyle}>Arrivée</span><input style={inputStyle} type="date" value={form.startDate} onChange={(event) => update("startDate", event.target.value)} /></label>
           <label style={fieldStyle}><span style={labelStyle}>Départ</span><input style={inputStyle} type="date" value={form.endDate} onChange={(event) => update("endDate", event.target.value)} /></label>
@@ -200,7 +210,6 @@ export default function ReservationPanel({
   onOpenCustomer,
   onOpenCommunication,
   onEdit,
-  onDelete,
   onReservationUpdated,
   payments = [],
   events = [],
@@ -325,18 +334,13 @@ export default function ReservationPanel({
         <ReservationSummaryBlock reservation={reservation} status={status} amounts={amounts} />
       )}
 
-      {!isReadOnly && (onEdit || onDelete) && (
+      {!isReadOnly && onEdit && (
         <section style={{ marginTop: "18px", padding: "14px", border: "1px solid #e5e7eb", borderRadius: "16px", background: "#f8fafc" }}>
           <h3 style={{ margin: "0 0 10px", fontSize: "1rem", color: "#334155" }}>Gestion de la fiche</h3>
           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-            {onEdit && !isEditing && (
+            {!isEditing && (
               <button type="button" style={styles.primaryButton || styles.actionButton} onClick={() => { onEdit(request); setEditForm(makeEditForm(request)); setIsEditing(true); }}>
                 Modifier la réservation
-              </button>
-            )}
-            {onDelete && (
-              <button type="button" style={styles.deleteButton || { background: "#dc2626", color: "white", border: 0, borderRadius: "999px", padding: "10px 14px", cursor: "pointer" }} onClick={() => onDelete(request)}>
-                Supprimer
               </button>
             )}
           </div>
@@ -381,6 +385,7 @@ export default function ReservationPanel({
           <PermissionGate permissions={permissions} permission={ADMIN_PERMISSIONS.managePayments}>
             <FinancialActionsBlock
               request={reservation}
+              status={status}
               amounts={amounts}
               onManualPayment={onManualPayment}
               onRefundOnly={onRefundOnly}

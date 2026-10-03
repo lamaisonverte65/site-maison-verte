@@ -1,7 +1,9 @@
 import Stripe from "stripe";
+import { expireBookingOpenCheckoutSessions } from "./_lib/stripe-checkout-session.js";
 import { createClient } from "@supabase/supabase-js";
 import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
+import { resendEmail } from "./_lib/resend-email.js";
 import {
   normalizeRefundRequest,
   processRefundOperation,
@@ -20,7 +22,7 @@ function formatCurrency(value) {
   return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(value || 0));
 }
 
-async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null, metadata = {} }) {
+async function logEmail({ bookingId, emailType, toEmail, subject, status, errorMessage = null, providerId = null, metadata = {}, retryPayload = null }) {
   const { error } = await supabase.from("email_logs").insert([{
     booking_request_id: bookingId || null,
     email_type: emailType,
@@ -29,6 +31,7 @@ async function logEmail({ bookingId, emailType, toEmail, subject, status, errorM
     status,
     error_message: errorMessage,
     provider_id: providerId,
+    retry_payload: retryPayload,
     sent_at: new Date().toISOString(),
     metadata,
   }]);
@@ -57,20 +60,14 @@ async function sendCancellationEmail({ booking, cancellationType, refundedAmount
     </div>
   `;
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [booking.guest_email],
       reply_to: "contact@lamaisonverte65.fr",
       subject,
       html,
-    }),
-  });
+    };
+  const response = await resendEmail(retryPayload);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -82,6 +79,7 @@ async function sendCancellationEmail({ booking, cancellationType, refundedAmount
       status: "error",
       errorMessage: errorText,
       metadata: { cancellationType, refundedAmount, policyLabel },
+      retryPayload,
     });
     return;
   }
@@ -116,20 +114,14 @@ async function sendRefundOnlyEmail({ booking, refundedAmount, message, policyLab
     </div>
   `;
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [booking.guest_email],
       reply_to: "contact@lamaisonverte65.fr",
       subject,
       html,
-    }),
-  });
+    };
+  const response = await resendEmail(retryPayload);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -141,6 +133,7 @@ async function sendRefundOnlyEmail({ booking, refundedAmount, message, policyLab
       status: "error",
       errorMessage: errorText,
       metadata: { refundedAmount, policyLabel },
+      retryPayload,
     });
     return;
   }
@@ -228,7 +221,11 @@ function dependenciesForRefund() {
     },
 
     async finalizeOperation(operationId) {
-      return rpc("finalize_stripe_refund_operation", { p_operation_id: operationId });
+      const result = await rpc("finalize_stripe_refund_operation", { p_operation_id: operationId });
+      if (result?.booking?.status === "cancelled") {
+        await expireBookingOpenCheckoutSessions(stripe, result.booking);
+      }
+      return result;
     },
 
     async notify({ request, result }) {

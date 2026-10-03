@@ -2,6 +2,7 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { verifyBalanceToken } from "./_lib/balance-link.js";
 import { contractualTotal, recordedPaidAmount } from "./_lib/booking-financial-authority.js";
+import { expireOpenCheckoutSession } from "./_lib/stripe-checkout-session.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -33,6 +34,9 @@ export async function handler(event) {
     if (PAID_STATUSES.includes(normalize(booking.status)) || normalize(booking.balance_status) === "paid" || balance <= 0) {
       return { statusCode: 200, headers: { "Content-Type": "text/html; charset=utf-8" }, body: page("Séjour déjà réglé", "Merci, le séjour est déjà entièrement payé. Aucun nouveau paiement n’est nécessaire.") };
     }
+    if (booking.balance_payment_stripe_session_id) {
+      await expireOpenCheckoutSession(stripe, booking.balance_payment_stripe_session_id);
+    }
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"], mode: "payment", customer_email: booking.guest_email,
       metadata: { booking_id: booking.id, payment_type: "balance", balance_amount: String(balance), guest_first_name: booking.guest_first_name || "", guest_last_name: booking.guest_last_name || "", start_date: booking.start_date || "", end_date: booking.end_date || "" },
@@ -40,6 +44,18 @@ export async function handler(event) {
       success_url: `${SITE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${SITE_URL}/cancel`,
     }, { idempotencyKey: `balance-${booking.id}-${Math.round(balance * 100)}-${Math.floor(Date.now() / 300000)}` });
+
+    const { error: sessionStoreError } = await supabase.from("booking_requests").update({
+      balance_payment_stripe_session_id: session.id,
+      balance_amount: balance,
+      updated_at: new Date().toISOString(),
+    }).eq("id", booking.id);
+
+    if (sessionStoreError) {
+      try { await stripe.checkout.sessions.expire(session.id); } catch (expireError) { console.error("Erreur expiration session solde orpheline:", expireError); }
+      throw sessionStoreError;
+    }
+
     return { statusCode: 303, headers: { Location: session.url, "Cache-Control": "no-store" }, body: "" };
   } catch (error) {
     console.error("Erreur pay-balance:", error);
