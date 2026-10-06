@@ -7,7 +7,7 @@ const SELLER_SNAPSHOT = Object.freeze({
   country: "France",
   siret: "42228411700039",
   email: "lamaisonverte65@gmail.com",
-  phone: "+33795938315",
+  phone: "+33695938315",
   accommodation_name: "La Maison Verte",
   accommodation_address: "3 Impasse Trassens",
   accommodation_postal_code: "65240",

@@ -955,7 +955,7 @@ export default function MaisonVerte() {
               "https://lamaisonverte65.fr/balcon-plein-sud-ouest.webp",
               "https://lamaisonverte65.fr/halle-et-mairie-arreau.webp",
             ],
-            telephone: "+33795938315",
+            telephone: "+33695938315",
             email: "lamaisonverte65@gmail.com",
             address: {
               "@type": "PostalAddress",
@@ -3802,7 +3802,7 @@ export default function MaisonVerte() {
             }}
           >
             <a
-              href="tel:+33795938315"
+              href="tel:+33695938315"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -3817,7 +3817,7 @@ export default function MaisonVerte() {
                 boxShadow: "0 10px 30px rgba(0,0,0,0.06)",
               }}
             >
-              📞 07 95 93 83 15
+              📞 06 95 93 83 15
             </a>
           </div>
 

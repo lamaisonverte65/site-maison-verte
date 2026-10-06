@@ -204,7 +204,7 @@ export default function LivretAccueil() {
                   </div>
 
                   <div className="livret-qr-block">
-                    <a href="tel:+33795938315">
+                    <a href="tel:+33695938315">
                     <div className="livret-qr-icon">☎</div>
                     <h2>Nous appeler</h2>
                     <img src="/livret/qr-telephone.svg" alt="QR code pour appeler La Maison Verte" />
@@ -995,7 +995,7 @@ export default function LivretAccueil() {
                   <li>Appuyez de nouveau sur « CLEAR » (C) pour brouiller le code, puis refermez le cache de protection.</li>
                 </ol>
                 <p>
-                  En cas de difficulté, contactez-nous au <strong>07 95 93 83 15</strong>.
+                  En cas de difficulté, contactez-nous au <strong>06 95 93 83 15</strong>.
                 </p>
               </article>
                 </>

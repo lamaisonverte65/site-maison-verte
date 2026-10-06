@@ -284,7 +284,7 @@ export async function handler(event) {
 
         <p>
           <strong>Raphaël &amp; Emmanuelle</strong><br />
-          <a href="tel:+33795938315" style="color:#166534;text-decoration:none;">07 95 93 83 15</a><br />
+          <a href="tel:+33695938315" style="color:#166534;text-decoration:none;">06 95 93 83 15</a><br />
           <strong>La Maison Verte — Arreau</strong>
         </p>
       `;
@@ -317,7 +317,7 @@ export async function handler(event) {
 
         <p>
           <strong>Raphaël &amp; Emmanuelle</strong><br />
-          <a href="tel:+33795938315" style="color:#166534;text-decoration:none;">07 95 93 83 15</a><br />
+          <a href="tel:+33695938315" style="color:#166534;text-decoration:none;">06 95 93 83 15</a><br />
           <strong>La Maison Verte — Arreau</strong>
         </p>
       `;

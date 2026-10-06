@@ -1,7 +1,7 @@
 const SELLER_SNAPSHOT = Object.freeze({
   legal_name: "Raphaël BENOIT", trade_name: "La Maison Verte", address: "4 Chemin du Calvaire",
   postal_code: "65240", city: "Arreau", country: "France", siret: "42228411700039",
-  email: "lamaisonverte65@gmail.com", phone: "+33795938315",
+  email: "lamaisonverte65@gmail.com", phone: "+33695938315",
   accommodation_name: "La Maison Verte", accommodation_address: "3 Impasse Trassens",
   accommodation_postal_code: "65240", accommodation_city: "Arreau", accommodation_country: "France",
   vat_treatment: "furnished_rental_exempt", vat_legal_basis: "CGI art. 261 D, 4°",

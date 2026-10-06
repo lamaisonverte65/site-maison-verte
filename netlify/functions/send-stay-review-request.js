@@ -110,7 +110,7 @@ async function sendReviewRequestEmail(booking) {
       <p>Ce code n’a pas de date d’expiration. La réduction concerne l’hébergement uniquement, hors forfait ménage et taxe de séjour.</p>
 
       <p>Merci encore pour votre confiance et au plaisir de vous accueillir de nouveau.</p>
-      <p style="margin-top:26px;">Raphaël &amp; Emmanuelle<br /><a href="tel:+33795938315">07 95 93 83 15</a><br />La Maison Verte — Arreau</p>
+      <p style="margin-top:26px;">Raphaël &amp; Emmanuelle<br /><a href="tel:+33695938315">06 95 93 83 15</a><br />La Maison Verte — Arreau</p>
     </div>
   `;
 
@@ -128,7 +128,7 @@ Pour une prochaine réservation directe sur notre site, le code CLIENTFIDELE vou
 Merci encore pour votre confiance et au plaisir de vous accueillir de nouveau.
 
 Raphaël & Emmanuelle
-07 95 93 83 15
+06 95 93 83 15
 La Maison Verte — Arreau`;
 
   const retryPayload = {

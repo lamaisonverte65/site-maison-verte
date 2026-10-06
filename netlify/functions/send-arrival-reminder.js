@@ -167,8 +167,8 @@ async function sendArrivalReminderEmail(booking) {
       <h3>Livret d'accueil</h3>
       <p><a href="${SITE_URL}/livret" style="color:#14532d;font-weight:bold;">Consulter le livret d’accueil</a></p>
 
-      <p style="margin-top:28px;">Une question avant votre arrivée ? Vous pouvez répondre directement à cet email ou nous appeler au <a href="tel:+33795938315">07 95 93 83 15</a>.</p>
-      <p style="margin-top:26px;">Raphaël &amp; Emmanuelle<br /><a href="tel:+33795938315">07 95 93 83 15</a><br />La Maison Verte — Arreau</p>
+      <p style="margin-top:28px;">Une question avant votre arrivée ? Vous pouvez répondre directement à cet email ou nous appeler au <a href="tel:+33695938315">06 95 93 83 15</a>.</p>
+      <p style="margin-top:26px;">Raphaël &amp; Emmanuelle<br /><a href="tel:+33695938315">06 95 93 83 15</a><br />La Maison Verte — Arreau</p>
     </div>
   `;
 
