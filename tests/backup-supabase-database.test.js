@@ -10,9 +10,6 @@ test('backup SQL utilise les dumps Supabase restaurables et conserve Auth + hist
   assert.match(src, /data\.sql/);
   assert.match(src, /--data-only/);
   assert.match(src, /--use-copy/);
-  assert.match(src, /storage\.buckets_vectors/);
-  assert.match(src, /storage\.vector_indexes/);
-  assert.match(src, /--schema[ =]+auth/);
   assert.match(src, /to_regnamespace\(['"]supabase_migrations['"]\)/);
   assert.match(src, /HAS_MIGRATION_SCHEMA/);
   assert.match(src, /migration-history-schema\.sql/);

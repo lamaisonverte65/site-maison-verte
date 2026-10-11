@@ -11,13 +11,10 @@ supabase db dump --db-url "$SUPABASE_DB_URL" -f "$OUT/roles.sql" --role-only
 supabase db dump --db-url "$SUPABASE_DB_URL" -f "$OUT/schema.sql"
 supabase db dump --db-url "$SUPABASE_DB_URL" -f "$OUT/data.sql" \
   --use-copy --data-only \
-  -x "storage.buckets_vectors" \
-  -x "storage.vector_indexes"
+  -x "storage.*"
 
-# The normal Supabase dump excludes managed auth/storage schemas. Auth data is
-# archived separately so users/identities are not lost in a disaster recovery.
-supabase db dump --db-url "$SUPABASE_DB_URL" -f "$OUT/auth-data.sql" \
-  --schema auth --use-copy --data-only
+# data.sql already includes Auth. Storage rows are excluded because buckets and
+# object bytes are restored through the Storage API, never through SQL inserts.
 
 # Preserve remote migration history only when this Supabase project actually
 # has the supabase_migrations schema. Older/external projects may not have it.

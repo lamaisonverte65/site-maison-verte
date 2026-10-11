@@ -1,100 +1,112 @@
-# La Maison Verte — Restauration d’une sauvegarde Supabase
+# La Maison Verte — Restauration de test Supabase
 
-## Règle de sécurité
+## Sécurité et compatibilité
 
-Ne jamais tester une restauration sur la base de production. Créer un projet/base Supabase de test ou un PostgreSQL jetable et vérifier l’URL cible avant toute commande.
+Ne jamais utiliser la production. Créer un NOUVEAU projet Supabase jetable, isolé de l'application, des emails, paiements, webhooks et tâches planifiées. Le précédent « LMV Restore Test » est partiellement restauré : ne pas le réutiliser ni tenter de le nettoyer avec ces scripts.
 
-Le script `verify-restore.sh` refuse de démarrer sauf si `CONFIRM_TEST_RESTORE=YES` est défini. Le contournement `ALLOW_PRODUCTION_RESTORE=I_ACCEPT_DATA_LOSS_RISK` existe uniquement pour une procédure de catastrophe maîtrisée et ne doit pas être utilisé pour un test.
+Les scripts exigent SOURCE_PROJECT_REF et RESTORE_PROJECT_REF distinctes, une URL correspondant à la cible et CONFIRM_TEST_RESTORE=YES. Le contournement de production est supprimé. Ces contrôles reposent sur des références correctement renseignées depuis le Dashboard : un nom de variable ne prouve pas qu'une cible est de test.
 
-## 1. Récupérer puis vérifier le paquet
+La cible doit disposer des schémas gérés Supabase Auth/Storage et des extensions de inventory/extensions.tsv ; un PostgreSQL nu ne suffit pas. La baseline vient de PostgreSQL 17.6 / pg_dump 17.11 : utiliser postgres:17 et une cible PostgreSQL 17 compatible, y compris les versions Auth/Storage.
 
-Les fichiers pCloud sont chiffrés par `rclone crypt`. Ne jamais restaurer à partir d’une copie brute téléchargée directement depuis `La Maison Verte/Backups_Chiffres/` dans l’interface pCloud : noms et contenu y sont chiffrés.
+## Baseline 2026-10-11_093325Z
 
-Configurer un remote `LMVCRYPT` avec le même token pCloud et surtout les mêmes secrets `crypt`, puis télécharger la sauvegarde via la vue déchiffrée, par exemple :
+Conserver tous les fichiers originaux, manifest.json et SHA256SUMS inchangés. Audit : 103 checksums valides, 42 tables métier, 2 utilisateurs, 2 identités, 1 bucket privé, 1 PDF de 3 030 octets.
 
-```bash
-rclone copy "LMVCRYPT:01_Supabase/baseline/<backup-id>" ./baseline-test
+Les 26 blocs Auth sont identiques dans data.sql et auth-data.sql. Seul data.sql est chargé ; auth-data.sql reste archivé et vérifié, jamais restauré. Le lecteur exige exactement un bloc auth.users : il ne devine pas d'autre format ancien.
+
+Après vérification des checksums, prepare-restore-data.awk produit un fichier temporaire privé sans les blocs COPY ni les séquences Storage. Les lignes à l'intérieur d'un COPY sont traitées comme des données. Une syntaxe inconnue ou un bloc tronqué bloque avant connexion. Ce lecteur strict du format Supabase --use-copy n'est pas un parseur SQL général. La baseline réelle a été contrôlée : 68 blocs Auth/métier conservés à l'identique, 5 blocs Storage retirés. Le fichier temporaire est supprimé en sortie. Les nouvelles sauvegardes excluent storage.* à la source et ne produisent plus auth-data.sql.
+
+## 1. Contrôles locaux sans réseau
+
+Récupérer si nécessaire le paquet via le remote déchiffrant rclone crypt, pas en téléchargeant les fichiers chiffrés bruts depuis pCloud. Ne pas refaire la baseline déjà présente.
+
+```powershell
+$ProjectRoot = 'C:\Users\pc\Desktop\Site La MaisonVerte\Site Maison Verte - V4\travail'
+$BackupPath = 'C:\Users\pc\Desktop\LMV-Restore-Test\2026-10-11_093325Z'
+Set-Location -LiteralPath $ProjectRoot
+node --test 'tests/backup*.test.js'
+if ($LASTEXITCODE -ne 0) { throw 'Échec des tests backup' }
+node scripts/backup/restore-storage.mjs "$BackupPath"
+if ($LASTEXITCODE -ne 0) { throw 'Échec du contrôle local du paquet' }
 ```
 
-Puis vérifier :
+Prérequis : Node 22 ou plus récent et Git for Windows avec Bash à son emplacement habituel. Le contrôle Storage sans --apply vérifie le paquet et les inventaires sans requête réseau ni clé.
 
-```bash
-cd <backup>
-sha256sum -c SHA256SUMS
+## 2. Définir la nouvelle cible de test
+
+Remplacer les références par celles lues dans le Dashboard. Ne pas réutiliser l'ancienne URI. Saisir les secrets localement, jamais dans un chat.
+
+```powershell
+$env:SOURCE_PROJECT_REF = 'REFERENCE_DU_PROJET_SOURCE'
+$env:RESTORE_PROJECT_REF = 'REFERENCE_DU_NOUVEAU_PROJET_TEST'
+$env:CONFIRM_TEST_RESTORE = 'YES'
+$secureUri = Read-Host 'URI PostgreSQL du NOUVEAU projet test, mot de passe percent-encodé' -AsSecureString
+$env:RESTORE_DB_URL = [System.Net.NetworkCredential]::new('', $secureUri).Password
+$env:RESTORE_SUPABASE_URL = "https://$($env:RESTORE_PROJECT_REF).supabase.co"
+$secureKey = Read-Host 'Clé serveur du NOUVEAU projet test' -AsSecureString
+$env:RESTORE_SECRET_KEY = [System.Net.NetworkCredential]::new('', $secureKey).Password
 ```
 
-Toute différence bloque la restauration.
+URI acceptées : directe postgres:motdepasse@db.<ref>.supabase.co:5432/postgres, ou Session pooler postgres.<ref>:motdepasse@aws-...pooler.supabase.com:5432/postgres, avec préfixe postgresql://. Suffixe facultatif ?sslmode=require ou ?sslmode=verify-full. Les autres paramètres et le port 6543 sont refusés. Storage accepte une clé cible sb_secret_... ou un JWT serveur service_role.
 
-## 2. Préparer le projet cible
+## 3. Restaurer le SQL
 
-Avant restauration :
-
-- créer une nouvelle cible Supabase de test ;
-- vérifier/activer les extensions listées dans `inventory/extensions.tsv` ;
-- reconfigurer les réglages Auth nécessaires ;
-- noter que les clés API/JWT, fournisseurs Auth, Realtime, URLs de redirection et autres réglages de plateforme ne sont pas reconstruits automatiquement par les SQL ;
-- vérifier `inventory/vault_summary.tsv` : des secrets Vault peuvent nécessiter une stratégie spécifique liée à la clé racine du projet.
-
-## 3. Restaurer la base SQL
-
-Définir la connexion cible :
-
-```bash
-export RESTORE_DB_URL='postgresql://...'
-export CONFIRM_TEST_RESTORE=YES
-bash scripts/backup/verify-restore.sh <backup>
+```powershell
+docker run --rm `
+  -e RESTORE_DB_URL -e RESTORE_PROJECT_REF -e SOURCE_PROJECT_REF `
+  -e CONFIRM_TEST_RESTORE `
+  -v "${BackupPath}:/backup:ro" `
+  -v "${ProjectRoot}\scripts\backup:/scripts:ro" `
+  postgres:17 bash /scripts/verify-restore.sh /backup
+if ($LASTEXITCODE -ne 0) { throw 'Restauration SQL arrêtée : analyser avant de continuer' }
 ```
 
-Ordre appliqué :
+Le script refuse une cible contenant des tables public, utilisateurs Auth, buckets ou objets Storage. Rôles, schéma, données filtrées et historique optionnel sont chargés dans UNE invocation psql et UNE transaction, avec ON_ERROR_STOP=1. session_replication_role = replica évite les blocages sur triggers et FK circulaires.
 
-1. `roles.sql` ;
-2. `schema.sql` ;
-3. `auth-data.sql` ;
-4. `data.sql` ;
-5. historique `supabase_migrations`, uniquement s’il est présent dans la sauvegarde.
+L'historique supabase_migrations est optionnel ; une paire incomplète bloque avant connexion. Les migrations Git restent archivées : ne pas les rejouer globalement après le dump, notamment celle qui crée le bucket par insertion SQL.
 
-L’historique `supabase_migrations` est optionnel : certains projets n’ont pas ce schéma. Son absence ne rend pas la sauvegarde invalide, puisque les fichiers de migrations Git sont archivés séparément.
+Une erreur SQL annule la transaction, mais les séquences et certains effets externes ne sont pas transactionnels. Après un échec, analyser et repartir d'une nouvelle cible jetable ; pas de reprise idempotente promise.
 
-`ON_ERROR_STOP=1` et des transactions sont utilisés afin qu’une erreur ne soit pas silencieuse. Les dumps `data.sql` et `auth-data.sql` sont restaurés avec `session_replication_role = replica` afin d’éviter que l’ordre d’insertion ne bloque sur des triggers ou des FK circulaires. Le premier test de restauration doit notamment valider les relations signalées par `pg_dump` entre `booking_cleaning_issues`, `customer_invoices`, `booking_additional_charges` et `accounting_import_batches`.
+## 4. Storage par l'API
 
-Selon la version de la cible Supabase, certaines lignes de rôles/ownership gérés peuvent demander une adaptation ; ne jamais ignorer une erreur sans l’analyser.
+Uniquement après succès SQL :
 
-## 4. Restaurer Storage
-
-Le SQL ne restaure pas les octets des fichiers Supabase Storage. Le dossier `storage/` contient la copie réelle des objets :
-
-```text
-storage/<bucket>/<chemin objet>
+```powershell
+node scripts/backup/restore-storage.mjs "$BackupPath" --apply
+if ($LASTEXITCODE -ne 0) { throw 'Storage arrêté : cible potentiellement partielle' }
 ```
 
-Recréer les buckets avec leurs propriétés à partir de `inventory/storage_buckets.json`, puis réimporter chaque fichier par l’API Storage avec une clé serveur de la **cible**. Ne pas insérer aveuglément des lignes dans `storage.objects` : l’API Storage doit rester l’autorité pour la réimportation des objets.
+Le script vérifie à nouveau le paquet, exige zéro bucket cible, recrée les buckets avec visibilité, limite de taille et types MIME, puis envoie les octets aux noms originaux avec upsert=false. Chaque objet est retéléchargé avec authentification et comparé au SHA-256 sauvegardé. Aucun effacement ni écrasement. Arrêt sur erreur HTTP ou incohérence.
 
-Vérifier ensuite le nombre d’objets par rapport à `inventory/storage_objects.json`.
+Storage n'est pas transactionnel avec PostgreSQL : un échec peut laisser une restauration partielle. Ne pas relancer aveuglément. Buckets analytics/vector, versionnés, avec cycle de vie ou autodétection AVIF active : refus et procédure dédiée requise.
 
-## 5. Auth
+IDs internes, propriétaires, dates et versions sont régénérés par Storage. L'inventaire existant ne conserve pas owner_id ni user_metadata des objets. Cette procédure ne les reconstitue pas. La baseline utilise un bucket privé avec accès par fonctions serveur ; vérifier ces accès. Toute future restauration dépendant de ces propriétés nécessitera une extension du format de sauvegarde.
 
-`auth-data.sql` conserve les données Auth exportées. Une restauration sur un projet différent peut invalider les sessions/JWT existants et nécessiter une reconnexion. Les paramètres de fournisseurs, emails, URLs et clés doivent être recréés dans la plateforme cible.
+## 5. Validation réelle encore obligatoire
 
-## 6. Realtime et configuration Supabase
+- Comparer les comptes métier à inventory/public_table_counts.tsv et Auth à inventory/auth_summary.tsv (baseline : 2 utilisateurs, 2 identités).
+- Vérifier le bucket privé customer-invoices, ses limites, et 2026/LMV-2026-0001.pdf (3 030 octets), puis son accès depuis l'application de test isolée.
+- Vérifier les FK circulaires et liens métier : replica désactive leurs contrôles durant le chargement ; l'absence d'erreur ne prouve pas la cohérence.
+- Comparer politiques RLS, fonctions et triggers aux inventaires. Le schéma standard ne couvre pas nécessairement les personnalisations Auth/Storage. La baseline n'inventorie aucune politique personnalisée dans ces schémas ; ses triggers Storage utilisent les fonctions gérées. Auditer les écarts pour les futures sauvegardes.
+- Reconfigurer Auth (fournisseurs, emails, redirections, clés), extensions et Realtime. Les sessions/JWT peuvent nécessiter une reconnexion.
+- Examiner inventory/vault_summary.tsv : zéro secret Vault dans la baseline ; d'autres paquets peuvent exiger les clés de chiffrement d'origine.
+- Vérifier réservations, paiements, factures/avoirs, taxe de séjour et accès owner/housekeeping sans déclencher d'effets réels.
 
-Contrôler manuellement :
+Les inventaires, dumps et fichiers sont collectés successivement, sans snapshot atomique commun. Une activité concurrente peut créer des écarts ; les contrôles de comptes et métier restent nécessaires. Ce correctif ne change ni planification, ni rétention pCloud, ni secrets.
 
-- publications/paramètres Realtime ;
-- extensions ;
-- réglages Auth et redirections ;
-- clés API ;
-- éventuelles fonctions ou intégrations externes ;
-- politiques RLS listées dans `inventory/policies.tsv` ;
-- triggers listés dans `inventory/triggers.tsv`.
+Après le test :
 
-## 7. Validation métier
+```powershell
+Remove-Item Env:RESTORE_DB_URL, Env:RESTORE_SECRET_KEY -ErrorAction SilentlyContinue
+$secureUri = $null
+$secureKey = $null
+```
 
-Comparer au minimum :
+## Références
 
-- nombres de lignes dans les tables métier avec `inventory/public_table_counts.tsv` ;
-- comptes Auth avec `inventory/auth_summary.tsv` ;
-- buckets/objets Storage ;
-- réservations, paiements, factures/avoirs et taxe de séjour sur quelques cas historiques ;
-- accès owner/housekeeping dans un environnement de test.
+- [Restauration Supabase CLI](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore)
+- [Schéma Storage et API](https://supabase.com/docs/guides/storage/schema/design)
+- [Création des buckets](https://supabase.com/docs/reference/javascript/storage-createbucket)
+- [Upload Storage](https://supabase.com/docs/reference/javascript/storage-from-upload)
 
-La sauvegarde n’est considérée opérationnellement restaurable qu’après ce test réel.
+Les tests locaux et la vérification du paquet ne remplacent pas une restauration réelle complète sur une nouvelle cible Supabase.

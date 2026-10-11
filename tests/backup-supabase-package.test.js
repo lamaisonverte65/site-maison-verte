@@ -16,7 +16,6 @@ test('assemblage construit un paquet complet avant de générer checksums et man
   assert.match(src, /roles\.sql/);
   assert.match(src, /schema\.sql/);
   assert.match(src, /data\.sql/);
-  assert.match(src, /auth-data\.sql/);
   assert.match(src, /bash \"\$SCRIPT_DIR\/supabase-inventory\.sh\"/);
   assert.match(src, /bash \"\$SCRIPT_DIR\/backup-database\.sh\"/);
   assert.match(src, /test -s|\[ -s/);

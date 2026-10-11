@@ -101,7 +101,6 @@ database/
   roles.sql
   schema.sql
   data.sql
-  auth-data.sql
   migration-history-schema.sql
   migration-history-data.sql
 exports/public/*.csv
@@ -112,7 +111,7 @@ manifest.json
 SHA256SUMS
 ```
 
-`schema.sql` et `data.sql` suivent la méthode Supabase CLI. `auth-data.sql` complète le dump normal afin de conserver les données du schéma Auth. Les objets Storage sont téléchargés séparément, car une sauvegarde de base de données ne contient que leurs métadonnées, pas les octets des fichiers.
+`schema.sql` et `data.sql` suivent la méthode Supabase CLI. `data.sql` contient déjà Auth ; aucun second dump Auth n’est produit. Le dump de données exclut toutes les tables `storage.*` avec `-x "storage.*"`. Les buckets et objets sont restaurés par l’API à partir des inventaires et des octets dans `storage/`.
 
 ## Inventaire dynamique
 
@@ -156,7 +155,7 @@ L’upload passe d’abord par `.incoming/` dans la vue chiffrée, puis est cont
 
 ## Auth
 
-Le dump Supabase standard exclut normalement les schémas gérés. `auth-data.sql` est donc archivé séparément. Il contient des données sensibles, notamment les comptes Auth et potentiellement des informations permettant une migration des utilisateurs. Le chiffrement client-side pCloud est donc obligatoire pour ce projet.
+Le dump de schéma et le dump de données ont des périmètres différents : les données Auth sont incluses dans `data.sql`. Elles sont sensibles ; le chiffrement client-side pCloud reste obligatoire. La baseline `2026-10-11_093325Z` reste inchangée : son `auth-data.sql` redondant reste couvert par les checksums, mais ne doit jamais être chargé en plus de `data.sql`. Voir la procédure de restauration pour le filtrage temporaire des anciennes données Storage.
 
 Lors d’une reconstruction sur un autre projet, les paramètres Auth, clés API/JWT et fournisseurs externes doivent être reconfigurés séparément ; ils ne sont pas tous contenus dans le dump logique.
 

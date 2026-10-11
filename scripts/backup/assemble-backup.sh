@@ -24,7 +24,6 @@ for critical in \
   "$BACKUP_DIR/database/roles.sql" \
   "$BACKUP_DIR/database/schema.sql" \
   "$BACKUP_DIR/database/data.sql" \
-  "$BACKUP_DIR/database/auth-data.sql" \
   "$BACKUP_DIR/inventory/public_tables.tsv" \
   "$BACKUP_DIR/inventory/storage_buckets.json" \
   "$BACKUP_DIR/inventory/storage_objects.json"; do
