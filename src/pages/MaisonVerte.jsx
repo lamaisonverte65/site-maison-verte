@@ -3,6 +3,7 @@ import { Helmet } from "react-helmet";
 import { supabase } from "../supabaseClient";
 import { submitPublicBooking } from "../utils/publicBookingSubmission";
 import { isDepartureOnlyDate, selectionContainsUnavailableNight } from "../utils/publicCalendarSelection";
+import PublicNavigation from "../components/PublicNavigation";
 
 export default function MaisonVerte() {
   const [selectedDates, setSelectedDates] = useState([]);
@@ -14,7 +15,6 @@ export default function MaisonVerte() {
     priceOverrides: [],
   });
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [scrolled, setScrolled] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [guestFirstName, setGuestFirstName] = useState("");
@@ -47,7 +47,6 @@ export default function MaisonVerte() {
   const [reviewRating, setReviewRating] = useState("5");
   const [reviewComment, setReviewComment] = useState("");
   const [reviewStayPeriod, setReviewStayPeriod] = useState("");
-  const [reviewConsent, setReviewConsent] = useState(false);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
   const [showReviewForm, setShowReviewForm] = useState(false);
@@ -162,6 +161,11 @@ export default function MaisonVerte() {
           question: "Combien de personnes peuvent séjourner dans la maison ?",
           answer:
             "La Maison Verte peut accueillir jusqu’à 4 personnes. Elle dispose d’une chambre parentale avec un lit double de 140 × 200 cm et d’une chambre sous combles équipée de deux lits simples de 90 × 190 cm.",
+        },
+        {
+          question: "La Maison Verte est-elle classée ?",
+          answer:
+            "Oui. La Maison Verte est officiellement classée meublé de tourisme 3 étoiles.",
         },
         {
           question: "Comment est organisée la maison ?",
@@ -279,18 +283,6 @@ export default function MaisonVerte() {
     return new Date(year, month - 1, day);
   }
 
-  useEffect(() => {
-    function handleScroll() {
-      setScrolled(window.scrollY > 80);
-    }
-
-    window.addEventListener("scroll", handleScroll);
-
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-    };
-  }, []);
-
   async function fetchCalendar() {
     try {
       const response = await fetch("/.netlify/functions/calendar");
@@ -377,7 +369,6 @@ export default function MaisonVerte() {
         .from("guest_reviews")
         .select("*")
         .eq("status", "published")
-        .eq("consent_to_publish", true)
         .order("published_at", { ascending: false })
         .limit(6);
 
@@ -816,87 +807,72 @@ export default function MaisonVerte() {
     setReviewSubmitted(false);
 
     const rating = Number(reviewRating);
-
     if (!reviewFirstName.trim()) {
       alert("Merci d’indiquer votre prénom.");
       return;
     }
-
     if (!rating || rating < 1 || rating > 5) {
       alert("Merci de sélectionner une note entre 1 et 5.");
       return;
     }
-
     if (!reviewComment.trim()) {
       alert("Merci d’écrire un petit commentaire.");
       return;
     }
 
-    if (!reviewConsent) {
-      alert("Merci de cocher l’autorisation de publication.");
-      return;
-    }
-
     setReviewSubmitting(true);
+    try {
+      const response = await fetch("/.netlify/functions/submit-guest-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: reviewFirstName.trim(),
+          lastName: reviewLastName.trim(),
+          email: reviewEmail.trim(),
+          phone: reviewPhone.trim(),
+          rating,
+          comment: reviewComment.trim(),
+          stayPeriod: reviewStayPeriod.trim(),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Erreur lors de l’envoi de l’avis.");
 
-    const displayName = reviewFirstName.trim();
-
-    const { error } = await supabase.from("guest_reviews").insert([
-      {
-        guest_first_name: reviewFirstName.trim(),
-        guest_last_name: reviewLastName.trim() || null,
-        guest_email: reviewEmail.trim() || null,
-        guest_phone: reviewPhone.trim() || null,
-        rating,
-        comment: reviewComment.trim(),
-        stay_period: reviewStayPeriod.trim() || null,
-        display_name: displayName,
-        consent_to_publish: reviewConsent,
-        source: "website",
-        status: "pending",
-      },
-    ]);
-
-    setReviewSubmitting(false);
-
-    if (error) {
+      setReviewSubmitted(true);
+      setReviewFirstName("");
+      setReviewLastName("");
+      setReviewEmail("");
+      setReviewPhone("");
+      setReviewRating("5");
+      setReviewComment("");
+      setReviewStayPeriod("");
+    } catch (error) {
       console.error(error);
-      alert(
-        "Erreur lors de l’envoi de l’avis. Vous pouvez aussi nous l’envoyer par email.",
-      );
-      return;
+      alert(error.message || "Erreur lors de l’envoi de l’avis. Vous pouvez aussi nous l’envoyer par email.");
+    } finally {
+      setReviewSubmitting(false);
     }
-
-    setReviewSubmitted(true);
-    setReviewFirstName("");
-    setReviewLastName("");
-    setReviewEmail("");
-    setReviewPhone("");
-    setReviewRating("5");
-    setReviewComment("");
-    setReviewStayPeriod("");
-    setReviewConsent(false);
   }
 
   return (
     <>
       <Helmet>
         <title>
-          Location vacances Arreau – Gîte 4 personnes – Vallée d’Aure | La
-          Maison Verte
+          Location vacances Arreau 3 étoiles – Gîte 4 personnes | La Maison
+          Verte
         </title>
         <meta
           name="description"
-          content="Location de vacances de particulier à particulier à Arreau pour 4 personnes. Réservation directe auprès du propriétaire, sans intermédiaire, proche Saint-Lary, Peyragudes, Loudenvielle, Val Louron et du Néouvielle."
+          content="Meublé de tourisme classé 3 étoiles à Arreau pour 4 personnes. Réservation directe auprès du propriétaire, proche Saint-Lary, Peyragudes, Loudenvielle, Val Louron et du Néouvielle."
         />
         <link rel="canonical" href="https://lamaisonverte65.fr/" />
         <meta
           property="og:title"
-          content="Location vacances Arreau – Gîte 4 personnes | La Maison Verte"
+          content="La Maison Verte – Meublé de tourisme 3 étoiles à Arreau"
         />
         <meta
           property="og:description"
-          content="Ravissante maison rénovée en location de particulier à particulier pour 4 personnes à Arreau. Réservation directe propriétaire, sans intermédiaire, proche de Saint-Lary, Loudenvielle, Peyragudes, Val Louron, du Néouvielle et de l'Espagne."
+          content="Maison rénovée classée meublé de tourisme 3 étoiles pour 4 personnes à Arreau. Réservation directe propriétaire, au cœur des Pyrénées."
         />
 
         <meta
@@ -905,6 +881,20 @@ export default function MaisonVerte() {
         />
         <meta property="og:url" content="https://lamaisonverte65.fr/" />
         <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="La Maison Verte" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta
+          name="twitter:title"
+          content="La Maison Verte – Meublé de tourisme 3 étoiles à Arreau"
+        />
+        <meta
+          name="twitter:description"
+          content="Maison classée 3 étoiles pour 4 personnes à Arreau. Réservation directe propriétaire, au cœur des Pyrénées."
+        />
+        <meta
+          name="twitter:image"
+          content="https://lamaisonverte65.fr/hero.webp"
+        />
 
         {/* FAVICONS */}
 
@@ -942,7 +932,12 @@ export default function MaisonVerte() {
             identifier: "lamaisonverte65-arreau",
             name: "La Maison Verte - Arreau",
             description:
-              "Ravissante maison rénovée à Arreau, proche de Saint-Lary, Loudenvielle, Peyragudes, Val Louron et de la réserve du Néouvielle. Une location chaleureuse de particulier à particulier pour 4 personnes, avec réservation directe auprès du propriétaire, au cœur des Pyrénées.",
+              "Meublé de tourisme classé 3 étoiles à Arreau, proche de Saint-Lary, Loudenvielle, Peyragudes, Val Louron et de la réserve du Néouvielle. Une maison rénovée pour 4 personnes, avec réservation directe auprès du propriétaire, au cœur des Pyrénées.",
+            starRating: {
+              "@type": "Rating",
+              ratingValue: 3,
+              bestRating: 5,
+            },
             url: "https://lamaisonverte65.fr/",
             image: [
               "https://lamaisonverte65.fr/hero.webp",
@@ -1047,38 +1042,7 @@ export default function MaisonVerte() {
         <script type="application/ld+json">{JSON.stringify(faqSchema)}</script>
       </Helmet>
 
-      <style>{`
-  .mobile-reserve-button {
-    display: none;
-  }
 
-  @media (max-width: 640px) and (orientation: portrait) {
-    nav {
-      padding: 12px 18px !important;
-      gap: 12px;
-    }
-
-    nav .nav-links,
-    nav .nav-contact {
-      display: none !important;
-    }
-
-    .mobile-reserve-button {
-      display: inline-flex !important;
-      align-items: center;
-      justify-content: center;
-      margin-left: auto;
-      padding: 10px 16px !important;
-      font-size: 0.95rem !important;
-      white-space: nowrap;
-      box-shadow: 0 8px 22px rgba(0,0,0,0.16);
-    }
-
-    nav img {
-      height: 52px !important;
-    }
-  }
-`}</style>
 
       {bookingConfirmation && (
         <div
@@ -1148,154 +1112,8 @@ export default function MaisonVerte() {
         </div>
       )}
 
-      {/* MENU */}
-
-      <nav
-        style={{
-          position: "fixed",
-          top: 0,
-          width: "100%",
-          padding: "18px 40px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          zIndex: 1000,
-
-          background: scrolled ? "#f6f3ee" : "rgba(246,243,238,0)",
-
-          backdropFilter: "none",
-          boxShadow: "none",
-          transition: "0.35s",
-        }}
-      >
-        {/* LOGO */}
-        <div style={{ display: "flex", justifyContent: "flex-start" }}>
-          <a href="#accueil" style={{ display: "flex", alignItems: "center" }}>
-            <img
-              src="/logo.png"
-              alt="La Maison Verte"
-              style={{
-                height: scrolled ? "58px" : "64px",
-                objectFit: "contain",
-              }}
-            />
-          </a>
-        </div>
-
-        {/* MENU CENTRE */}
-        <div
-          className="nav-links"
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            gap: "34px",
-            alignItems: "center",
-            flexWrap: "wrap",
-            flex: 1,
-          }}
-        >
-          <a
-            href="#presentation"
-            style={{
-              textDecoration: "none",
-              color: scrolled ? "#1e2b1f" : "white",
-              fontWeight: "500",
-              transition: "0.35s",
-            }}
-          >
-            Présentation
-          </a>
-          <a
-            href="#galerie"
-            style={{
-              textDecoration: "none",
-              color: scrolled ? "#1e2b1f" : "white",
-              fontWeight: "500",
-              transition: "0.35s",
-            }}
-          >
-            Galerie
-          </a>
-          <a
-            href="#avis"
-            style={{
-              textDecoration: "none",
-              color: scrolled ? "#1e2b1f" : "white",
-              fontWeight: "500",
-              transition: "0.35s",
-            }}
-          >
-            Avis
-          </a>
-          <a
-            href="#faq"
-            style={{
-              textDecoration: "none",
-              color: scrolled ? "#1e2b1f" : "white",
-              fontWeight: "500",
-              transition: "0.35s",
-            }}
-          >
-            FAQ
-          </a>
-          <a
-            href="#reservation"
-            style={{
-              textDecoration: "none",
-              color: scrolled ? "#1e2b1f" : "white",
-              fontWeight: "500",
-              transition: "0.35s",
-            }}
-          >
-            Réservation
-          </a>
-          <a
-            href="#activites"
-            style={{
-              textDecoration: "none",
-              color: scrolled ? "#1e2b1f" : "white",
-              fontWeight: "500",
-              transition: "0.35s",
-            }}
-          >
-            Activités
-          </a>
-          <a
-            href="#meteo"
-            style={{
-              textDecoration: "none",
-              color: scrolled ? "#1e2b1f" : "white",
-              fontWeight: "500",
-              transition: "0.35s",
-            }}
-          >
-            Situation
-          </a>
-        </div>
-
-        {/* BOUTON RESERVER MOBILE PORTRAIT */}
-        <a
-          href="#reservation"
-          className="button mobile-reserve-button"
-          style={{ textDecoration: "none" }}
-        >
-          Réserver
-        </a>
-
-        {/* CONTACT DROITE */}
-        <div
-          className="nav-contact"
-          style={{ display: "flex", justifyContent: "flex-end" }}
-        >
-          <a
-            href="#contact"
-            className="button"
-            style={{ textDecoration: "none" }}
-          >
-            Contact
-          </a>
-        </div>
-      </nav>
+      {/* NAVIGATION PUBLIQUE */}
+      <PublicNavigation solid={false} />
 
       {/* HERO PREMIUM */}
 
@@ -1346,6 +1164,30 @@ export default function MaisonVerte() {
         <br />
         Gîte de charme pour 4 personnes au cœur de la vallée d'Aure
       </h2>
+
+      <div
+        title="Classement officiel meublé de tourisme 3 étoiles"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "10px",
+          padding: "9px 18px",
+          margin: "0 auto 24px",
+          border: "1px solid rgba(255,255,255,0.75)",
+          borderRadius: "999px",
+          background: "rgba(20,83,45,0.72)",
+          color: "white",
+          fontWeight: "800",
+          fontSize: "clamp(0.9rem, 1.8vw, 1.05rem)",
+          letterSpacing: "0.01em",
+          backdropFilter: "blur(8px)",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.24)",
+          textShadow: "0 2px 6px rgba(0,0,0,0.45)",
+        }}
+      >
+        <span aria-hidden="true" style={{ letterSpacing: "2px" }}>★★★</span>
+        <span>Meublé de tourisme classé 3 étoiles</span>
+      </div>
 
       <div
         style={{
@@ -1457,7 +1299,7 @@ export default function MaisonVerte() {
 
       {/* PRESENTATION + EQUIPEMENTS */}
 
-      <section id="presentation" className="section">
+      <section id="presentation" className="section" style={{ scrollMarginTop: "86px" }}>
         <h2
           style={{
             marginBottom: "34px",
@@ -1490,8 +1332,9 @@ export default function MaisonVerte() {
                 marginTop: "20px",
               }}
             >
-              Hébergement entièrement rénové pour 4 personnes, niché dans le
-              centre historique d’Arreau. Situé à la Confluence des vallées
+              Meublé de tourisme officiellement classé 3 étoiles, entièrement
+              rénové pour 4 personnes et niché dans le centre historique
+              d’Arreau. Situé à la Confluence des vallées
               d’Aure (Saint-Lary) et du Louron (Loudenvielle), au pied de 4
               stations de ski, de nombreux cols mythiques et de multiples
               possibilités de randonnées.
@@ -1511,7 +1354,8 @@ export default function MaisonVerte() {
               authentique proche de Saint-Lary, Loudenvielle, Peyragudes, Val
               Louron, du Néouvielle et du Mont-Perdu.
             </p>
-            <br></br>
+
+
             <p
               style={{
                 lineHeight: "1.9",
@@ -1571,6 +1415,28 @@ export default function MaisonVerte() {
               <div>📶 Wi-Fi 7</div>
               <div>🤝 Réservation directe propriétaire</div>
               <div>🐕 Animaux non acceptés</div>
+            </div>
+
+            <div
+              style={{
+                marginTop: "26px",
+                paddingTop: "22px",
+                borderTop: "1px solid rgba(255,255,255,0.28)",
+                display: "flex",
+                alignItems: "center",
+                gap: "14px",
+              }}
+            >
+              <img
+                src="/classement/panonceau-meuble-tourisme-3-etoiles-2026.png"
+                alt="Panonceau officiel du classement Meublé de tourisme 3 étoiles"
+                style={{ width: "92px", height: "auto", flex: "0 0 auto" }}
+              />
+              <div style={{ lineHeight: 1.45, fontSize: "0.92rem" }}>
+                <strong>Meublé de tourisme classé 3 étoiles</strong>
+                <br />
+                Classement officiel Atout France
+              </div>
             </div>
           </div>
         </div>
@@ -2012,28 +1878,19 @@ export default function MaisonVerte() {
                 }}
               />
 
-              <label
+              <p
                 style={{
-                  display: "flex",
-                  gap: "12px",
-                  alignItems: "flex-start",
                   marginTop: "16px",
-                  color: "#334155",
+                  color: "#64748b",
                   lineHeight: "1.6",
+                  fontSize: "0.92rem",
                 }}
               >
-                <input
-                  type="checkbox"
-                  checked={reviewConsent}
-                  onChange={(event) => setReviewConsent(event.target.checked)}
-                  style={{ marginTop: "5px", transform: "scale(1.2)" }}
-                />
-                <span>
-                  J’autorise La Maison Verte à publier mon prénom, ma note et
-                  mon commentaire sur le site. Mon email et mon téléphone ne
-                  seront pas affichés.
-                </span>
-              </label>
+                En envoyant cet avis, vous acceptez sa publication sur le site de
+                La Maison Verte après validation. Seuls votre prénom, votre note et
+                votre commentaire pourront être affichés ; votre email et votre
+                téléphone resteront privés.
+              </p>
 
               <button
                 className="button"
@@ -2089,8 +1946,9 @@ export default function MaisonVerte() {
               </div>
 
               <p>
-                Votre avis Google nous aide énormément. Les premiers avis Google
-                apparaîtront prochainement.
+                <strong>5,0/5 · 2 avis Google</strong>
+                <br />
+                Merci aux voyageurs qui ont déjà partagé leur expérience.
               </p>
 
               <div
@@ -3355,6 +3213,23 @@ export default function MaisonVerte() {
               une formule séjour + cours de ski. Nous contacter pour plus
               d'information.
             </strong>
+
+            <div style={{ marginTop: "24px" }}>
+              <a
+                href="/ski-vallees-aure-louron"
+                style={{
+                  display: "inline-block",
+                  background: "white",
+                  color: "#1f6f3d",
+                  padding: "12px 20px",
+                  borderRadius: "999px",
+                  textDecoration: "none",
+                  fontWeight: "800",
+                }}
+              >
+                Découvrir les cours de ski
+              </a>
+            </div>
           </div>
 
           <img
@@ -3793,11 +3668,15 @@ export default function MaisonVerte() {
             <br></br>Nous serons ravis de vous répondre.
           </p>
 
-          {/* TELEPHONE CLIQUABLE */}
+          {/* CONTACT DIRECT : TELEPHONE + WHATSAPP BUSINESS */}
 
           <div
             style={{
-              textAlign: "center",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "14px",
               marginBottom: "34px",
             }}
           >
@@ -3813,11 +3692,33 @@ export default function MaisonVerte() {
                 borderRadius: "999px",
                 textDecoration: "none",
                 fontWeight: "700",
-                fontSize: "1.2rem",
+                fontSize: "1.1rem",
                 boxShadow: "0 10px 30px rgba(0,0,0,0.06)",
               }}
             >
               📞 06 95 93 83 15
+            </a>
+
+            <a
+              href="https://wa.me/33695938315?text=Bonjour%2C%20je%20souhaite%20des%20renseignements%20concernant%20La%20Maison%20Verte."
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Écrire à La Maison Verte sur WhatsApp"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "12px",
+                background: "#1f6f3d",
+                color: "white",
+                padding: "18px 28px",
+                borderRadius: "999px",
+                textDecoration: "none",
+                fontWeight: "700",
+                fontSize: "1.1rem",
+                boxShadow: "0 10px 30px rgba(31,111,61,0.18)",
+              }}
+            >
+              💬 Écrire sur WhatsApp
             </a>
           </div>
 

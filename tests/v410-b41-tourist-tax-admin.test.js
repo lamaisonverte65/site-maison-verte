@@ -15,9 +15,10 @@ test("B4.1 admin shows current classification and current rule", () => {
   assert.match(pricingAdmin, /Règle en vigueur aujourd’hui/);
 });
 
-test("B4.1 classification change is independent from tax rules", () => {
+test("B4.1 classification change is dated, historical and independent from tax rules", () => {
   assert.match(endpoint, /update_tourist_tax_classification/);
-  assert.match(endpoint, /tourist_tax_classification: classification/);
+  assert.match(endpoint, /admin_set_tourist_tax_classification/);
+  assert.match(endpoint, /p_effective_from: effectiveFrom/);
   assert.doesNotMatch(endpoint.match(/if \(action === "update_tourist_tax_classification"\)[\s\S]*?\n    }/s)?.[0] || "", /tourist_tax_rules/);
 });
 
@@ -54,4 +55,19 @@ test("B4.1 rule creation does not change property classification", () => {
   const block = endpoint.match(/if \(action === "create_tourist_tax_rule"\)[\s\S]*?return \{ statusCode: 200, body: JSON\.stringify\(\{ success: true, rule: data \}\) \};/s)?.[0] || "";
   assert.ok(block);
   assert.doesNotMatch(block, /pricing_settings/);
+});
+
+
+test("B4.1 admin exposes 4-star and 5-star classifications", () => {
+  assert.match(pricingAdmin, /\["4_star", "4 étoiles"\]/);
+  assert.match(pricingAdmin, /\["5_star", "5 étoiles"\]/);
+  assert.match(endpoint, /"4_star", "5_star"/);
+});
+
+test("B4.1 classification change is immediate and uses today", () => {
+  assert.match(pricingAdmin, /effectiveFrom: taxToday/);
+  assert.doesNotMatch(pricingAdmin, /Date d’effet du classement/);
+  assert.doesNotMatch(pricingAdmin, /taxClassificationModal\.effectiveFrom/);
+  assert.match(pricingAdmin, /prend effet immédiatement à la date du jour/);
+  assert.match(endpoint, /Le classement ne peut pas prendre effet dans le futur/);
 });

@@ -32,6 +32,47 @@ export async function processCheckoutSessionCompleted({ session, stripeEventCrea
   const amount = getCheckoutAmount(session);
   const stripePaidAt = stripeTimestampToIso(stripeEventCreated);
   const financialDetails = await dependencies.getFinancialDetails(session);
+  const isAdditionalChargePayment = paymentType === "manual" && manualReason === "additional_charge";
+  if (isAdditionalChargePayment) {
+    const additionalChargeId = session.metadata?.additional_charge_id;
+    if (!additionalChargeId) throw new Error("Missing additional_charge_id");
+    if (typeof dependencies.applyAdditionalChargePayment !== "function") throw new Error("Missing applyAdditionalChargePayment dependency");
+    const application = await dependencies.applyAdditionalChargePayment({
+      bookingId, additionalChargeId, checkoutSessionId: session.id,
+      paymentIntentId: session.payment_intent || null, amount,
+      currency: session.currency || "eur",
+      customerEmail: session.customer_email || session.customer_details?.email || null,
+      metadata: session.metadata || {}, stripePaidAt,
+      stripeFeeAmount: financialDetails.stripeFeeAmount, stripeNetAmount: financialDetails.stripeNetAmount,
+      balanceTransactionId: financialDetails.stripeBalanceTransactionId, chargeId: financialDetails.stripeChargeId,
+    });
+    if (application.outcome !== "applied") return { outcome: application.outcome };
+    await dependencies.sendConfirmationEmail({
+      booking: application.booking, paymentType, manualReason, amount, arrivalToken: null,
+    });
+    return { outcome: "applied" };
+  }
+  const isCleaningPayment = paymentType === "manual" && manualReason === "cleaning";
+  if (isCleaningPayment) {
+    const cleaningIssueId = session.metadata?.cleaning_issue_id;
+    if (!cleaningIssueId) throw new Error("Missing cleaning_issue_id");
+    if (typeof dependencies.applyCleaningPayment !== "function") throw new Error("Missing applyCleaningPayment dependency");
+    const application = await dependencies.applyCleaningPayment({
+      bookingId, cleaningIssueId, checkoutSessionId: session.id,
+      paymentIntentId: session.payment_intent || null, amount,
+      currency: session.currency || "eur",
+      customerEmail: session.customer_email || session.customer_details?.email || null,
+      metadata: session.metadata || {}, stripePaidAt,
+      stripeFeeAmount: financialDetails.stripeFeeAmount, stripeNetAmount: financialDetails.stripeNetAmount,
+      balanceTransactionId: financialDetails.stripeBalanceTransactionId, chargeId: financialDetails.stripeChargeId,
+    });
+    if (application.outcome !== "applied") return { outcome: application.outcome };
+    await dependencies.sendConfirmationEmail({
+      booking: application.booking, paymentType, manualReason, amount, arrivalToken: null,
+    });
+    return { outcome: "applied" };
+  }
+
   const arrivalCapability = dependencies.createArrivalCapability
     ? dependencies.createArrivalCapability(bookingId)
     : createArrivalCapability(bookingId);

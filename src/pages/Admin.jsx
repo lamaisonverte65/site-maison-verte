@@ -5,6 +5,7 @@ import {
   fetchAdminDataForRole,
   fetchHousekeepingData,
   createHousekeepingNote,
+  reportCleaningIssue,
   fetchHousekeepingNotes,
 } from "../services/housekeepingService";
 import {
@@ -77,6 +78,8 @@ export default function Admin() {
   const [customers, setCustomers] = useState([]);
   const [payments, setPayments] = useState([]);
   const [customerInvoices, setCustomerInvoices] = useState([]);
+  const [cleaningIssues, setCleaningIssues] = useState([]);
+  const [additionalCharges, setAdditionalCharges] = useState([]);
   const [customerCreditNotes, setCustomerCreditNotes] = useState([]);
   const [bookingEvents, setBookingEvents] = useState([]);
   const [emailLogs, setEmailLogs] = useState([]);
@@ -136,7 +139,7 @@ export default function Admin() {
   useEffect(() => {
     if (!bookingRequests.length || selectedRequest) return;
     const params = new URLSearchParams(window.location.search);
-    const bookingId = params.get("booking");
+    const bookingId = params.get("reservation") || params.get("booking");
     if (!bookingId) return;
     const booking = bookingRequests.find((item) => item.id === bookingId);
     if (!booking) return;
@@ -180,6 +183,8 @@ export default function Admin() {
       setCustomers(adminData.customers);
       setPayments(adminData.payments);
       setCustomerInvoices(adminData.customerInvoices || []);
+      setCleaningIssues(adminData.cleaningIssues || []);
+      setAdditionalCharges(adminData.additionalCharges || []);
       setCustomerCreditNotes(adminData.customerCreditNotes || []);
       setBookingEvents(adminData.bookingEvents);
       setEmailLogs(adminData.emailLogs);
@@ -198,6 +203,11 @@ export default function Admin() {
 
   async function saveHousekeepingNote(reservationId, note) {
     await createHousekeepingNote({ accessToken: session?.access_token, reservationId, note });
+    await loadAdminData();
+  }
+
+  async function saveHousekeepingCleaningIssue(reservationId, note) {
+    await reportCleaningIssue({ accessToken: session?.access_token, bookingId: reservationId, note });
     await loadAdminData();
   }
 
@@ -617,6 +627,9 @@ export default function Admin() {
     confirmedReservations,
     customers,
     guestReviews,
+    cleaningIssues,
+    additionalCharges,
+    payments,
     pageViewVisits,
     stripePayouts,
     stripeBalanceTransactions,
@@ -738,6 +751,7 @@ export default function Admin() {
             mode="housekeeping"
             housekeepingReservations={housekeepingReservations}
             onHousekeepingNoteCreate={saveHousekeepingNote}
+            onHousekeepingCleaningIssueReport={saveHousekeepingCleaningIssue}
             onCalendarUpdated={loadAdminData}
             />
           </LazyAdminSection>
@@ -773,6 +787,8 @@ export default function Admin() {
           bookingRequests={bookingRequests}
           stats={stats}
           guestReviews={guestReviews}
+          cleaningIssues={cleaningIssues}
+          additionalCharges={additionalCharges}
           onNavigate={setActiveTab}
           onOpenReservation={(request) => { selectReservation(request); setActiveTab("reservations"); }}
         />
@@ -949,7 +965,11 @@ export default function Admin() {
             events={openedReservationEvents}
             emailLogs={openedReservationEmailLogs}
             housekeepingNotes={ownerHousekeepingNotes}
-            invoice={customerInvoices.find((invoice) => invoice.booking_request_id === openedReservation.id && (invoice.source === "direct" || invoice.source === "booking")) || null}
+            invoice={customerInvoices.find((invoice) => invoice.booking_request_id === openedReservation.id && (invoice.source === "direct" || invoice.source === "booking") && invoice.invoice_kind !== "post_stay_cleaning" && invoice.invoice_kind !== "additional_charge") || null}
+            cleaningIssue={cleaningIssues.find((issue) => issue.booking_request_id === openedReservation.id) || null}
+            cleaningInvoice={customerInvoices.find((invoice) => invoice.booking_request_id === openedReservation.id && invoice.invoice_kind === "post_stay_cleaning") || null}
+            additionalCharges={additionalCharges.filter((charge) => charge.booking_request_id === openedReservation.id)}
+            additionalChargeInvoices={customerInvoices.filter((invoice) => invoice.booking_request_id === openedReservation.id && invoice.invoice_kind === "additional_charge")}
             onInvoiceRefresh={loadAdminData}
             onOpenInvoices={() => setActiveTab("invoices")}
             onAccept={openAcceptModal}

@@ -122,6 +122,7 @@ export default function CalendarAdmin({
   onReservationEditHandled,
   housekeepingReservations = [],
   onHousekeepingNoteCreate,
+  onHousekeepingCleaningIssueReport,
 }) {
   const [events, setEvents] = useState([]);
   const [blocks, setBlocks] = useState([]);
@@ -1016,6 +1017,8 @@ export default function CalendarAdmin({
                   onPhone={contactPhone}
                   onSms={contactSms}
                   onCreateNote={onHousekeepingNoteCreate}
+                  onReportCleaningIssue={onHousekeepingCleaningIssueReport}
+                  onReservationUpdated={onCalendarUpdated}
                 />
               ) : (
                 <ReservationSummaryPanel

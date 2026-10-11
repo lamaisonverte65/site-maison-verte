@@ -86,7 +86,31 @@ test("housekeeping serializer returns the exact read-only operational contract a
         createdAt: "2026-09-12T18:00:00.000Z",
       }],
     },
+    cleaningIssue: null,
+    canReportCleaningIssue: true,
   });
+});
+
+
+
+test("a real Booking reservation remains reportable by housekeeping even without a cleaning option flag", () => {
+  const result = toHousekeepingReservation({
+    ...databaseRow,
+    id: "booking-platform-1",
+    source: "booking",
+    cleaning_option: null,
+  });
+  assert.equal(result.canReportCleaningIssue, true);
+});
+
+test("an external calendar-only occupation cannot create a post-stay cleaning issue", () => {
+  const result = toHousekeepingExternalReservation({
+    external_uid: "ics-only-1",
+    source: "booking",
+    start_date: "2026-10-01",
+    end_date: "2026-10-03",
+  });
+  assert.equal(result.canReportCleaningIssue, false);
 });
 
 test("financial, payment, Stripe, refund, payout, and technical fields cannot cross the serializer", () => {

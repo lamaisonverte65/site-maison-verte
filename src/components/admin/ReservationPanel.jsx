@@ -16,6 +16,8 @@ import StripeHistoryBlock from "./reservation/StripeHistoryBlock";
 import FinancialActionsBlock from "./reservation/FinancialActionsBlock";
 import DocumentsBlock from "./reservation/DocumentsBlock";
 import InvoiceBlock from "./reservation/InvoiceBlock";
+import PostStayCleaningBlock from "./reservation/PostStayCleaningBlock";
+import AdditionalChargeBlock from "./reservation/AdditionalChargeBlock";
 import MessagesBlock from "./reservation/MessagesBlock";
 import TimelineBlock from "./reservation/TimelineBlock";
 import HistoryBlock from "./reservation/HistoryBlock";
@@ -216,6 +218,10 @@ export default function ReservationPanel({
   emailLogs = [],
   housekeepingNotes = [],
   invoice = null,
+  cleaningIssue = null,
+  cleaningInvoice = null,
+  additionalCharges = [],
+  additionalChargeInvoices = [],
   onInvoiceRefresh,
   onOpenInvoices,
   permissions,
@@ -230,6 +236,7 @@ export default function ReservationPanel({
   const [savingEdit, setSavingEdit] = useState(false);
   const [editMessage, setEditMessage] = useState("");
   const [editPreview, setEditPreview] = useState(null);
+  const [additionalChargePreset, setAdditionalChargePreset] = useState(null);
 
   useEffect(() => {
     setIsEditing(false);
@@ -392,6 +399,19 @@ export default function ReservationPanel({
             />
           </PermissionGate>
         </section>
+      )}
+
+      {!isReadOnly && !isEditing && <PostStayCleaningBlock request={request} issue={cleaningIssue} cleaningInvoice={cleaningInvoice} linkedAdditionalCharges={additionalCharges.filter((charge) => charge.cleaning_issue_id === cleaningIssue?.id)} onRefresh={onReservationUpdated} onOpenInvoices={onOpenInvoices} onCreateAdditionalCharge={(preset) => setAdditionalChargePreset({ ...preset, nonce: Date.now() })} />}
+
+      {!isReadOnly && !isEditing && (
+        <AdditionalChargeBlock
+          request={request}
+          charges={additionalCharges}
+          invoices={additionalChargeInvoices}
+          prefill={additionalChargePreset}
+          onRefresh={onReservationUpdated}
+          onOpenInvoices={onOpenInvoices}
+        />
       )}
 
       <DocumentsBlock request={reservation} />

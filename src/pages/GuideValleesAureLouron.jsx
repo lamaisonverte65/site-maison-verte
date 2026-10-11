@@ -1,4 +1,5 @@
 import { Helmet } from "react-helmet";
+import PublicNavigation from "../components/PublicNavigation";
 
 const travelTimes = [
   ["Saint-Lary téléphérique", "15 min"],
@@ -339,6 +340,8 @@ export default function GuideValleesAureLouron() {
         />
         <meta property="og:type" content="article" />
       </Helmet>
+
+      <PublicNavigation solid />
 
       <main
         style={{

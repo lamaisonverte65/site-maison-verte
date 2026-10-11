@@ -1,0 +1,136 @@
+name: Backup Supabase to pCloud
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+    inputs:
+      backup_kind:
+        description: 'Type de sauvegarde manuelle'
+        required: true
+        default: manual
+        type: choice
+        options:
+          - manual
+          - baseline
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lmv-supabase-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      PCLOUD_TOKEN: ${{ secrets.PCLOUD_TOKEN }}
+      RCLONE_CRYPT_PASSWORD: ${{ secrets.RCLONE_CRYPT_PASSWORD }}
+      RCLONE_CRYPT_PASSWORD2: ${{ secrets.RCLONE_CRYPT_PASSWORD2 }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install project dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install PostgreSQL client and rclone
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client rclone
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$SUPABASE_DB_URL" ]] || { echo 'SUPABASE_DB_URL missing'; exit 1; }
+          [[ -n "$SUPABASE_URL" ]] || { echo 'SUPABASE_URL missing'; exit 1; }
+          [[ -n "$PCLOUD_TOKEN" ]] || { echo 'PCLOUD_TOKEN missing'; exit 1; }
+          [[ -n "$RCLONE_CRYPT_PASSWORD" ]] || { echo 'RCLONE_CRYPT_PASSWORD missing'; exit 1; }
+          [[ -n "$RCLONE_CRYPT_PASSWORD2" ]] || { echo 'RCLONE_CRYPT_PASSWORD2 missing'; exit 1; }
+          [[ -n "$SUPABASE_SECRET_KEY" || -n "$SUPABASE_SERVICE_ROLE_KEY" ]] || {
+            echo 'SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY missing'; exit 1;
+          }
+
+      - name: Determine backup identity and tiers
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          id="$(date -u +'%Y-%m-%d_%H%M%SZ')"
+          echo "backup_id=$id" >> "$GITHUB_OUTPUT"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            kind="${{ inputs.backup_kind }}"
+            echo "backup_kind=$kind" >> "$GITHUB_OUTPUT"
+            echo "tiers=$kind" >> "$GITHUB_OUTPUT"
+          else
+            echo "backup_kind=daily" >> "$GITHUB_OUTPUT"
+            tiers="daily"
+            [[ "$(date -u +%u)" == "7" ]] && tiers="$tiers weekly"
+            [[ "$(date -u +%d)" == "01" ]] && tiers="$tiers monthly"
+            [[ "$(date -u +%m-%d)" == "01-01" ]] && tiers="$tiers yearly"
+            echo "tiers=$tiers" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Assemble verified backup
+        shell: bash
+        env:
+          BACKUP_ID: ${{ steps.meta.outputs.backup_id }}
+          BACKUP_KIND: ${{ steps.meta.outputs.backup_kind }}
+          BACKUP_DIR: ${{ runner.temp }}/lmv-backup/${{ steps.meta.outputs.backup_id }}
+        run: bash scripts/backup/assemble-backup.sh
+
+      - name: Upload and verify pCloud copies
+        shell: bash
+        env:
+          BACKUP_DIR: ${{ runner.temp }}/lmv-backup/${{ steps.meta.outputs.backup_id }}
+          BACKUP_ID: ${{ steps.meta.outputs.backup_id }}
+          TIERS: ${{ steps.meta.outputs.tiers }}
+        run: |
+          set -euo pipefail
+          for tier in $TIERS; do
+            bash scripts/backup/upload-pcloud.sh "$BACKUP_DIR" "$tier" "$BACKUP_ID"
+          done
+
+      - name: Apply short-term retention
+        if: ${{ success() && github.event_name == 'schedule' }}
+        run: bash scripts/backup/rotate-pcloud.sh
+
+      - name: Write non-sensitive diagnostic
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          {
+            echo "workflow_run=${{ github.run_id }}"
+            echo "event=${{ github.event_name }}"
+            echo "backup_id=${{ steps.meta.outputs.backup_id }}"
+            echo "backup_kind=${{ steps.meta.outputs.backup_kind }}"
+            echo "tiers=${{ steps.meta.outputs.tiers }}"
+            echo "commit=${{ github.sha }}"
+          } > "${{ runner.temp }}/backup-diagnostic.txt"
+
+      - name: Upload diagnostic artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-backup-diagnostic-${{ github.run_id }}
+          path: ${{ runner.temp }}/backup-diagnostic.txt
+          retention-days: 14

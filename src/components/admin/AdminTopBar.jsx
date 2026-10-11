@@ -85,11 +85,15 @@ export default function AdminTopBar({
 
       <div style={styles.stickyAdminNav}>
         <nav style={styles.tabs} aria-label="Rubriques administration">
-          {TABS.filter((tab) => canSeeTab(tab.key)).map((tab) => (
-            <button key={tab.key} style={activeTab === tab.key ? styles.activeTab : styles.tab} onClick={() => onNavigate(tab.key)}>
-              {tab.label}
-            </button>
-          ))}
+          {TABS.filter((tab) => canSeeTab(tab.key)).map((tab) => {
+            const reviewsPending = Number(stats?.reviewsPending || 0);
+            const label = tab.key === "reviews" && reviewsPending > 0 ? `Avis (${reviewsPending})` : tab.label;
+            return (
+              <button key={tab.key} style={activeTab === tab.key ? styles.activeTab : styles.tab} onClick={() => onNavigate(tab.key)}>
+                {label}
+              </button>
+            );
+          })}
         </nav>
       </div>
 

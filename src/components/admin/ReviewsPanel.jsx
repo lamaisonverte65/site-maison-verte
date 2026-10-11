@@ -6,6 +6,10 @@ export default function ReviewsPanel({
   onUpdateReviewStatus,
   onDeleteGuestReview,
 }) {
+  const pendingReviews = guestReviews.filter((review) => (review.status || "pending") === "pending");
+  const otherReviews = guestReviews.filter((review) => (review.status || "pending") !== "pending");
+  const orderedReviews = [...pendingReviews, ...otherReviews];
+
   return (
     <section style={styles.panel}>
       <div style={styles.panelHeader}>
@@ -31,7 +35,7 @@ export default function ReviewsPanel({
               </tr>
             </thead>
             <tbody>
-              {guestReviews.map((review) => (
+              {orderedReviews.map((review) => (
                 <tr key={review.id}>
                   <td style={styles.td}>{formatDateTime(review.created_at)}</td>
                   <td style={styles.td}>{review.display_name || [review.guest_first_name, review.guest_last_name].filter(Boolean).join(" ") || "Voyageur"}</td>
@@ -42,7 +46,13 @@ export default function ReviewsPanel({
                   <td style={styles.td}>{review.guest_email || review.guest_phone || "-"}</td>
                   <td style={styles.td}>
                     <div style={styles.contactButtons}>
-                      {review.status !== "published" && (
+                      {review.status === "pending" && (
+                        <>
+                          <button style={styles.acceptButton} onClick={() => onUpdateReviewStatus(review, "published")}>Publier</button>
+                          <button style={styles.cancelButton} onClick={() => onUpdateReviewStatus(review, "refused")}>Refuser</button>
+                        </>
+                      )}
+                      {review.status !== "pending" && review.status !== "published" && (
                         <button style={styles.acceptButton} onClick={() => onUpdateReviewStatus(review, "published")}>Publier</button>
                       )}
                       {review.status === "published" && (

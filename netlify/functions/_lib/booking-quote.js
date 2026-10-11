@@ -30,7 +30,7 @@ async function loadPricing(supabase, context = {}) {
     throw new Error("Taux d’acompte invalide.");
   }
   const touristTaxClassification = String(context.touristTaxClassification || settings?.tourist_tax_classification || "");
-  if (!new Set(["unclassified", "1_star", "2_star", "3_star"]).has(touristTaxClassification)) {
+  if (!new Set(["unclassified", "1_star", "2_star", "3_star", "4_star", "5_star"]).has(touristTaxClassification)) {
     throw new Error("Classement taxe de séjour invalide.");
   }
   return { defaultNightCents, cleaningFeeCents, depositRate, touristTaxClassification, seasons: seasons || [], overrides: overrides || [] };

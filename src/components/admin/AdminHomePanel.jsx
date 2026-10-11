@@ -33,7 +33,7 @@ function DashboardCard({ title, children }) {
   return <section style={styles.homeCard}><h3 style={styles.homeCardTitle}>{title}</h3>{children}</section>;
 }
 
-export default function AdminHomePanel({ bookingRequests = [], stats, guestReviews = [], onOpenReservation, onNavigate }) {
+export default function AdminHomePanel({ bookingRequests = [], stats, guestReviews = [], cleaningIssues = [], additionalCharges = [], onOpenReservation, onNavigate }) {
   const today = localDateKey();
   const active = bookingRequests.filter((request) => ACTIVE_STAY_STATUSES.has(request.status));
   const inProgress = active.filter((request) => request.start_date <= today && request.end_date > today);
@@ -56,6 +56,8 @@ export default function AdminHomePanel({ bookingRequests = [], stats, guestRevie
     return amounts.total > 0 && amounts.paid > amounts.total + 0.005;
   }).length;
   const reviewsPending = guestReviews.filter((review) => ["pending", "pending_validation", "to_validate"].includes(review.status)).length || stats.reviewsPending || 0;
+  const pendingCleaningIssues = cleaningIssues.filter((issue) => issue.status === "reported" && !additionalCharges.some((charge) => charge.cleaning_issue_id === issue.id && charge.status !== "cancelled"));
+  const cleaningIssuesPending = pendingCleaningIssues.length || stats.cleaningIssuesPending || 0;
 
   return (
     <section style={styles.homeDashboard}>
@@ -73,6 +75,11 @@ export default function AdminHomePanel({ bookingRequests = [], stats, guestRevie
           <button style={styles.homeActionRow} onClick={() => onNavigate("payments")}><span>Soldes à encaisser / échus</span><strong>{balancesDue}</strong></button>
           <button style={styles.homeActionRow} onClick={() => onNavigate("payments")}><span>Remboursements / anomalies</span><strong>{overpayments}</strong></button>
           <button style={styles.homeActionRow} onClick={() => onNavigate("reviews")}><span>Avis à valider</span><strong>{reviewsPending}</strong></button>
+          <button style={styles.homeActionRow} onClick={() => {
+            const issue = pendingCleaningIssues[0];
+            const booking = issue ? bookingRequests.find((request) => request.id === issue.booking_request_id) : null;
+            if (booking) onOpenReservation(booking); else onNavigate("reservations");
+          }}><span>Signalements ménage à traiter</span><strong>{cleaningIssuesPending}</strong></button>
         </DashboardCard>
       </div>
 

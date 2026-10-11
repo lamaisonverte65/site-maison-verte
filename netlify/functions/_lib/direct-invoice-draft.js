@@ -1,4 +1,4 @@
-const SELLER_SNAPSHOT = Object.freeze({
+export const SELLER_SNAPSHOT = Object.freeze({
   legal_name: "Raphaël BENOIT",
   trade_name: "La Maison Verte",
   address: "4 Chemin du Calvaire",

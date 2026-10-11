@@ -20,6 +20,7 @@ export async function handler(event) {
     .select("*")
     .eq("source", "direct")
     .eq("booking_request_id", bookingId)
+    .eq("invoice_kind", "stay")
     .maybeSingle();
   if (existingError) return json(500, { error: "Impossible de vérifier les factures existantes." });
   if (existing?.status === "issued") return json(200, { invoice: existing, created: false, reconstructed: false });
@@ -91,7 +92,7 @@ export async function handler(event) {
     .single();
   if (insertError) {
     if (insertError.code === "23505") {
-      const { data: raced } = await supabase.from("customer_invoices").select("*").eq("source", "direct").eq("booking_request_id", bookingId).maybeSingle();
+      const { data: raced } = await supabase.from("customer_invoices").select("*").eq("source", "direct").eq("booking_request_id", bookingId).eq("invoice_kind", "stay").maybeSingle();
       if (raced) return json(200, { invoice: raced, created: false, reconstructed: false });
     }
     return json(500, { error: "Création du brouillon impossible." });

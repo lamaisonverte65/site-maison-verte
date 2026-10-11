@@ -11,12 +11,16 @@ import {
   getStripeBankExpectedNet,
   getConfirmedStayAmount,
 } from "../utils/adminFormatters";
+import { getNonContractStripeFinancials } from "../utils/nonContractStripeFinancials";
 
 export function useAdminStats({
   bookingRequests,
   confirmedReservations,
   customers,
   guestReviews,
+  cleaningIssues = [],
+  additionalCharges = [],
+  payments = [],
   pageViewVisits,
   stripePayouts,
   stripeBalanceTransactions,
@@ -45,12 +49,13 @@ export function useAdminStats({
     // Synthèse bancaire Stripe : toutes les transactions réelles comptent,
     // y compris les réservations annulées/remboursées, car elles génèrent
     // des frais et doivent expliquer le montant réellement viré par Stripe.
+    const nonContractStripe = getNonContractStripeFinancials({ payments, stripeBalanceTransactions });
     const stripeGrossPaymentTotal = bookingRequests.reduce((sum, request) => {
       const cents = request.financial_ledger?.gross_paid_cents;
       return sum + (cents === null || cents === undefined
         ? getHistoricalGrossPaidAmount(request)
         : Number(cents) / 100);
-    }, 0);
+    }, 0) + nonContractStripe.gross;
     const stripeRefundTotal = bookingRequests.reduce((sum, request) => {
       const cents = request.financial_ledger?.refunded_cents;
       return sum + (cents === null || cents === undefined
@@ -63,11 +68,11 @@ export function useAdminStats({
     const stripeFeeTotal = completeFinancialRows.reduce(
       (sum, request) => sum + Number(request.financial_ledger.stripe_fee_amount || 0),
       0,
-    );
+    ) + nonContractStripe.fee;
     const stripeNetTotal = completeFinancialRows.reduce(
       (sum, request) => sum + Number(request.financial_ledger.stripe_net_amount || 0),
       0,
-    );
+    ) + nonContractStripe.net;
     const stripeBankExpectedNetTotal = getStripeBankExpectedNet(stripeNetTotal);
     const stripeFinancialsIncompleteCount = bookingRequests.filter(
       (request) => request.financial_ledger?.stripe_financials_complete === false,
@@ -88,6 +93,7 @@ export function useAdminStats({
       customers: customers.length,
       loyal: customers.filter((customer) => Number(customer.booking_count || 0) > 1).length,
       reviewsPending: guestReviews.filter((review) => review.status === "pending").length,
+      cleaningIssuesPending: cleaningIssues.filter((issue) => issue.status === "reported" && !additionalCharges.some((charge) => charge.cleaning_issue_id === issue.id && charge.status !== "cancelled")).length,
       visitsToday: visitsSince(1),
       visitsWeek: visitsSince(7),
       visitsMonth: visitsSince(30),
@@ -117,6 +123,9 @@ export function useAdminStats({
     confirmedReservations,
     customers,
     guestReviews,
+    cleaningIssues,
+    additionalCharges,
+    payments,
     pageViewVisits,
     stripePayouts,
     stripeBalanceTransactions,

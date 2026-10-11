@@ -4,3 +4,12 @@ dist/
 .DS_Store
 # Local Netlify folder
 .netlify
+
+# Local backup scratch/output and temporary credentials
+.backup-work/
+backup-output/
+rclone*.conf
+*pcloud*token*
+
+# Supabase CLI local state
+supabase/.temp/

@@ -26,6 +26,7 @@ export default function HousekeepingReservationView({
   onPhone,
   onSms,
   onCreateNote,
+  onReportCleaningIssue,
   onReservationUpdated,
 }) {
   const guest = reservation.guest || {};
@@ -35,13 +36,31 @@ export default function HousekeepingReservationView({
   const internalNotes = reservation.internalNotes || {};
   const notes = Array.isArray(internalNotes.housekeeping) ? internalNotes.housekeeping : [];
   const [housekeepingNote, setHousekeepingNote] = useState("");
+  const [cleaningIssueNote, setCleaningIssueNote] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+  const [savingCleaningIssue, setSavingCleaningIssue] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
     setHousekeepingNote("");
+    setCleaningIssueNote("");
     setStatusMessage("");
   }, [reservation.id]);
+
+  async function reportCleaningIssue() {
+    try {
+      setSavingCleaningIssue(true);
+      setStatusMessage("");
+      await onReportCleaningIssue?.(reservation.id, cleaningIssueNote);
+      setCleaningIssueNote("");
+      setStatusMessage("Ménage signalé au propriétaire.");
+      await onReservationUpdated?.();
+    } catch (error) {
+      setStatusMessage(`Erreur : ${error.message}`);
+    } finally {
+      setSavingCleaningIssue(false);
+    }
+  }
 
   async function saveNote() {
     try {
@@ -108,6 +127,32 @@ export default function HousekeepingReservationView({
       <ReadOnlyBox title="Informations pratiques du séjour">{stay.practicalInformation}</ReadOnlyBox>
       <ReadOnlyBox title="Message du client">{communications.clientMessage}</ReadOnlyBox>
       <ReadOnlyBox title="Note du propriétaire destinée au ménage">{internalNotes.ownerForHousekeeping}</ReadOnlyBox>
+
+
+      <section style={styles.card}>
+        <h3 style={styles.subTitle}>Ménage après séjour</h3>
+        {reservation.cleaningIssue ? (
+          <div style={styles.noteBox}>
+            <strong>Signalement : {reservation.cleaningIssue.status || "signalé"}</strong>
+            <p>{reservation.cleaningIssue.note || "Aucun détail."}</p>
+            <small style={styles.muted}>{reservation.cleaningIssue.reportedAt ? new Date(reservation.cleaningIssue.reportedAt).toLocaleString("fr-FR") : ""}</small>
+          </div>
+        ) : reservation.canReportCleaningIssue ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            <p style={styles.muted}>Si le client n’a pas réalisé le ménage prévu, saisis un constat précis puis signale-le au propriétaire.</p>
+            <textarea
+              style={{ ...styles.largeTextarea, width: "100%", minHeight: "110px", boxSizing: "border-box" }}
+              value={cleaningIssueNote}
+              maxLength={2000}
+              onChange={(event) => setCleaningIssueNote(event.target.value)}
+              placeholder="Constat ménage..."
+            />
+            <div><button type="button" style={styles.addButton} disabled={savingCleaningIssue || !cleaningIssueNote.trim()} onClick={reportCleaningIssue}>Signaler le ménage</button></div>
+          </div>
+        ) : (
+          <p style={styles.muted}>Aucun signalement ménage à effectuer pour cette réservation.</p>
+        )}
+      </section>
 
       <section style={styles.card}>
         <h3 style={styles.subTitle}>Notes opérationnelles du ménage</h3>

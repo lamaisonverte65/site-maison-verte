@@ -27,6 +27,20 @@ export async function fetchAdminData(supabase) {
     .select("*")
     .order("created_at", { ascending: false });
 
+  const { data: cleaningIssuesData, error: cleaningIssuesError } = await supabase
+    .from("booking_cleaning_issues")
+    .select("*")
+    .order("reported_at", { ascending: false });
+
+  if (cleaningIssuesError) throw cleaningIssuesError;
+
+  const { data: additionalChargesData, error: additionalChargesError } = await supabase
+    .from("booking_additional_charges")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (additionalChargesError) throw additionalChargesError;
+
   const { data: customerCreditNotesData } = await supabase
     .from("customer_credit_notes")
     .select("*")
@@ -88,6 +102,8 @@ export async function fetchAdminData(supabase) {
     customers: customersData || [],
     payments: paymentsData || [],
     customerInvoices: customerInvoicesData || [],
+    cleaningIssues: cleaningIssuesData || [],
+    additionalCharges: additionalChargesData || [],
     customerCreditNotes: customerCreditNotesData || [],
     bookingEvents: eventsData || [],
     emailLogs: emailLogsData || [],

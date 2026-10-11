@@ -16,7 +16,7 @@ const HOUSEKEEPING_BOOKING_FIELDS = [
   "id", "source", "start_date", "end_date",
   "guest_first_name", "guest_last_name", "guest_phone", "guest_email",
   "adults_count", "children_count", "children_ages", "baby_bed_needed",
-  "arrival_time",
+  "arrival_time", "cleaning_option",
   "message", "housekeeping_notes",
 ].join(",");
 
@@ -59,7 +59,7 @@ async function loadNotesByTarget() {
 }
 
 async function listReservations() {
-  const [bookingsResult, occupationsResult, enrichmentResult, actionsResult, notes] = await Promise.all([
+  const [bookingsResult, occupationsResult, enrichmentResult, actionsResult, notes, cleaningIssuesResult] = await Promise.all([
     supabase.from("booking_requests").select(HOUSEKEEPING_BOOKING_FIELDS)
       .not("status", "in", "(refused,expired,cancelled)").order("start_date", { ascending: true }),
     supabase.from("external_occupancies").select(EXTERNAL_OCCUPANCY_FIELDS)
@@ -68,19 +68,22 @@ async function listReservations() {
     supabase.from("external_reservation_clients").select(EXTERNAL_ENRICHMENT_FIELDS),
     supabase.from("external_calendar_actions").select(EXTERNAL_ACTION_FIELDS),
     loadNotesByTarget(),
+    supabase.from("booking_cleaning_issues").select("id,booking_request_id,status,notes,reported_at"),
   ]);
   if (bookingsResult.error) throw bookingsResult.error;
   if (occupationsResult.error) throw occupationsResult.error;
   if (enrichmentResult.error) throw enrichmentResult.error;
   if (actionsResult.error) throw actionsResult.error;
+  if (cleaningIssuesResult.error) throw cleaningIssuesResult.error;
 
+  const cleaningIssues = new Map((cleaningIssuesResult.data || []).map((issue) => [issue.booking_request_id, issue]));
   const linked = new Map((enrichmentResult.data || []).map((row) => [externalKey(row.source, row.uid), row]));
   const visibleOccupations = filterVisibleExternalOccupations(
     occupationsResult.data || [],
     actionsResult.data || [],
   );
   const reservations = [
-    ...(bookingsResult.data || []).map((row) => toHousekeepingReservation(row, notes.direct.get(row.id) || [])),
+    ...(bookingsResult.data || []).map((row) => toHousekeepingReservation(row, notes.direct.get(row.id) || [], cleaningIssues.get(row.id) || null)),
     ...visibleOccupations.map((row) => {
       const key = externalKey(row.source, row.external_uid);
       return toHousekeepingExternalReservation(row, linked.get(key) || {}, notes.external.get(row.id) || []);

@@ -89,6 +89,7 @@ export default function ReservationsTable({
           {reservations.map((request) => {
             const amounts = getAmounts(request);
             const isSelected = selectedIds.includes(request.id);
+            const cancelled = request.status === "cancelled";
 
             return (
               <tr
@@ -112,8 +113,8 @@ export default function ReservationsTable({
                 <td style={styles.td}>{formatDate(request.start_date)}</td>
                 <td style={styles.td}>{formatDate(request.end_date)}</td>
                 <td style={styles.td}><StatusBadge status={request.status || "pending"} /></td>
-                <td style={styles.td}>{getDepositStatus(request)}<br /><span style={styles.muted}>{formatMoney(amounts.deposit)}</span></td>
-                <td style={styles.td}>{getBalanceStatus(request)}<br /><span style={styles.muted}>{formatMoney(amounts.balance)}</span></td>
+                <td style={styles.td}>{cancelled ? "non applicable" : getDepositStatus(request)}<br /><span style={styles.muted}>{formatMoney(cancelled ? 0 : amounts.deposit)}</span></td>
+                <td style={styles.td}>{cancelled ? "non applicable" : getBalanceStatus(request)}<br /><span style={styles.muted}>{formatMoney(cancelled ? 0 : amounts.balance)}</span></td>
                 <td style={styles.td}>{formatMoney(amounts.total)}</td>
                 <td style={styles.td}>{formatMoney(amounts.paid)}</td>
               </tr>

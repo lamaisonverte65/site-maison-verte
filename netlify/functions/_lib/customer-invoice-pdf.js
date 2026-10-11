@@ -6,7 +6,7 @@ const dateFr = (value) => {
   return new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
 };
 const clean = (v) => String(v ?? '').trim();
-const paymentLabel = (type) => ({ deposit: 'Acompte', balance: 'Solde', full: 'Paiement intégral', manual: 'Paiement manuel', booking_platform: 'Paiement via Booking.com' }[type] || clean(type) || 'Paiement');
+const paymentLabel = (type, manualReason = null) => manualReason === 'cleaning' ? 'Ménage après séjour' : manualReason === 'additional_charge' ? 'Paiement complémentaire' : ({ deposit: 'Acompte', balance: 'Solde', full: 'Paiement intégral', manual: 'Paiement manuel', booking_platform: 'Paiement via Booking.com' }[type] || clean(type) || 'Paiement');
 
 function pdfEscape(text) {
   return clean(text).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)').replace(/[\r\n]+/g, ' ');
@@ -27,6 +27,9 @@ export function invoicePdfModel(invoice, { preview = false } = {}) {
   const stay = invoice.stay_snapshot || {};
   const f = invoice.financial_snapshot || {};
   const payments = Array.isArray(invoice.payment_snapshot) ? invoice.payment_snapshot : [];
+  const booking = invoice.source === 'booking';
+  const postStayCleaning = invoice.invoice_kind === 'post_stay_cleaning';
+  const additionalCharge = invoice.invoice_kind === 'additional_charge';
   const paid = payments.reduce((sum, p) => {
     if (['failed', 'cancelled', 'canceled'].includes(String(p.status || '').toLowerCase())) return sum;
     return sum + Math.max(Number(p.amount || 0) - Number(p.refunded_amount || 0), 0);
@@ -36,7 +39,7 @@ export function invoicePdfModel(invoice, { preview = false } = {}) {
   const add = (t, size=10, bold=false, x=50, advance=true) => lines.push({ t, size, bold, x, advance });
   const sep = () => lines.push({ separator:true });
 
-  add(preview ? 'APERÇU - BROUILLON DE FACTURE' : `FACTURE N° ${invoice.invoice_number}`, 19, true);
+  add(additionalCharge ? (preview ? 'APERÇU - FACTURE PAIEMENT COMPLÉMENTAIRE' : `FACTURE N° ${invoice.invoice_number} - PAIEMENT COMPLÉMENTAIRE`) : postStayCleaning ? (preview ? 'APERÇU - FACTURE MÉNAGE APRÈS SÉJOUR' : `FACTURE N° ${invoice.invoice_number} - MÉNAGE APRÈS SÉJOUR`) : (preview ? 'APERÇU - BROUILLON DE FACTURE' : `FACTURE N° ${invoice.invoice_number}`), 19, true);
   if (preview) add('', 12);
   add(preview ? 'Document non émis - sans numéro de facture' : `Date d'émission : ${dateFr(invoice.issued_at)}`, 9, preview);
   if (invoice.source === 'booking' && invoice.external_reference) add(`Référence Booking : ${invoice.external_reference}`, 9);
@@ -81,15 +84,20 @@ export function invoicePdfModel(invoice, { preview = false } = {}) {
   sep();
 
   add('DÉTAIL DE LA FACTURE', 11, true);
-  const booking = invoice.source === 'booking';
   const discount = Number(f.promotion_discount_amount || 0);
-  if (!booking && f.accommodation_gross != null && discount > 0) {
-    add(`Hébergement avant remise`, 10, false, 60); add(money(f.accommodation_gross), 10, false, 430);
-    add(`Remise`, 10, false, 60); add(`-${money(discount)}`, 10, false, 430);
+  if (additionalCharge) {
+    add(`Paiement complémentaire — ${clean(f.additional_charge_reason) || 'Autre'}`, 10, false, 60); add(money(f.additional_charge_total ?? invoice.total_amount), 10, false, 430);
+  } else if (postStayCleaning) {
+    add('Ménage après séjour', 10, false, 60); add(money(f.cleaning_fee), 10, false, 430);
+  } else {
+    if (!booking && f.accommodation_gross != null && discount > 0) {
+      add(`Hébergement avant remise`, 10, false, 60); add(money(f.accommodation_gross), 10, false, 430);
+      add(`Remise`, 10, false, 60); add(`-${money(discount)}`, 10, false, 430);
+    }
+    add('Hébergement', 10, false, 60); add(money(f.accommodation_net ?? f.accommodation_gross), 10, false, 430);
+    if (booking || Number(f.cleaning_fee || 0) !== 0) { add('Ménage', 10, false, 60); add(money(f.cleaning_fee), 10, false, 430); }
+    add('Taxe de séjour', 10, false, 60); add(money(f.tourist_tax_amount), 10, false, 430);
   }
-  add('Hébergement', 10, false, 60); add(money(f.accommodation_net ?? f.accommodation_gross), 10, false, 430);
-  if (booking || Number(f.cleaning_fee || 0) !== 0) { add('Ménage', 10, false, 60); add(money(f.cleaning_fee), 10, false, 430); }
-  add('Taxe de séjour', 10, false, 60); add(money(f.tourist_tax_amount), 10, false, 430);
   sep();
   add('TOTAL', 13, true, 60); add(money(invoice.total_amount), 13, true, 430);
   sep();
@@ -98,7 +106,7 @@ export function invoicePdfModel(invoice, { preview = false } = {}) {
   if (!payments.length) add('Aucun paiement enregistré à la date d’émission.', 10);
   for (const p of payments) {
     const paidDate = p.paid_at ? ` - ${dateFr(p.paid_at)}` : '';
-    add(`${paymentLabel(p.payment_type)}${paidDate}`, 10, false, 60);
+    add(`${paymentLabel(p.payment_type, p.manual_reason)}${paidDate}`, 10, false, 60);
     add(`${money(p.amount)}${Number(p.refunded_amount || 0) ? ` (remboursé ${money(p.refunded_amount)})` : ''}`, 10, false, 430);
   }
   add('Montant réglé', 10, true, 60); add(money(paid), 10, true, 430);
@@ -119,7 +127,7 @@ export function invoicePdfModel(invoice, { preview = false } = {}) {
   add('', 5);
   const basis = clean(seller.vat_legal_basis) || 'CGI art. 261 D, 4°';
   add(`TVA exonérée - ${basis}.`, 9);
-  add('Taxe de séjour présentée séparément.', 9);
+  if (!postStayCleaning && !additionalCharge) add('Taxe de séjour présentée séparément.', 9);
   return { lines, paid, remaining };
 }
 export function buildCustomerInvoicePdf(invoice, options = {}) {
@@ -153,7 +161,7 @@ export function buildCustomerInvoicePdf(invoice, options = {}) {
       pendingLeft = false;
     } else if (x < 300 && lines.some(() => false)) {
       // unreachable; retained only to keep row handling explicit
-    } else if (x < 300 && (line.t === 'Hébergement avant remise' || line.t === 'Remise' || line.t === 'Hébergement' || line.t === 'Ménage' || line.t === 'Taxe de séjour' || line.t === 'TOTAL' || line.t === 'Montant réglé' || line.t === 'Reste à régler' || line.t.startsWith('Paiement via') || line.t.startsWith('Acompte') || line.t.startsWith('Solde') || line.t.startsWith('Paiement intégral') || line.t.startsWith('Paiement manuel'))) {
+    } else if (x < 300 && (line.t === 'Hébergement avant remise' || line.t === 'Remise' || line.t === 'Hébergement' || line.t === 'Ménage' || line.t === 'Taxe de séjour' || line.t === 'TOTAL' || line.t === 'Montant réglé' || line.t === 'Reste à régler' || line.t.startsWith('Paiement via') || line.t.startsWith('Acompte') || line.t.startsWith('Solde') || line.t.startsWith('Paiement intégral') || line.t.startsWith('Paiement manuel') || line.t.startsWith('Ménage après séjour') || line.t.startsWith('Paiement complémentaire'))) {
       pendingLeft = true;
     } else {
       y -= line.t ? Math.max(size + 5, 14) : 8;

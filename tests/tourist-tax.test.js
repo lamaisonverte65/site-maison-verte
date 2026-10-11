@@ -72,3 +72,41 @@ test("CLIENTFIDELE foundation applies ten percent to accommodation only", () => 
   assert.deepEqual(applyPercentageDiscountCents(50000, 1000), { grossCents: 50000, discountCents: 5000, netCents: 45000 });
   assert.deepEqual(applyDiscountToNightlyAccommodation([10001, 20002, 19997], 1000).reduce((sum, value) => sum + value, 0), 45000);
 });
+
+
+test("Aure-Louron proportional capped example returns 13.24 euros for two taxable people", () => {
+  const result = calculateTouristTaxNight({ accommodationCents: 40000, occupants: 4, taxablePeople: 2, rule: unclassified2026 });
+  assert.equal(result.cappedBaseTaxCents, 460);
+  assert.equal(result.departmentTaxCents, 46);
+  assert.equal(result.regionalTaxCents, 156);
+  assert.equal(result.personNightRateCents, 662);
+  assert.equal(result.totalTaxCents, 1324);
+});
+
+test("Aure-Louron 2026 fixed classified rates are exact from 1 to 5 stars", () => {
+  const cases = [
+    ["1_star", 115],
+    ["2_star", 144],
+    ["3_star", 230],
+    ["4_star", 360],
+    ["5_star", 475],
+  ];
+  for (const [classification, fixedRateCents] of cases) {
+    const result = calculateTouristTaxNight({
+      accommodationCents: 10000, occupants: 4, taxablePeople: 3,
+      rule: { classification, calculation_type: "fixed", effective_from: "2026-01-01", fixed_rate_cents: fixedRateCents },
+    });
+    assert.equal(result.personNightRateCents, fixedRateCents);
+    assert.equal(result.totalTaxCents, fixedRateCents * 3);
+  }
+});
+
+test("Aure-Louron fixed 2-star guide example gives 25.92 euros", () => {
+  const result = calculateTouristTaxStay({
+    nightlyAccommodationCents: Array.from({ length: 6 }, () => 10000),
+    occupants: 5,
+    taxablePeople: 3,
+    rulesByNight: Array.from({ length: 6 }, () => ({ classification: "2_star", calculation_type: "fixed", effective_from: "2026-01-01", fixed_rate_cents: 144 })),
+  });
+  assert.equal(result.totalTaxCents, 2592);
+});

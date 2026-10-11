@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet";
 import "../styles/livret.css";
+import PublicNavigation from "../components/PublicNavigation";
 
 export default function LivretAccueil() {
   const [keyboxImageError, setKeyboxImageError] = useState(false);
@@ -78,6 +79,8 @@ export default function LivretAccueil() {
         />
         <link rel="canonical" href="https://lamaisonverte65.fr/livret" />
       </Helmet>
+
+      <PublicNavigation solid />
 
       <main className="livret">
         {/* PAGE 1 — COUVERTURE */}

@@ -1,6 +1,6 @@
 import { calculateTouristTaxNight } from "./tourist-tax.js";
 
-const CLASSIFICATIONS = new Set(["unclassified", "1_star", "2_star", "3_star"]);
+const CLASSIFICATIONS = new Set(["unclassified", "1_star", "2_star", "3_star", "4_star", "5_star"]);
 
 function cents(value) {
   const number = Number(value);

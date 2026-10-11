@@ -8,6 +8,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+const TOURIST_TAX_CLASSIFICATIONS = ["unclassified", "1_star", "2_star", "3_star", "4_star", "5_star"];
+
 function cleanNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
@@ -54,16 +56,24 @@ export async function handler(event) {
 
     if (action === "update_tourist_tax_classification") {
       const classification = String(body.classification || "");
-      if (!["unclassified", "1_star", "2_star", "3_star"].includes(classification)) {
+      if (!TOURIST_TAX_CLASSIFICATIONS.includes(classification)) {
         return { statusCode: 400, body: JSON.stringify({ error: "Classement taxe de séjour invalide." }) };
       }
-      const { data, error } = await supabase.from("pricing_settings")
-        .update({ tourist_tax_classification: classification, updated_at: new Date().toISOString() })
-        .eq("id", "default")
-        .select("tourist_tax_classification")
-        .single();
+      const effectiveFrom = String(body.effectiveFrom || new Date().toISOString().slice(0, 10));
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom)) {
+        return { statusCode: 400, body: JSON.stringify({ error: "Date d’effet du classement invalide." }) };
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      if (effectiveFrom > today) {
+        return { statusCode: 400, body: JSON.stringify({ error: "Le classement ne peut pas prendre effet dans le futur." }) };
+      }
+      const { data, error } = await supabase.rpc("admin_set_tourist_tax_classification", {
+        p_classification: classification,
+        p_effective_from: effectiveFrom,
+        p_notes: String(body.notes || "").trim() || null,
+      });
       if (error) throw error;
-      return { statusCode: 200, body: JSON.stringify({ success: true, classification: data.tourist_tax_classification }) };
+      return { statusCode: 200, body: JSON.stringify({ success: true, classification, effectiveFrom, change: data }) };
     }
 
     if (action === "simulate_tourist_tax_rule") {
@@ -73,7 +83,7 @@ export async function handler(event) {
       const adults = Number(body.adults);
       const children = Number(body.children || 0);
       const nightlyAccommodationEuros = Number(body.nightlyAccommodationEuros);
-      if (!["unclassified", "1_star", "2_star", "3_star"].includes(classification)) {
+      if (!TOURIST_TAX_CLASSIFICATIONS.includes(classification)) {
         return { statusCode: 400, body: JSON.stringify({ error: "Classement taxe de séjour invalide." }) };
       }
       if (!Number.isInteger(nights) || nights < 1 || nights > 60 || !Number.isInteger(adults) || adults < 1 || !Number.isInteger(children) || children < 0 || adults + children > 20 || !Number.isFinite(nightlyAccommodationEuros) || nightlyAccommodationEuros < 0) {
@@ -122,7 +132,7 @@ export async function handler(event) {
       const classification = String(body.classification || "");
       const calculationType = String(body.calculationType || "");
       const effectiveFrom = String(body.effectiveFrom || "");
-      if (!["unclassified", "1_star", "2_star", "3_star"].includes(classification)) {
+      if (!TOURIST_TAX_CLASSIFICATIONS.includes(classification)) {
         return { statusCode: 400, body: JSON.stringify({ error: "Classement taxe de séjour invalide." }) };
       }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom)) {

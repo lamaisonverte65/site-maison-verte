@@ -29,6 +29,16 @@ export async function createHousekeepingNote({ accessToken, fetchImpl, reservati
   return data.note;
 }
 
+
+export async function reportCleaningIssue({ accessToken, fetchImpl, bookingId, note }) {
+  const data = await callHousekeeping(
+    "/.netlify/functions/cleaning-issue",
+    { action: "report", bookingId, note },
+    { accessToken, fetchImpl },
+  );
+  return data.issue;
+}
+
 export async function fetchHousekeepingNotes({ accessToken, fetchImpl, reservationId }) {
   const data = await callHousekeeping(
     NOTES_ENDPOINT,

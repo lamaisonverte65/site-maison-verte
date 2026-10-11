@@ -4,6 +4,8 @@ import { lazy, Suspense, useEffect, useState } from "react";
 const Admin = lazy(() => import("./pages/Admin"));
 const GuideValleesAureLouron = lazy(() => import("./pages/GuideValleesAureLouron"));
 const LivretAccueil = lazy(() => import("./pages/LivretAccueil"));
+const SkiValleesAureLouron = lazy(() => import("./pages/SkiValleesAureLouron"));
+const ReviewValidation = lazy(() => import("./pages/ReviewValidation"));
 const ContactRedirect = lazy(() => import("./pages/ContactRedirect"));
 const AppelerRedirect = lazy(() => import("./pages/AppelerRedirect"));
 const MentionsLegales = lazy(() => import("./pages/MentionsLegales"));
@@ -373,6 +375,10 @@ export default function App() {
     return withAnalytics(<ArrivalTimePage />);
   }
 
+  if (path === "/avis-validation") {
+    return withLazyAnalytics(<ReviewValidation />);
+  }
+
   
   if (path === "/guide-vallees-aure-louron") {
     return withLazyAnalytics(<GuideValleesAureLouron />);
@@ -380,6 +386,10 @@ export default function App() {
   
   if (path === "/livret" || path === "/livret-accueil") {
     return withLazyAnalytics(<LivretAccueil />);
+  }
+
+  if (path === "/ski-vallees-aure-louron") {
+    return withLazyAnalytics(<SkiValleesAureLouron />);
   }
 
   if (path === "/mentions-legales") {

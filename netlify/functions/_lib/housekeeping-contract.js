@@ -56,7 +56,7 @@ function toHousekeepingNote(row = {}) {
   };
 }
 
-export function toHousekeepingReservation(row = {}, notes = []) {
+export function toHousekeepingReservation(row = {}, notes = [], cleaningIssue = null) {
   return {
     id: String(row.id || ""),
     source: textOrNull(row.source) || "direct",
@@ -86,6 +86,13 @@ export function toHousekeepingReservation(row = {}, notes = []) {
       ownerForHousekeeping: textOrNull(row.housekeeping_notes),
       housekeeping: (notes || []).map(toHousekeepingNote),
     },
+    cleaningIssue: cleaningIssue ? {
+      id: String(cleaningIssue.id || ""),
+      status: textOrNull(cleaningIssue.status),
+      note: textOrNull(cleaningIssue.notes),
+      reportedAt: textOrNull(cleaningIssue.reported_at),
+    } : null,
+    canReportCleaningIssue: !String(row.id || "").startsWith("external:"),
   };
 }
 

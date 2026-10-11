@@ -23,6 +23,7 @@ const STATUS_LABELS = {
 
 export default function ReservationSummaryBlock({ reservation, status, amounts }) {
   const fullPayment = reservation?.payment_preference === "full";
+  const cancelled = status === "cancelled";
 
   return (
     <section style={{ ...styles.panel, marginBottom: 18 }}>
@@ -37,8 +38,24 @@ export default function ReservationSummaryBlock({ reservation, status, amounts }
         <Info label="Départ" value={formatDate(reservation.end_date)} />
         <Info label="Nuits" value={reservation.nights ?? "-"} />
         <Info label="Total séjour" value={formatMoney(amounts.total)} />
-        <Info label="Acompte" value={fullPayment ? "non applicable" : `${getDepositStatus(reservation)} — ${formatMoney(amounts.deposit)}`} />
-        <Info label={fullPayment ? "Paiement total" : "Solde"} value={`${getBalanceStatus(reservation)} — ${formatMoney(amounts.balance)}`} />
+        <Info
+          label="Acompte"
+          value={
+            cancelled
+              ? `non applicable — ${formatMoney(0)}`
+              : fullPayment
+                ? "non applicable"
+                : `${getDepositStatus(reservation)} — ${formatMoney(amounts.deposit)}`
+          }
+        />
+        <Info
+          label={fullPayment ? "Paiement total" : "Solde"}
+          value={
+            cancelled
+              ? `non applicable — ${formatMoney(0)}`
+              : `${getBalanceStatus(reservation)} — ${formatMoney(amounts.balance)}`
+          }
+        />
         <Info label="Total payé" value={formatMoney(amounts.paid)} />
         <Info label="Payé client réel" value={formatMoney(getRealPaidAmount(reservation))} />
       </div>

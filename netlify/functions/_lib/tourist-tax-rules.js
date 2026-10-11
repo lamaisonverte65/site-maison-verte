@@ -46,7 +46,7 @@ export function resolveTouristTaxRulesByNight({ startDate, endDate, rules, class
 }
 
 export async function loadTouristTaxRulesForStay(supabase, { startDate, endDate, classification }) {
-  if (!new Set(["unclassified", "1_star", "2_star", "3_star"]).has(classification)) {
+  if (!new Set(["unclassified", "1_star", "2_star", "3_star", "4_star", "5_star"]).has(classification)) {
     throw new Error("Classement taxe de séjour invalide.");
   }
   const nights = getStayNightKeys(startDate, endDate);

@@ -28,6 +28,8 @@ const TAX_CLASSIFICATIONS = [
   ["1_star", "1 étoile"],
   ["2_star", "2 étoiles"],
   ["3_star", "3 étoiles"],
+  ["4_star", "4 étoiles"],
+  ["5_star", "5 étoiles"],
 ];
 
 function taxClassificationLabel(value) {
@@ -278,7 +280,11 @@ export default function PricingAdmin({ mode = "all" }) {
     try {
       const response = await fetch("/.netlify/functions/save-price-rule", {
         method: "POST", headers: await getAdminFetchHeaders(),
-        body: JSON.stringify({ action: "update_tourist_tax_classification", classification: taxClassificationModal.classification }),
+        body: JSON.stringify({
+          action: "update_tourist_tax_classification",
+          classification: taxClassificationModal.classification,
+          effectiveFrom: taxToday,
+        }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Erreur classement");
@@ -673,11 +679,11 @@ export default function PricingAdmin({ mode = "all" }) {
         <Modal title="Changer le classement du logement" onClose={() => setTaxClassificationModal(null)}>
           <form onSubmit={saveTaxClassification} style={styles.modalForm}>
             <label style={styles.label}>Classement utilisé pour les nouvelles réservations
-              <select style={styles.input} value={taxClassificationModal.classification} onChange={(e) => setTaxClassificationModal({ classification: e.target.value })}>
+              <select style={styles.input} value={taxClassificationModal.classification} onChange={(e) => setTaxClassificationModal((current) => ({ ...current, classification: e.target.value }))}>
                 {TAX_CLASSIFICATIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </label>
-            <p style={styles.muted}>Ce changement n’altère aucune réservation déjà créée et ne modifie aucune règle tarifaire.</p>
+            <p style={styles.muted}>Le changement de classement prend effet immédiatement à la date du jour. Il n’altère aucune réservation déjà créée, conserve l’historique du classement et ne modifie aucune règle tarifaire.</p>
             <div style={styles.modalActions}><button type="button" style={styles.secondaryButton} onClick={() => setTaxClassificationModal(null)}>Annuler</button><button type="submit" style={styles.primaryButton} disabled={saving}>Enregistrer</button></div>
           </form>
         </Modal>

@@ -40,6 +40,8 @@ function getReasonLabel(reason) {
     solde: "Solde",
     total: "Paiement total / tarif promo",
     complement: "Complément",
+    cleaning: "Ménage après séjour",
+    additional_charge: "Paiement complémentaire",
   };
   return labels[reason] || "Paiement";
 }
@@ -108,13 +110,16 @@ async function findBookingAndPaymentByPaymentIntent(paymentIntentId) {
     .eq("stripe_payment_intent_id", paymentIntentId)
     .maybeSingle();
 
-  if (payment?.booking_request_id) {
-    const { data: booking } = await supabase
-      .from("booking_requests")
-      .select("*")
-      .eq("id", payment.booking_request_id)
-      .maybeSingle();
-    return { booking, payment };
+  if (payment) {
+    if (payment.booking_request_id) {
+      const { data: booking } = await supabase
+        .from("booking_requests")
+        .select("*")
+        .eq("id", payment.booking_request_id)
+        .maybeSingle();
+      return { booking, payment };
+    }
+    return { booking: null, payment };
   }
 
   const { data: booking } = await supabase
@@ -447,6 +452,44 @@ async function sendOwnerPaymentStatusEmail(booking, paymentType, amount, clientE
   return { sent: true };
 }
 
+async function applyAdditionalChargePayment(payload) {
+  const { data, error } = await supabase.rpc("apply_additional_charge_payment", {
+    p_additional_charge_id: payload.additionalChargeId,
+    p_checkout_session_id: payload.checkoutSessionId,
+    p_payment_intent_id: payload.paymentIntentId,
+    p_amount: payload.amount,
+    p_currency: payload.currency,
+    p_customer_email: payload.customerEmail,
+    p_metadata: payload.metadata,
+    p_stripe_paid_at: payload.stripePaidAt,
+    p_stripe_fee_amount: payload.stripeFeeAmount,
+    p_stripe_net_amount: payload.stripeNetAmount,
+    p_balance_transaction_id: payload.balanceTransactionId,
+    p_charge_id: payload.chargeId,
+  }).single();
+  if (error) throw error;
+  return data;
+}
+
+async function applyCleaningPayment(payload) {
+  const { data, error } = await supabase.rpc("apply_post_stay_cleaning_payment", {
+    p_cleaning_issue_id: payload.cleaningIssueId,
+    p_checkout_session_id: payload.checkoutSessionId,
+    p_payment_intent_id: payload.paymentIntentId,
+    p_amount: payload.amount,
+    p_currency: payload.currency,
+    p_customer_email: payload.customerEmail,
+    p_metadata: payload.metadata,
+    p_stripe_paid_at: payload.stripePaidAt,
+    p_stripe_fee_amount: payload.stripeFeeAmount,
+    p_stripe_net_amount: payload.stripeNetAmount,
+    p_balance_transaction_id: payload.balanceTransactionId,
+    p_charge_id: payload.chargeId,
+  }).single();
+  if (error) throw error;
+  return data;
+}
+
 async function applyCheckoutPayment(payload) {
   const { data, error } = await supabase.rpc("apply_stripe_checkout_payment", {
     p_booking_id: payload.bookingId,
@@ -488,6 +531,8 @@ export async function handler(event) {
         dependencies: {
           getFinancialDetails: getStripeFinancialDetails,
           applyPayment: applyCheckoutPayment,
+          applyCleaningPayment,
+          applyAdditionalChargePayment,
           sendConfirmationEmail: async ({ booking, paymentType, manualReason, amount, arrivalToken }) => {
             const clientEmailResult = await sendPaymentConfirmationEmail(booking, paymentType, {
               manualReason,

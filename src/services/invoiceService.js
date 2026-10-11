@@ -23,6 +23,24 @@ export async function createDirectInvoiceDraft(bookingRequestId) {
   return readJson(response);
 }
 
+export async function createCleaningInvoiceDraft(bookingRequestId) {
+  const response = await fetch("/.netlify/functions/create-cleaning-invoice-draft", {
+    method: "POST",
+    headers: await authHeaders(true),
+    body: JSON.stringify({ bookingRequestId }),
+  });
+  return readJson(response);
+}
+
+export async function createAdditionalChargeInvoiceDraft(chargeId) {
+  const response = await fetch("/.netlify/functions/create-additional-charge-invoice-draft", {
+    method: "POST",
+    headers: await authHeaders(true),
+    body: JSON.stringify({ chargeId }),
+  });
+  return readJson(response);
+}
+
 export async function createBookingInvoiceDraft(bookingRequestId) {
   const response = await fetch("/.netlify/functions/create-booking-invoice-draft", {
     method: "POST", headers: await authHeaders(true),
