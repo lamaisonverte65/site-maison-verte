@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readRequired } from './backup-test-helpers.js';
 
-test('backup SQL utilise les dumps Supabase restaurables et conserve Auth + historique migrations', () => {
+test('backup SQL utilise les dumps Supabase restaurables et conserve Auth + historique migrations si disponible', () => {
   const src = readRequired('scripts/backup/backup-database.sh');
   assert.match(src, /supabase db dump/);
   assert.match(src, /--role-only/);
@@ -13,6 +13,10 @@ test('backup SQL utilise les dumps Supabase restaurables et conserve Auth + hist
   assert.match(src, /storage\.buckets_vectors/);
   assert.match(src, /storage\.vector_indexes/);
   assert.match(src, /--schema[ =]+auth/);
-  assert.match(src, /supabase_migrations/);
+  assert.match(src, /to_regnamespace\(['"]supabase_migrations['"]\)/);
+  assert.match(src, /HAS_MIGRATION_SCHEMA/);
+  assert.match(src, /migration-history-schema\.sql/);
+  assert.match(src, /migration-history-data\.sql/);
+  assert.match(src, /supabase_migrations absent|Schema supabase_migrations absent/i);
   assert.doesNotMatch(src, /echo\s+.*SUPABASE_DB_URL/);
 });

@@ -51,9 +51,13 @@ Ordre appliqué :
 2. `schema.sql` ;
 3. `auth-data.sql` ;
 4. `data.sql` ;
-5. historique `supabase_migrations`.
+5. historique `supabase_migrations`, uniquement s’il est présent dans la sauvegarde.
 
-`ON_ERROR_STOP=1` et des transactions sont utilisés afin qu’une erreur ne soit pas silencieuse. Selon la version de la cible Supabase, certaines lignes de rôles/ownership gérés peuvent demander une adaptation ; ne jamais ignorer une erreur sans l’analyser.
+L’historique `supabase_migrations` est optionnel : certains projets n’ont pas ce schéma. Son absence ne rend pas la sauvegarde invalide, puisque les fichiers de migrations Git sont archivés séparément.
+
+`ON_ERROR_STOP=1` et des transactions sont utilisés afin qu’une erreur ne soit pas silencieuse. Les dumps `data.sql` et `auth-data.sql` sont restaurés avec `session_replication_role = replica` afin d’éviter que l’ordre d’insertion ne bloque sur des triggers ou des FK circulaires. Le premier test de restauration doit notamment valider les relations signalées par `pg_dump` entre `booking_cleaning_issues`, `customer_invoices`, `booking_additional_charges` et `accounting_import_batches`.
+
+Selon la version de la cible Supabase, certaines lignes de rôles/ownership gérés peuvent demander une adaptation ; ne jamais ignorer une erreur sans l’analyser.
 
 ## 4. Restaurer Storage
 
