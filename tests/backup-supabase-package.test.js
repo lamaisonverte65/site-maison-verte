@@ -21,3 +21,12 @@ test('assemblage construit un paquet complet avant de générer checksums et man
   assert.match(src, /bash \"\$SCRIPT_DIR\/backup-database\.sh\"/);
   assert.match(src, /test -s|\[ -s/);
 });
+
+test('assemblage tolère l’absence totale de l’historique supabase_migrations mais valide une paire présente', () => {
+  const src = readRequired('scripts/backup/assemble-backup.sh');
+  assert.match(src, /MIGRATION_HISTORY_SCHEMA=.*migration-history-schema\.sql/);
+  assert.match(src, /MIGRATION_HISTORY_DATA=.*migration-history-data\.sql/);
+  assert.match(src, /if \[\[ -e \"\$MIGRATION_HISTORY_SCHEMA\" \|\| -e \"\$MIGRATION_HISTORY_DATA\" \]\]/);
+  assert.match(src, /test -s \"\$MIGRATION_HISTORY_SCHEMA\"/);
+  assert.match(src, /test -s \"\$MIGRATION_HISTORY_DATA\"/);
+});

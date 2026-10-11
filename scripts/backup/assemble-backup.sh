@@ -25,13 +25,20 @@ for critical in \
   "$BACKUP_DIR/database/schema.sql" \
   "$BACKUP_DIR/database/data.sql" \
   "$BACKUP_DIR/database/auth-data.sql" \
-  "$BACKUP_DIR/database/migration-history-schema.sql" \
-  "$BACKUP_DIR/database/migration-history-data.sql" \
   "$BACKUP_DIR/inventory/public_tables.tsv" \
   "$BACKUP_DIR/inventory/storage_buckets.json" \
   "$BACKUP_DIR/inventory/storage_objects.json"; do
   test -s "$critical" || { echo "Critical backup file missing or empty: $critical" >&2; exit 1; }
 done
+
+# Migration history is optional because some hosted projects do not expose the
+# supabase_migrations schema. If one history file exists, require the pair.
+MIGRATION_HISTORY_SCHEMA="$BACKUP_DIR/database/migration-history-schema.sql"
+MIGRATION_HISTORY_DATA="$BACKUP_DIR/database/migration-history-data.sql"
+if [[ -e "$MIGRATION_HISTORY_SCHEMA" || -e "$MIGRATION_HISTORY_DATA" ]]; then
+  test -s "$MIGRATION_HISTORY_SCHEMA" || { echo "Migration history schema file missing or empty: $MIGRATION_HISTORY_SCHEMA" >&2; exit 1; }
+  test -s "$MIGRATION_HISTORY_DATA" || { echo "Migration history data file missing or empty: $MIGRATION_HISTORY_DATA" >&2; exit 1; }
+fi
 
 node "$SCRIPT_DIR/build-manifest.mjs" "$BACKUP_DIR"
 
