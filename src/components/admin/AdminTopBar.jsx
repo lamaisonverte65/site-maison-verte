@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { requestLatestBackupDownload } from "../../services/adminBackupDownloadService";
 import { styles } from "./adminStyles";
 
 const TABS = [
@@ -39,6 +41,27 @@ export default function AdminTopBar({
   onLogout,
   permissions,
 }) {
+  const [backupDownloadLoading, setBackupDownloadLoading] = useState(false);
+
+  async function downloadLatestBackup() {
+    if (!permissions?.isOwner || backupDownloadLoading) return;
+    setBackupDownloadLoading(true);
+    try {
+      const { downloadUrl, filename } = await requestLatestBackupDownload();
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = filename;
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      window.alert(error?.message || "Impossible de télécharger la dernière sauvegarde.");
+    } finally {
+      setBackupDownloadLoading(false);
+    }
+  }
+
   if (permissions?.isHousekeeping) {
     return (
       <section style={styles.header}>
@@ -76,6 +99,15 @@ export default function AdminTopBar({
           <button style={styles.printButton} onClick={onPrintWelcomeBooklet}>Imprimer le livret</button>
           <button style={styles.refreshButton} onClick={onRefresh}>Actualiser</button>
           <button style={styles.smallButton} onClick={() => onNavigate("users")}>Mon compte</button>
+          {permissions?.isOwner && (
+            <button
+              style={styles.smallButton}
+              onClick={downloadLatestBackup}
+              disabled={backupDownloadLoading}
+            >
+              {backupDownloadLoading ? "Préparation du téléchargement…" : "Télécharger la dernière sauvegarde"}
+            </button>
+          )}
           <button style={adminTrackingDisabled ? styles.smallButton : styles.warningButton} onClick={onToggleAdminTracking}>
             {adminTrackingDisabled ? "Mes visites ignorées" : "Compter mon navigateur"}
           </button>

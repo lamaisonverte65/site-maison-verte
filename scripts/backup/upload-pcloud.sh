@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 : "${PCLOUD_TOKEN:?PCLOUD_TOKEN is required}"
 : "${RCLONE_CRYPT_PASSWORD:?RCLONE_CRYPT_PASSWORD is required}"
 : "${RCLONE_CRYPT_PASSWORD2:?RCLONE_CRYPT_PASSWORD2 is required}"
@@ -71,3 +73,4 @@ rclone copy "$STAGING" "$REMOTE" --create-empty-src-dirs
 rclone cryptcheck "$BACKUP_DIR" "$REMOTE" --one-way
 rclone copyto "$SUCCESS_FILE" "$REMOTE/_SUCCESS"
 rclone purge "$STAGING"
+bash "$SCRIPT_DIR/publish-latest-backup.sh" "$TIER" "$BACKUP_ID"
