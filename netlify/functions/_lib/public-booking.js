@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { escapeHtml } from "./html.js";
+import { CURRENT_CONTRACT_URL, CURRENT_CONTRACT_VERSION } from "./contract-version.js";
 
 const allowedFields = new Set([
   "guestFirstName", "guestLastName", "guestEmail", "guestPhone", "guestAddress", "guestPostalCode", "guestCity", "guestCountry", "adultsCount", "childrenCount",
@@ -178,7 +179,7 @@ export function validatePublicBookingPayload(input = {}, { cleaningFee = 0 } = {
       cleaning_obligations_accepted_at: input.cleaningOption ? null : acceptedAt,
       cleaning_obligations_version: input.cleaningOption ? null : CLEANING_OBLIGATIONS_VERSION,
       message: message || null, contract_accepted: true, contract_accepted_at: acceptedAt,
-      contract_version: "v1.2", contract_url: "https://lamaisonverte65.fr/documents/contrat-location.pdf",
+      contract_version: CURRENT_CONTRACT_VERSION, contract_url: CURRENT_CONTRACT_URL,
     },
     emailModel,
   };

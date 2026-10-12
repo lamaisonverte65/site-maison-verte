@@ -4,6 +4,7 @@ import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.
 import { escapeHtml } from "./_lib/html.js";
 import { contractualDeposit, contractualTotal } from "./_lib/booking-financial-authority.js";
 import { resendEmail } from "./_lib/resend-email.js";
+import { resolveBookingContractUrl } from "./_lib/contract-version.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -134,6 +135,7 @@ export async function handler(event) {
     if (bookingError || !storedBooking?.guest_email) return { statusCode: 404, body: JSON.stringify({ error: "Réservation introuvable." }) };
     const recipientEmail = storedBooking.guest_email;
     const safeOwnerMessage = escapeHtml(ownerMessage || "").replace(/\r?\n/g, "<br />");
+    const contractUrl = resolveBookingContractUrl(storedBooking.contract_url);
 
     const guestFirstName = storedBooking.guest_first_name || "";
     const guestLastName = storedBooking.guest_last_name || "";
@@ -264,7 +266,7 @@ export async function handler(event) {
         <p>
           Vous pouvez à tout moment consulter le
           <a
-            href="https://lamaisonverte65.fr/documents/contrat-location.pdf"
+            href="${contractUrl}"
             style="color:#166534;font-weight:bold;text-decoration:none;"
           >contrat de location</a>,
           qui reprend les conditions de votre réservation.

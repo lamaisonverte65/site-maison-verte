@@ -22,3 +22,27 @@ test("decision email builds accepted stay and payment data from stored booking",
   assert.match(source, /storedBooking\.accommodation_net/);
   assert.match(source, /storedBooking\.tourist_tax_amount/);
 });
+
+
+test("contract URL helper accepts only immutable LMV contract URLs", async () => {
+  const { CURRENT_CONTRACT_VERSION, CURRENT_CONTRACT_URL, resolveBookingContractUrl } = await import("../netlify/functions/_lib/contract-version.js");
+
+  assert.equal(CURRENT_CONTRACT_VERSION, "v1.5");
+  assert.equal(CURRENT_CONTRACT_URL, "https://lamaisonverte65.fr/documents/contrat-location-V1.5.pdf");
+  assert.equal(
+    resolveBookingContractUrl("https://lamaisonverte65.fr/documents/contrat-location-V1.2.pdf"),
+    "https://lamaisonverte65.fr/documents/contrat-location-V1.2.pdf",
+  );
+  assert.equal(resolveBookingContractUrl("https://lamaisonverte65.fr/documents/contrat-location.pdf"), CURRENT_CONTRACT_URL);
+  assert.equal(resolveBookingContractUrl("https://evil.example/contrat-location-V1.5.pdf"), CURRENT_CONTRACT_URL);
+  assert.equal(resolveBookingContractUrl("http://lamaisonverte65.fr/documents/contrat-location-V1.4.pdf"), CURRENT_CONTRACT_URL);
+  assert.equal(resolveBookingContractUrl("https://lamaisonverte65.fr/documents/contrat-location-V1.4.pdf?download=1"), CURRENT_CONTRACT_URL);
+});
+
+test("decision email resolves the stored immutable contract URL instead of hard-coding the mutable contract", () => {
+  const source = read("netlify/functions/send-booking-decision.js");
+  assert.match(source, /resolveBookingContractUrl/);
+  assert.match(source, /storedBooking\.contract_url/);
+  assert.match(source, /href="\$\{contractUrl\}"/);
+  assert.doesNotMatch(source, /href="https:\/\/lamaisonverte65\.fr\/documents\/contrat-location\.pdf"/);
+});
