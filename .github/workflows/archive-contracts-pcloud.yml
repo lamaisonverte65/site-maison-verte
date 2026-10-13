@@ -1,0 +1,54 @@
+name: Archive immutable contracts to pCloud
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lmv-contracts-archive
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PCLOUD_TOKEN: ${{ secrets.PCLOUD_TOKEN }}
+      RCLONE_CRYPT_PASSWORD: ${{ secrets.RCLONE_CRYPT_PASSWORD }}
+      RCLONE_CRYPT_PASSWORD2: ${{ secrets.RCLONE_CRYPT_PASSWORD2 }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install rclone
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rclone
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$PCLOUD_TOKEN" ]] || { echo 'PCLOUD_TOKEN missing'; exit 1; }
+          [[ -n "$RCLONE_CRYPT_PASSWORD" ]] || { echo 'RCLONE_CRYPT_PASSWORD missing'; exit 1; }
+          [[ -n "$RCLONE_CRYPT_PASSWORD2" ]] || { echo 'RCLONE_CRYPT_PASSWORD2 missing'; exit 1; }
+
+      - name: Build deterministic contract archive
+        shell: bash
+        run: |
+          archive_dir="${RUNNER_TEMP}/lmv-contracts"
+          mkdir -p "$archive_dir"
+          node scripts/backup/build-contracts-archive.mjs public/documents "$archive_dir"
+          echo "CONTRACTS_ARCHIVE_DIR=$archive_dir" >> "$GITHUB_ENV"
+
+      - name: Archive and verify on encrypted pCloud remote
+        shell: bash
+        run: bash scripts/backup/archive-contracts-pcloud.sh "$CONTRACTS_ARCHIVE_DIR"
