@@ -32,6 +32,9 @@ test('Stripe workflow uses minimal permissions and only dedicated read-only back
 
 test('Stripe workflow assembles once and uploads only to isolated Stripe pCloud roots', () => {
   const src = source();
+  assert.match(src, /runs-on:\s*ubuntu-24\.04/);
+  assert.match(src, /actions\/checkout@v5/);
+  assert.match(src, /actions\/setup-node@v5/);
   assert.match(src, /node-version:\s*['"]22['"]/);
   assert.match(src, /npm ci --ignore-scripts/);
   assert.match(src, /apt-get install[^\n]*rclone/);
@@ -55,7 +58,7 @@ test('scheduled Stripe workflow applies the same tiering and rotates only after 
 
 test('Stripe workflow diagnostic is short-lived metadata and never uploads raw backup as artifact', () => {
   const src = source();
-  assert.match(src, /actions\/upload-artifact@v4/);
+  assert.match(src, /actions\/upload-artifact@v6/);
   assert.match(src, /retention-days:\s*14/);
   assert.match(src, /stripe-backup-diagnostic-/);
   assert.match(src, /backup-diagnostic\.txt/);

@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   backup:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       STRIPE_BACKUP_KEY: ${{ secrets.STRIPE_BACKUP_KEY }}
@@ -36,10 +36,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -122,7 +122,7 @@ jobs:
 
       - name: Upload diagnostic artifact
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: stripe-backup-diagnostic-${{ github.run_id }}
           path: ${{ runner.temp }}/backup-diagnostic.txt

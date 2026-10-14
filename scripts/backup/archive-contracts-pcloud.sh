@@ -47,14 +47,37 @@ done
 # Invalidate success before any mutation; recreate only after full verification.
 rclone deletefile "$REMOTE/_SUCCESS" 2>/dev/null || true
 
-# Historical PDFs are immutable: identical reruns succeed, changed bytes fail.
+# Historical PDFs are immutable:
+# - existing + identical: do not rewrite it;
+# - existing + different: fail;
+# - absent: upload it once.
 for name in "${local_pdfs[@]}"; do
   file="$ARCHIVE_DIR/$name"
-  rclone copyto "$file" "$REMOTE/$name" --immutable
- done
 
-rclone copyto "$ARCHIVE_DIR/manifest.json" "$REMOTE/manifest.json"
-rclone copyto "$ARCHIVE_DIR/SHA256SUMS" "$REMOTE/SHA256SUMS"
+  if printf '%s\n' "${remote_pdfs[@]}" | grep -Fxq "$name"; then
+    if rclone cryptcheck "$ARCHIVE_DIR" "$REMOTE" --include "$name" >/dev/null 2>&1; then
+      echo "Immutable contract already archived and identical: $name"
+      continue
+    fi
+
+    echo "Immutable contract differs from archived version: $name" >&2
+    exit 1
+  fi
+
+  rclone copyto "$file" "$REMOTE/$name" --immutable
+done
+
+# Small metadata files may evolve when a new contract version is added.
+# Avoid touching them when their decrypted contents are already identical.
+for name in manifest.json SHA256SUMS; do
+  file="$ARCHIVE_DIR/$name"
+
+  if rclone cat "$REMOTE/$name" 2>/dev/null | cmp -s "$file" -; then
+    echo "Metadata already identical: $name"
+  else
+    rclone copyto "$file" "$REMOTE/$name"
+  fi
+done
 
 rclone cryptcheck "$ARCHIVE_DIR" "$REMOTE" \
   --include 'contrat-location-V*.pdf' \
