@@ -72,7 +72,7 @@ FOLDER_ID="$(printf '%s' "$LIST_JSON" | node -e '
   process.stdin.on("end", () => {
     let payload;
     try {
-      const exactIds = input.replace(/("folderid"\s*:\s*)(\d+)/g, '$1"$2"');
+      const exactIds = input.replace(/("folderid"\s*:\s*)(\d+)/g, "$1\"$2\"");
       payload = JSON.parse(exactIds);
     } catch { process.exit(2); }
     const id = String(payload?.metadata?.folderid ?? "");
