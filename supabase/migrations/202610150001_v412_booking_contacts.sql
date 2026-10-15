@@ -5,7 +5,7 @@
 create table if not exists public.booking_contacts (
   id uuid primary key default gen_random_uuid(),
   booking_request_id uuid not null references public.booking_requests(id) on delete cascade,
-  customer_id uuid references public.customers(id) on delete set null,
+  customer_id bigint references public.customers(id) on delete set null,
   position smallint not null check (position between 1 and 4),
   role text not null default 'additional' check (role = 'additional'),
   first_name text not null,
@@ -34,6 +34,8 @@ alter table public.booking_contacts enable row level security;
 revoke all on table public.booking_contacts from anon;
 revoke all on table public.booking_contacts from authenticated;
 grant select, insert, update, delete on table public.booking_contacts to authenticated;
+
+drop policy if exists booking_contacts_owner_only on public.booking_contacts;
 
 create policy booking_contacts_owner_only on public.booking_contacts
   for all to authenticated
