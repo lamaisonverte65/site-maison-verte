@@ -210,7 +210,7 @@ export default function DeclarationsPanel() {
       let entries;
       if (source === "booking" || source === "booking_overview") {
         const [calendarResponse, persistedResponse] = await Promise.all([
-          fetch("/.netlify/functions/calendar", { cache: "no-store" }),
+          supabase.auth.getSession().then(({ data: { session } }) => fetch("/.netlify/functions/admin-calendar", { cache: "no-store", headers: { Authorization: `Bearer ${session?.access_token || ""}` } })),
           supabase.from("booking_requests").select("id,source,start_date,end_date,guest_first_name,guest_last_name"),
         ]);
         const calendar = calendarResponse.ok ? await calendarResponse.json() : { externalReservations: [] };

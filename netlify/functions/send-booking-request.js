@@ -5,6 +5,7 @@ import { createSupabaseAtomicBookingRepository, DATE_CONFLICT_MESSAGE, runAtomic
 import { calculatePublicBookingQuote, quoteToBookingMoney } from "./_lib/booking-quote.js";
 import { centsToEuros } from "./_lib/tourist-tax.js";
 import { resendEmail } from "./_lib/resend-email.js";
+import { createSupabaseAdditionalContactRepository, persistAdditionalBookingContacts } from "./_lib/public-booking-contacts.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const json = (statusCode, body) => new Response(JSON.stringify(body), {
@@ -111,8 +112,33 @@ export default async function handler(request, context) {
         error: DATE_CONFLICT_MESSAGE,
       });
     }
-    if (result.confirmationPending) {
-      return json(202, { success: true, bookingId: result.bookingId, confirmationPending: true });
+
+    let additionalContactsPending = false;
+    if (result.outcome === "created" && validated.additionalContacts.length > 0) {
+      try {
+        const contactResult = await persistAdditionalBookingContacts(
+          createSupabaseAdditionalContactRepository(supabase),
+          {
+            bookingId: result.bookingId,
+            contacts: validated.additionalContacts,
+            startDate: validated.booking.start_date,
+            endDate: validated.booking.end_date,
+          },
+        );
+        additionalContactsPending = contactResult.conflicts > 0;
+      } catch (contactError) {
+        additionalContactsPending = true;
+        console.error("Erreur contacts supplémentaires:", contactError);
+      }
+    }
+
+    if (result.confirmationPending || additionalContactsPending) {
+      return json(202, {
+        success: true,
+        bookingId: result.bookingId,
+        ...(result.confirmationPending ? { confirmationPending: true } : {}),
+        ...(additionalContactsPending ? { additionalContactsPending: true } : {}),
+      });
     }
     return json(200, { success: true, bookingId: result.bookingId });
   } catch (error) {

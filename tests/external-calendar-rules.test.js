@@ -18,7 +18,7 @@ test("two-night events and unknown providers are not technical one-night blocks"
 });
 
 test("calendar endpoint uses the persistent registry instead of fetching live iCal feeds", () => {
-  const source = readFileSync("netlify/functions/calendar.js", "utf8");
+  const source = readFileSync("netlify/functions/_lib/calendar-response.js", "utf8");
   assert.match(source, /external_occupancies/);
   assert.match(source, /loadPersistedExternalCalendar/);
   assert.doesNotMatch(source, /node-ical|fromURL|AIRBNB_ICAL_URL|BOOKING_ICAL_URL/);

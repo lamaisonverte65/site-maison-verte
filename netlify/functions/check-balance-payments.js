@@ -1,3 +1,4 @@
+import { escapeHtml } from "./_lib/html.js";
 import { schedule } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 import { createBalancePaymentUrl } from "./_lib/balance-link.js";
@@ -148,7 +149,7 @@ async function sendEmail(booking, paymentLink, amount, step) {
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6;">
       <h2>${labels[step]} — La Maison Verte</h2>
-      <p>Bonjour ${booking.guest_first_name || ""} ${booking.guest_last_name || ""},</p>
+      <p>Bonjour ${escapeHtml(booking.guest_first_name || "")} ${escapeHtml(booking.guest_last_name || "")},</p>
       <p>${intro[step]}</p>
       <p>
         <strong>Arrivée :</strong> ${formatDate(booking.start_date)}<br />
@@ -156,7 +157,7 @@ async function sendEmail(booking, paymentLink, amount, step) {
         <strong>Solde à payer :</strong> ${formatMoney(amount)}
       </p>
       <p style="margin-top:30px;">
-        <a href="${paymentLink}" style="background:#16a34a;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;">
+        <a href="${escapeHtml(paymentLink)}" style="background:#16a34a;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;">
           Payer le solde
         </a>
       </p>
@@ -194,7 +195,7 @@ async function sendOwnerJ17Alert(booking, balance) {
   const name = `${booking.guest_first_name || ""} ${booking.guest_last_name || ""}`.trim();
   const adminUrl = `${process.env.URL || "https://lamaisonverte65.fr"}/admin?booking=${encodeURIComponent(booking.id)}`;
   const subject = `⚠️ Solde impayé — contacter ${name || "le client"} — arrivée le ${formatDate(booking.start_date)}`;
-  const html = `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>Solde impayé à J-17</h2><p>La relance automatique J-17 vient d’être envoyée au client.</p><p><strong>Client :</strong> ${name || "-"}<br><strong>Téléphone :</strong> <a href="tel:${booking.guest_phone || ""}">${booking.guest_phone || "-"}</a><br><strong>Email :</strong> <a href="mailto:${booking.guest_email || ""}">${booking.guest_email || "-"}</a></p><p><strong>Séjour :</strong> ${formatDate(booking.start_date)} → ${formatDate(booking.end_date)}<br><strong>Total du séjour :</strong> ${formatMoney(getTotalDue(booking))}<br><strong>Acompte reçu :</strong> ${formatMoney(booking.deposit_amount || 0)}<br><strong>Solde restant :</strong> ${formatMoney(balance)}</p><p><strong>Action :</strong> contacter le client par téléphone pour vérifier qu’il a reçu les demandes de paiement et confirmer que le séjour est maintenu.</p><p>La réservation reste active, les dates restent bloquées et le solde demeure dû.</p><p><a href="${adminUrl}" style="background:#166534;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Ouvrir la réservation dans l’admin</a></p></div>`;
+  const html = `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>Solde impayé à J-17</h2><p>La relance automatique J-17 vient d’être envoyée au client.</p><p><strong>Client :</strong> ${escapeHtml(name || "-")}<br><strong>Téléphone :</strong> <a href="tel:${escapeHtml(booking.guest_phone || "")}">${escapeHtml(booking.guest_phone || "-")}</a><br><strong>Email :</strong> <a href="mailto:${escapeHtml(booking.guest_email || "")}">${escapeHtml(booking.guest_email || "-")}</a></p><p><strong>Séjour :</strong> ${formatDate(booking.start_date)} → ${formatDate(booking.end_date)}<br><strong>Total du séjour :</strong> ${formatMoney(getTotalDue(booking))}<br><strong>Acompte reçu :</strong> ${formatMoney(booking.deposit_amount || 0)}<br><strong>Solde restant :</strong> ${formatMoney(balance)}</p><p><strong>Action :</strong> contacter le client par téléphone pour vérifier qu’il a reçu les demandes de paiement et confirmer que le séjour est maintenu.</p><p>La réservation reste active, les dates restent bloquées et le solde demeure dû.</p><p><a href="${escapeHtml(adminUrl)}" style="background:#166534;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Ouvrir la réservation dans l’admin</a></p></div>`;
   const retryPayload = { from:"La Maison Verte <contact@lamaisonverte65.fr>", to:[ownerEmail], subject, html };
   const response = await resendEmail(retryPayload);
   if (!response.ok) throw new Error(await response.text());

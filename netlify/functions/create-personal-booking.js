@@ -1,3 +1,4 @@
+import { escapeHtml } from "./_lib/html.js";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
@@ -124,7 +125,7 @@ async function sendAdminBookingPaymentEmail({ booking, paymentLink, paymentType,
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937;">
       <h2>${isFull ? "Paiement du séjour" : "Acompte de réservation"} — La Maison Verte</h2>
 
-      <p>Bonjour ${booking.guest_first_name || ""} ${booking.guest_last_name || ""},</p>
+      <p>Bonjour ${escapeHtml(booking.guest_first_name || "")} ${escapeHtml(booking.guest_last_name || "")},</p>
 
       <p>
         Votre réservation à <strong>La Maison Verte à Arreau</strong> a été créée par nos soins.
@@ -141,10 +142,10 @@ async function sendAdminBookingPaymentEmail({ booking, paymentLink, paymentType,
         <strong>Montant à régler maintenant :</strong> ${formatMoney(paymentAmount)}
       </p>
 
-      ${message ? `<p><strong>Message :</strong><br />${message}</p>` : ""}
+      ${message ? `<p><strong>Message :</strong><br />${escapeHtml(message)}</p>` : ""}
 
       <p style="margin-top:30px;">
-        <a href="${paymentLink}" style="background:#2f4f35;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;">
+        <a href="${escapeHtml(paymentLink)}" style="background:#2f4f35;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;">
           ${isFull ? "Payer le séjour" : "Payer l’acompte"}
         </a>
       </p>

@@ -96,7 +96,7 @@ function getCommonData(visitorId, sessionId) {
     page: window.location.pathname || "/",
     visitor_id: visitorId,
     session_id: sessionId,
-    referrer,
+    referrer: referrerDomain || null,
     referrer_domain: referrerDomain || null,
     source,
     utm_source: params.get("utm_source"),
@@ -113,11 +113,8 @@ function getCommonData(visitorId, sessionId) {
     is_internal: false,
     metadata: {
       page: window.location.pathname || "/",
-      title: document.title,
       country_hint: getCountryHint(language, timezone),
-      user_agent: navigator.userAgent,
       touch_points: navigator.maxTouchPoints || 0,
-      platform: navigator.platform || "",
       color_depth: window.screen?.colorDepth || null,
       pixel_ratio: window.devicePixelRatio || 1,
     },
@@ -143,10 +140,11 @@ export default function SiteAnalyticsTracker() {
 
     if (window.localStorage.getItem(INTERNAL_STORAGE_KEY) === "1") return;
 
-    let visitorId = window.localStorage.getItem(VISITOR_STORAGE_KEY);
+    window.localStorage.removeItem(VISITOR_STORAGE_KEY);
+    let visitorId = window.sessionStorage.getItem(VISITOR_STORAGE_KEY);
     if (!visitorId) {
       visitorId = createId("visiteur");
-      window.localStorage.setItem(VISITOR_STORAGE_KEY, visitorId);
+      window.sessionStorage.setItem(VISITOR_STORAGE_KEY, visitorId);
     }
 
     let sessionId = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
@@ -225,11 +223,13 @@ export default function SiteAnalyticsTracker() {
       const target = event.target?.closest?.("a, button, [role='button']");
       if (!target) return;
 
-      const href = target.href || target.getAttribute("href") || "";
-      const text = (target.innerText || target.textContent || target.getAttribute("aria-label") || "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 180);
+      // Never collect a payment/review token, email address, phone or button text.
+      let href = "";
+      try {
+        const link = new URL(target.href || target.getAttribute("href") || "", window.location.origin);
+        if (["http:", "https:"].includes(link.protocol)) href = link.origin;
+      } catch { /* A malformed link has no analytics destination. */ }
+      const text = null;
 
       trackEvent("link_click", {
         href: href || null,

@@ -1,3 +1,4 @@
+import { escapeHtml } from "./_lib/html.js";
 import { schedule } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
@@ -80,7 +81,7 @@ async function sendExpiredEmail(booking) {
     <div style="font-family: Arial, sans-serif; line-height: 1.6;">
       <h2>Votre demande de réservation a expiré</h2>
 
-      <p>Bonjour ${booking.guest_first_name || ""} ${booking.guest_last_name || ""},</p>
+      <p>Bonjour ${escapeHtml(booking.guest_first_name || "")} ${escapeHtml(booking.guest_last_name || "")},</p>
 
       <p>
         Votre demande de réservation pour <strong>La Maison Verte à Arreau</strong>
@@ -160,7 +161,7 @@ async function sendOwnerPaymentNotReceivedAlert(booking, clientEmailResult) {
   const adminUrl = `${process.env.URL || "https://lamaisonverte65.fr"}/admin?booking=${encodeURIComponent(booking.id)}`;
   const subject = `${label} — ${name} — demande expirée`;
   const clientEmailStatus = clientEmailResult?.sent ? "envoyé" : `ÉCHEC${clientEmailResult?.reason ? ` — ${clientEmailResult.reason}` : ""}`;
-  const html = `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>${label}</h2><p>La demande acceptée a expiré sans réception du paiement initial.</p><p><strong>Client :</strong> ${name}<br><strong>Séjour :</strong> ${formatDate(booking.start_date)} → ${formatDate(booking.end_date)}<br><strong>Email d’expiration client :</strong> ${clientEmailStatus}</p><p>Les dates ont été remises à disposition et les sessions Stripe ouvertes ont été neutralisées.</p><p><a href="${adminUrl}" style="background:#166534;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Ouvrir la réservation dans l’admin</a></p></div>`;
+  const html = `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>${label}</h2><p>La demande acceptée a expiré sans réception du paiement initial.</p><p><strong>Client :</strong> ${escapeHtml(name)}<br><strong>Séjour :</strong> ${formatDate(booking.start_date)} → ${formatDate(booking.end_date)}<br><strong>Email d’expiration client :</strong> ${escapeHtml(clientEmailStatus)}</p><p>Les dates ont été remises à disposition et les sessions Stripe ouvertes ont été neutralisées.</p><p><a href="${escapeHtml(adminUrl)}" style="background:#166534;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Ouvrir la réservation dans l’admin</a></p></div>`;
 
   const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",

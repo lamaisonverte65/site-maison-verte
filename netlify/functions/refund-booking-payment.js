@@ -1,3 +1,4 @@
+import { escapeHtml } from "./_lib/html.js";
 import Stripe from "stripe";
 import { expireBookingOpenCheckoutSessions } from "./_lib/stripe-checkout-session.js";
 import { createClient } from "@supabase/supabase-js";
@@ -50,11 +51,11 @@ async function sendCancellationEmail({ booking, cancellationType, refundedAmount
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6;">
       <h2>${subject}</h2>
-      <p>Bonjour ${booking.guest_first_name || ""} ${booking.guest_last_name || ""},</p>
+      <p>Bonjour ${escapeHtml(booking.guest_first_name || "")} ${escapeHtml(booking.guest_last_name || "")},</p>
       <p>Nous vous confirmons l’annulation de la réservation à <strong>La Maison Verte à Arreau</strong>.</p>
       <p><strong>Arrivée :</strong> ${formatDate(booking.start_date)}<br /><strong>Départ :</strong> ${formatDate(booking.end_date)}</p>
-      ${message ? `<p><strong>Message :</strong><br />${message}</p>` : ""}
-      <p><strong>Règle appliquée :</strong><br />${policyLabel}</p>
+      ${message ? `<p><strong>Message :</strong><br />${escapeHtml(message)}</p>` : ""}
+      <p><strong>Règle appliquée :</strong><br />${escapeHtml(policyLabel)}</p>
       ${refundParagraph}
       <p style="margin-top:30px;font-size:13px;color:#666;">Pensez à vérifier vos courriers indésirables / spams si vous ne recevez pas nos prochains messages, puis ajoutez contact@lamaisonverte65.fr à vos contacts.</p>
     </div>
@@ -104,11 +105,11 @@ async function sendRefundOnlyEmail({ booking, refundedAmount, message, policyLab
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6;">
       <h2>Remboursement effectué</h2>
-      <p>Bonjour ${booking.guest_first_name || ""} ${booking.guest_last_name || ""},</p>
+      <p>Bonjour ${escapeHtml(booking.guest_first_name || "")} ${escapeHtml(booking.guest_last_name || "")},</p>
       <p>Nous vous confirmons qu’un remboursement de <strong>${formatCurrency(refundedAmount)}</strong> a été déclenché via Stripe concernant votre séjour à <strong>La Maison Verte à Arreau</strong>.</p>
       <p><strong>Arrivée :</strong> ${formatDate(booking.start_date)}<br /><strong>Départ :</strong> ${formatDate(booking.end_date)}</p>
-      ${message ? `<p><strong>Message :</strong><br />${message}</p>` : ""}
-      <p><strong>Motif :</strong><br />${policyLabel}</p>
+      ${message ? `<p><strong>Message :</strong><br />${escapeHtml(message)}</p>` : ""}
+      <p><strong>Motif :</strong><br />${escapeHtml(policyLabel)}</p>
       <p>Ce remboursement ne modifie pas automatiquement votre réservation. Le délai d’apparition sur votre compte bancaire dépend de votre banque.</p>
       <p style="margin-top:30px;font-size:13px;color:#666;">Pensez à vérifier vos courriers indésirables / spams si vous ne recevez pas nos prochains messages, puis ajoutez contact@lamaisonverte65.fr à vos contacts.</p>
     </div>

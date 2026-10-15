@@ -1,3 +1,4 @@
+import { escapeHtml } from "./_lib/html.js";
 import { schedule } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 import { resendEmail } from "./_lib/resend-email.js";
@@ -93,7 +94,7 @@ async function sendReviewRequestEmail(booking) {
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color:#1f2933;">
       <h2>Merci pour votre séjour à La Maison Verte</h2>
-      <p>Bonjour ${booking.guest_first_name || ""},</p>
+      <p>Bonjour ${escapeHtml(booking.guest_first_name || "")},</p>
       <p>Nous espérons que votre séjour à <strong>La Maison Verte à Arreau</strong> s’est bien passé et que vous avez pleinement profité des Pyrénées.</p>
 
       <h3>Votre retour nous intéresse</h3>
@@ -101,8 +102,8 @@ async function sendReviewRequestEmail(booking) {
 
       <h3>Partagez votre expérience</h3>
       <p>Si vous le souhaitez, vous pouvez aussi partager votre expérience pour aider les futurs voyageurs.</p>
-      <p><a href="${reviewUrl}" style="background:#1f6f3d;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;margin-right:10px;margin-bottom:10px;">Laisser un avis sur La Maison Verte</a></p>
-      <p><a href="${GOOGLE_REVIEW_URL}" style="background:#ffffff;color:#1f6f3d;border:1px solid #1f6f3d;padding:12px 20px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;margin-bottom:10px;">Donner aussi un avis Google</a></p>
+      <p><a href="${escapeHtml(reviewUrl)}" style="background:#1f6f3d;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;margin-right:10px;margin-bottom:10px;">Laisser un avis sur La Maison Verte</a></p>
+      <p><a href="${escapeHtml(GOOGLE_REVIEW_URL)}" style="background:#ffffff;color:#1f6f3d;border:1px solid #1f6f3d;padding:12px 20px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;margin-bottom:10px;">Donner aussi un avis Google</a></p>
 
       <h3>10 % pour votre prochain séjour</h3>
       <p>Pour une prochaine réservation effectuée directement sur notre site, vous bénéficiez de <strong>10 % de réduction sur l’hébergement</strong> avec le code :</p>

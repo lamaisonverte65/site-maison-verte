@@ -1,7 +1,7 @@
 import { getExternalCalendarSyncWarnings } from "../../../../shared/externalCalendarStatus.js";
 
-export async function loadExternalCalendarForAdmin(fetchCalendar = fetch) {
-  const response = await fetchCalendar("/.netlify/functions/calendar");
+export async function loadExternalCalendarForAdmin(fetchCalendar = fetch, accessToken = "") {
+  const response = await fetchCalendar("/.netlify/functions/admin-calendar", { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" });
   const calendarData = await response.json();
 
   if (!response.ok) {

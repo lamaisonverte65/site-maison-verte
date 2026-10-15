@@ -5,7 +5,7 @@ import { CURRENT_CONTRACT_URL, CURRENT_CONTRACT_VERSION } from "./contract-versi
 const allowedFields = new Set([
   "guestFirstName", "guestLastName", "guestEmail", "guestPhone", "guestAddress", "guestPostalCode", "guestCity", "guestCountry", "adultsCount", "childrenCount",
   "childrenAges", "babyBedNeeded", "marketingConsent", "guestMessage", "startDate", "endDate",
-  "nights", "accommodationTotal", "promotionCode", "cleaningOption", "cleaningObligationsAccepted", "paymentPreference", "contractAccepted", "website",
+  "nights", "accommodationTotal", "promotionCode", "cleaningOption", "cleaningObligationsAccepted", "paymentPreference", "contractAccepted", "website", "additionalContacts",
 ]);
 const fail = (error) => ({ ok: false, statusCode: 400, error });
 const clean = (value) => String(value ?? "").trim();
@@ -47,6 +47,56 @@ export function canonicalizePhoneForBookingDeduplication(value) {
   if (text.startsWith("+")) return digits ? `+${digits}` : "";
   if (digits.startsWith("00") && digits.length > 2) return `+${digits.slice(2)}`;
   return digits;
+}
+
+const additionalContactFields = new Set([
+  "firstName", "lastName", "email", "phone", "address", "postalCode", "city", "country",
+]);
+
+export function normalizeAdditionalContacts(value, { mainEmail = "", mainPhone = "" } = {}) {
+  if (value === undefined || value === null) return { ok: true, contacts: [] };
+  if (!Array.isArray(value) || value.length > 4) return fail("Contacts supplémentaires invalides.");
+
+  const seenEmails = new Set();
+  const seenPhones = new Set();
+  const normalizedMainEmail = clean(mainEmail).toLowerCase();
+  const normalizedMainPhone = canonicalizePhoneForBookingDeduplication(mainPhone);
+  if (normalizedMainEmail) seenEmails.add(normalizedMainEmail);
+  if (normalizedMainPhone) seenPhones.add(normalizedMainPhone);
+
+  const contacts = [];
+  for (const rawContact of value) {
+    if (!rawContact || typeof rawContact !== "object" || Array.isArray(rawContact)) {
+      return fail("Contact supplémentaire invalide.");
+    }
+    const unknown = Object.keys(rawContact).find((field) => !additionalContactFields.has(field));
+    if (unknown) return fail(`Champ de contact inattendu : ${unknown}.`);
+
+    const firstName = clean(rawContact.firstName);
+    const lastName = clean(rawContact.lastName);
+    const email = clean(rawContact.email).toLowerCase();
+    const phone = clean(rawContact.phone);
+    const address = clean(rawContact.address);
+    const postalCode = clean(rawContact.postalCode);
+    const city = clean(rawContact.city);
+    const country = clean(rawContact.country);
+
+    if (!firstName || firstName.length > 80 || !lastName || lastName.length > 80) return fail("Nom ou prénom du contact supplémentaire invalide.");
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail("Adresse email du contact supplémentaire invalide.");
+    if (!phone || phone.length > 32 || !/^[+\d][\d\s().-]{5,31}$/.test(phone)) return fail("Numéro de téléphone du contact supplémentaire invalide.");
+    if (address.length > 200 || postalCode.length > 20 || city.length > 100 || country.length > 100) return fail("Adresse du contact supplémentaire invalide.");
+
+    const canonicalPhone = canonicalizePhoneForBookingDeduplication(phone);
+    if (seenEmails.has(email) || (canonicalPhone && seenPhones.has(canonicalPhone))) {
+      return fail("Un contact supplémentaire est déjà renseigné.");
+    }
+    seenEmails.add(email);
+    if (canonicalPhone) seenPhones.add(canonicalPhone);
+
+    contacts.push({ firstName, lastName, email, phone, address, postalCode, city, country });
+  }
+
+  return { ok: true, contacts };
 }
 
 export function createPublicBookingFingerprint(booking = {}) {
@@ -120,6 +170,10 @@ export function validatePublicBookingPayload(input = {}, { cleaningFee = 0 } = {
   if (!country || country.length > 100) return fail("Pays invalide.");
   if (message.length > 1500 || childrenAges.length > 120) return fail("Un champ texte dépasse la taille autorisée.");
 
+  const additionalContactsResult = normalizeAdditionalContacts(input.additionalContacts, { mainEmail: email, mainPhone: phone });
+  if (!additionalContactsResult.ok) return additionalContactsResult;
+  const additionalContacts = additionalContactsResult.contacts;
+
   const adults = Number(input.adultsCount);
   const children = Number(input.childrenCount || 0);
   if (!Number.isInteger(adults) || !Number.isInteger(children) || adults < 1 || children < 0 || adults + children > 4) return fail("Composition des voyageurs invalide.");
@@ -162,10 +216,11 @@ export function validatePublicBookingPayload(input = {}, { cleaningFee = 0 } = {
     firstName, lastName, email, phone, address, postalCode, city, country, adults, children, childrenAges,
     babyBedNeeded: input.babyBedNeeded, message, startDate, endDate,
     nights: computedNights, accommodationTotal, cleaningOption: input.cleaningOption,
-    cleaningFee: authoritativeCleaningFee, total, paymentPreference,
+    cleaningFee: authoritativeCleaningFee, total, paymentPreference, additionalContacts,
   };
   return {
     ok: true,
+    additionalContacts,
     booking: {
       status: "pending", guest_first_name: firstName, guest_last_name: lastName,
       guest_email: email, guest_phone: phone, guest_address: address, guest_postal_code: postalCode,
@@ -210,11 +265,19 @@ export function buildPublicBookingEmails(model, { ownerEmail }) {
     ? `<strong>Hébergement :</strong> ${Number(model.accommodationGross).toFixed(2)} €<br /><strong>Remise ${escapeHtml(model.promotionCode)} :</strong> -${Number(model.promotionDiscountAmount).toFixed(2)} €<br /><strong>Hébergement après remise :</strong> ${model.accommodationTotal.toFixed(2)} €<br />`
     : `<strong>Hébergement :</strong> ${model.accommodationTotal.toFixed(2)} €<br />`;
   const summary = `<p><strong>Arrivée :</strong> ${escapeHtml(model.startDate)}<br /><strong>Départ :</strong> ${escapeHtml(model.endDate)}<br /><strong>Voyageurs :</strong> ${travelers}<br /><strong>Nombre de nuits :</strong> ${model.nights}<br />${promotionDetails}<strong>Forfait ménage :</strong> ${cleaning}<br /><strong>Taxe de séjour :</strong> ${Number(model.touristTaxAmount || 0).toFixed(2)} €<br /><strong>Total :</strong> ${model.total.toFixed(2)} €<br /><strong>Mode de paiement souhaité :</strong> ${paymentPreference}</p>`;
+  const additionalContacts = Array.isArray(model.additionalContacts) ? model.additionalContacts : [];
+  const additionalContactsHtml = additionalContacts.length
+    ? `<p><strong>Contacts supplémentaires :</strong><br />${additionalContacts.map((contact) => {
+        const identity = `${escapeHtml(contact.firstName)} ${escapeHtml(contact.lastName)}`.trim();
+        const details = [escapeHtml(contact.email), escapeHtml(contact.phone), [contact.address, contact.postalCode, contact.city, contact.country].filter(Boolean).map(escapeHtml).join(" ")].filter(Boolean).join(" · ");
+        return `${identity}${details ? ` — ${details}` : ""}`;
+      }).join("<br />")}</p>`
+    : "";
   return {
     owner: {
       to: ownerEmail,
       subject: "Nouvelle demande de réservation",
-      html: `<div style="font-family:Arial,sans-serif;line-height:1.7"><h2>Nouvelle demande de réservation</h2><p><strong>Nom :</strong> ${firstName} ${lastName}<br /><strong>Email :</strong> ${email}<br /><strong>Téléphone :</strong> ${phone}</p>${summary}${message ? `<p><strong>Message :</strong><br />${message}</p>` : ""}</div>`,
+      html: `<div style="font-family:Arial,sans-serif;line-height:1.7"><h2>Nouvelle demande de réservation</h2><p><strong>Nom :</strong> ${firstName} ${lastName}<br /><strong>Email :</strong> ${email}<br /><strong>Téléphone :</strong> ${phone}</p>${summary}${additionalContactsHtml}${message ? `<p><strong>Message :</strong><br />${message}</p>` : ""}</div>`,
     },
     guest: {
       to: model.email,

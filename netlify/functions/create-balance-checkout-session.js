@@ -1,3 +1,4 @@
+import { escapeHtml } from "./_lib/html.js";
 import { createClient } from "@supabase/supabase-js";
 import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
@@ -35,7 +36,7 @@ async function sendBalanceEmail(booking, paymentLink, amount, step = "request") 
     <div style="font-family: Arial, sans-serif; line-height: 1.6;">
       <h2>${labels[step] || labels.request} — La Maison Verte</h2>
 
-      <p>Bonjour ${booking.guest_first_name || ""} ${booking.guest_last_name || ""},</p>
+      <p>Bonjour ${escapeHtml(booking.guest_first_name || "")} ${escapeHtml(booking.guest_last_name || "")},</p>
 
       <p>${intro[step] || intro.request}</p>
 
@@ -46,7 +47,7 @@ async function sendBalanceEmail(booking, paymentLink, amount, step = "request") 
       </p>
 
       <p style="margin-top:30px;">
-        <a href="${paymentLink}" style="background:#16a34a;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;">
+        <a href="${escapeHtml(paymentLink)}" style="background:#16a34a;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block;">
           Payer le solde
         </a>
       </p>

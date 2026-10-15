@@ -9,7 +9,7 @@ export async function handler() {
   try {
     const { data: settings, error: settingsError } = await supabase
       .from("pricing_settings")
-      .select("*")
+      .select("default_night_price,cleaning_fee")
       .eq("id", "default")
       .maybeSingle();
 
@@ -17,7 +17,7 @@ export async function handler() {
 
     const { data: seasonPrices, error: seasonError } = await supabase
       .from("season_prices")
-      .select("*")
+      .select("id,label,start_date,end_date,night_price,minimum_nights")
       .eq("is_active", true)
       .order("start_date", { ascending: true });
 
@@ -25,7 +25,7 @@ export async function handler() {
 
     const { data: priceOverrides, error: overrideError } = await supabase
       .from("price_overrides")
-      .select("*")
+      .select("id,label,start_date,end_date,night_price")
       .eq("is_active", true)
       .order("start_date", { ascending: true });
 
@@ -46,6 +46,6 @@ export async function handler() {
     };
   } catch (error) {
     console.error("Erreur get-pricing :", error);
-    return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
+    return { statusCode: 500, body: JSON.stringify({ error: "Tarifs temporairement indisponibles." }) };
   }
 }

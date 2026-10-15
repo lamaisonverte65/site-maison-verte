@@ -125,8 +125,13 @@ export default function PolitiqueConfidentialite() {
 
           <h2 style={h2Style}>Cookies et statistiques</h2>
           <p>
-            Le site peut utiliser un identifiant local afin d’éviter de comptabiliser plusieurs fois
-            une même visite sur une courte période et de produire des statistiques internes simples.
+            Le site utilise un identifiant limité à la session de navigation pour mesurer les visites,
+            les pages et sections consultées, la durée de consultation, le défilement, les clics et
+            le début d’utilisation des formulaires. Le contenu saisi dans les formulaires n’est pas collecté.
+            Les statistiques comprennent le type d’appareil, le navigateur, le système, la langue,
+            le fuseau horaire, les dimensions d’affichage et les paramètres de campagne.
+            Pour les liens et les sites d’origine, seuls les domaines sont conservés, sans paramètres
+            ni jetons d’accès. Le texte des boutons et liens n’est pas enregistré.
             Aucun suivi publicitaire n’est mis en place par La Maison Verte.
           </p>
 

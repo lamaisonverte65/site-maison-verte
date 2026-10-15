@@ -47,13 +47,13 @@ test("ski showcase has its route existing content and conversion links", () => {
 });
 
 test("3-star plaque is in presentation without adding a gallery image", () => {
-  const home = read("src/pages/MaisonVerte.jsx");
-  assert.match(home, /\/classement\/panonceau-meuble-tourisme-3-etoiles-2026\.png/);
+  const home = read("src/components/home/HomePresentation.jsx");
+  assert.match(home, /\/classement\/panonceau-meuble-tourisme-3-etoiles-2026\.webp/);
   assert.match(home, /Panonceau officiel du classement Meublé de tourisme 3 étoiles/);
-  const galleryBlock = home.match(/const galleryPhotos = \[[\s\S]*?\n  \];/)?.[0] || "";
+  const galleryBlock = read("src/components/home/homeContent.js").match(/const galleryPhotos = \[[\s\S]*?\n  \];/)?.[0] || "";
   assert.ok(galleryBlock);
   assert.doesNotMatch(galleryBlock, /panonceau-meuble-tourisme/);
-  assert.ok(fs.existsSync("public/classement/panonceau-meuble-tourisme-3-etoiles-2026.png"));
+  assert.ok(fs.existsSync("public/classement/panonceau-meuble-tourisme-3-etoiles-2026.webp"));
 });
 
 
@@ -67,10 +67,10 @@ test("navigation header places logo before a prominent green hamburger", () => {
 });
 
 test("presentation anchor reserves header space and plaque is integrated in En bref", () => {
-  const home = read("src/pages/MaisonVerte.jsx");
+  const home = read("src/components/home/HomePresentation.jsx");
   assert.match(home, /id="presentation"[\s\S]*scrollMarginTop: "86px"/);
   const enBrefIndex = home.indexOf("En bref");
-  const plaqueIndex = home.indexOf("panonceau-meuble-tourisme-3-etoiles-2026.png");
+  const plaqueIndex = home.indexOf("panonceau-meuble-tourisme-3-etoiles-2026.webp");
   const introIndex = home.indexOf("Un petit cocon niché");
   assert.ok(enBrefIndex >= 0 && plaqueIndex > enBrefIndex);
   assert.ok(introIndex >= 0 && plaqueIndex > enBrefIndex);
@@ -78,7 +78,8 @@ test("presentation anchor reserves header space and plaque is integrated in En b
 
 test("published site reviews no longer depend on consent_to_publish", () => {
   const home = read("src/pages/MaisonVerte.jsx");
-  assert.match(home, /\.eq\("status", "published"\)/);
+  assert.match(home, /functions\/public-reviews/);
+  assert.match(read("netlify/functions/public-reviews.js"), /\.eq\("status", "published"\)/);
   assert.doesNotMatch(home, /\.eq\("consent_to_publish", true\)/);
   assert.doesNotMatch(home, /if \(!reviewConsent\)/);
   assert.match(home, /\.netlify\/functions\/submit-guest-review/);
@@ -98,7 +99,7 @@ test("Google review card displays the current two five-star reviews", () => {
 
 
 test("public contact section exposes WhatsApp Business alongside phone", () => {
-  const home = read("src/pages/MaisonVerte.jsx");
+  const home = read("src/components/home/HomeContact.jsx");
   assert.match(home, /href="https:\/\/wa\.me\/33695938315\?text=/);
   assert.match(home, /Écrire sur WhatsApp/);
   assert.match(home, /target="_blank"/);

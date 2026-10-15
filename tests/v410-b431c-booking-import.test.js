@@ -45,7 +45,7 @@ test("B4.3.1C Booking preview prioritizes persisted site reservations and keeps 
   assert.match(util, /matched_calendar/);
   assert.match(panel, /from\("booking_requests"\)/);
   assert.match(panel, /Réservation du site retrouvée/);
-  assert.match(panel, /netlify\/functions\/calendar/);
+  assert.match(panel, /netlify\/functions\/admin-calendar/);
 });
 
 

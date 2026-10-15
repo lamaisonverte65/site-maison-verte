@@ -21,7 +21,7 @@ export default function SkiValleesAureLouron() {
         <meta property="og:type" content="website" />
       </Helmet>
 
-      <PublicNavigation solid />
+      <PublicNavigation solid={false} />
 
       <main style={{ minHeight: "100vh", background: "#f6f3ee", color: "#1e2b1f" }}>
         <section

@@ -29,7 +29,7 @@ test("a stay crossing any occupied night remains rejected", () => {
 import { readFileSync } from "node:fs";
 
 test("the public calendar exposes and consumes departure-only boundary dates", () => {
-  const api = readFileSync("netlify/functions/calendar.js", "utf8");
+  const api = readFileSync("netlify/functions/_lib/calendar-response.js", "utf8");
   const page = readFileSync("src/pages/MaisonVerte.jsx", "utf8");
 
   assert.match(api, /departureBoundaryCandidates\.push\(booking\.start_date\)/);

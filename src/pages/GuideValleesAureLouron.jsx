@@ -341,7 +341,7 @@ export default function GuideValleesAureLouron() {
         <meta property="og:type" content="article" />
       </Helmet>
 
-      <PublicNavigation solid />
+      <PublicNavigation solid={false} />
 
       <main
         style={{

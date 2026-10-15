@@ -75,7 +75,7 @@ export default function PublicNavigation({ solid = true }) {
             style={{ display: "flex", alignItems: "center", textDecoration: "none" }}
           >
             <img
-              src="/logo.png"
+              src="/logo.webp"
               alt="La Maison Verte"
               style={{
                 height: "clamp(48px, 6vw, 62px)",
@@ -105,6 +105,7 @@ export default function PublicNavigation({ solid = true }) {
               alignContent: "center",
               gap: "5px",
               boxShadow: "0 6px 16px rgba(31,111,61,0.28)",
+              transform: "translateY(8px)",
             }}
           >
             {[0, 1, 2].map((line) => (
@@ -185,7 +186,7 @@ export default function PublicNavigation({ solid = true }) {
             >
               <a href="/#accueil" onClick={() => setOpen(false)} style={{ display: "flex" }}>
                 <img
-                  src="/logo.png"
+                  src="/logo.webp"
                   alt="La Maison Verte"
                   style={{ height: "58px", maxWidth: "210px", objectFit: "contain" }}
                 />

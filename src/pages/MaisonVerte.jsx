@@ -1,9 +1,36 @@
+import { HomeHero } from "../components/home/HomeHero";
+import { HomePresentation } from "../components/home/HomePresentation";
+import { HomeGallery } from "../components/home/HomeGallery";
+import { HomeFaq } from "../components/home/HomeFaq";
+import { HomeActivities } from "../components/home/HomeActivities";
+import { HomeWeather } from "../components/home/HomeWeather";
+import { HomeContact } from "../components/home/HomeContact";
+import { galleryPhotos, faqCategories, faqSchema } from "../components/home/homeContent";
 import { useEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet";
-import { supabase } from "../supabaseClient";
 import { submitPublicBooking } from "../utils/publicBookingSubmission";
 import { isDepartureOnlyDate, selectionContainsUnavailableNight } from "../utils/publicCalendarSelection";
 import PublicNavigation from "../components/PublicNavigation";
+
+const createEmptyAdditionalContact = () => ({
+  firstName: "",
+  lastName: "",
+  email: "",
+  phone: "",
+  address: "",
+  postalCode: "",
+  city: "",
+  country: "France",
+});
+
+function normalizeContactPhone(value) {
+  const text = String(value ?? "").trim();
+  const digits = text.replace(/\D/g, "");
+  if (digits.length === 10 && digits.startsWith("0")) return `+33${digits.slice(1)}`;
+  if (text.startsWith("+") && digits.startsWith("33")) return `+${digits}`;
+  if (digits.startsWith("0033")) return `+33${digits.slice(4)}`;
+  return digits;
+}
 
 export default function MaisonVerte() {
   const [selectedDates, setSelectedDates] = useState([]);
@@ -25,6 +52,7 @@ export default function MaisonVerte() {
   const [guestPostalCode, setGuestPostalCode] = useState("");
   const [guestCity, setGuestCity] = useState("");
   const [guestCountry, setGuestCountry] = useState("France");
+  const [additionalContacts, setAdditionalContacts] = useState([]);
   const [guestAdults, setGuestAdults] = useState("2");
   const [guestChildren, setGuestChildren] = useState("0");
   const [childrenAges, setChildrenAges] = useState("");
@@ -72,202 +100,6 @@ export default function MaisonVerte() {
   const googleReviewUrl = "https://g.page/r/CasA-_8IxkGjEBM/review";
   const googleProfileUrl = "https://g.page/r/CasA-_8IxkGjEBM";
   const ENABLE_SITE_REVIEWS = true;
-  const galleryPhotos = [
-    {
-      src: "/salon-salle-a-manger-maison-verte.webp",
-      caption: "Salon et salle à manger",
-    },
-
-    {
-      src: "/cuisine-equipee-maison-verte.webp",
-      caption: "Cuisine équipée",
-    },
-
-    {
-      src: "/chambre-parentale-grand-lit.webp",
-      caption: "Chambre parentale - grand lit et rangements",
-    },
-
-    {
-      src: "/chambre-parentale-balcon.webp",
-      caption: "Chambre parentale - bureau et sortie balcon",
-    },
-
-    {
-      src: "/chambre-sous-combles-lits-jumeaux.webp",
-      caption: "Chambre sous combles - les lits jumeaux",
-    },
-
-    {
-      src: "/chambre-sous-combles-vue-montagne.webp",
-      caption: "Chambre sous combles - la vue sur le clocher et les montagnes",
-    },
-
-    {
-      src: "/salle-de-bain-maison-verte.webp",
-      caption: "Salle de bain",
-    },
-
-    {
-      src: "/douche-maison-verte.webp",
-      caption: "Douche",
-    },
-
-    {
-      src: "/wc-et-palier.webp",
-      caption: "WC et palier",
-    },
-
-    {
-      src: "/balcon-plein-sud-ouest.webp",
-      caption: "Balcon plein sud - côté Ouest",
-    },
-
-    {
-      src: "/smart-tv-salon.webp",
-      caption: "Smart TV",
-    },
-
-    {
-      src: "/passage-sous-le-porche-arreau.webp",
-      caption: "Passage sous le porche",
-    },
-
-    {
-      src: "/rue-de-la-coutellerie-arreau.webp",
-      caption: "Rue de la coutellerie",
-    },
-
-    {
-      src: "/impasse-trassens-arreau.webp",
-      caption: "Impasse Trassens",
-    },
-
-    {
-      src: "/halle-et-mairie-arreau.webp",
-      caption: "La halle et la mairie",
-    },
-
-    {
-      src: "/vue-calvaire-arreau-nuit.webp",
-      caption: "Vue du calvaire d'Arreau de nuit",
-    },
-  ];
-  const faqCategories = [
-    {
-      title: "La maison",
-      items: [
-        {
-          question: "Combien de personnes peuvent séjourner dans la maison ?",
-          answer:
-            "La Maison Verte peut accueillir jusqu’à 4 personnes. Elle dispose d’une chambre parentale avec un lit double de 140 × 200 cm et d’une chambre sous combles équipée de deux lits simples de 90 × 190 cm.",
-        },
-        {
-          question: "La Maison Verte est-elle classée ?",
-          answer:
-            "Oui. La Maison Verte est officiellement classée meublé de tourisme 3 étoiles.",
-        },
-        {
-          question: "Comment est organisée la maison ?",
-          answer:
-            "La maison est répartie sur trois niveaux. Le rez-de-chaussée comprend le séjour, la salle à manger, la cuisine équipée, la salle de bain et les WC séparés. Le premier étage accueille la chambre parentale avec accès au balcon. Le deuxième étage accueille la chambre sous combles équipée de deux lits simples.",
-        },
-        {
-          question: "Les draps et serviettes sont-ils fournis ?",
-          answer:
-            "Le linge de lit est fourni pour votre séjour. Les serviettes de toilette sont également fournies : une grande serviette 70 × 140 cm et une petite serviette 33 × 50 cm par personne.",
-        },
-        {
-          question: "Les animaux sont-ils acceptés ?",
-          answer:
-            "Non. Les animaux ne sont pas acceptés à La Maison Verte afin de préserver le confort de tous les voyageurs et la qualité du logement.",
-        },
-        {
-          question: "La maison est-elle adaptée aux familles avec enfants ?",
-          answer:
-            "Oui. La Maison Verte est adaptée à une famille de 4 personnes. Un lit parapluie peut être mis à disposition sur demande. La chambre sous combles dispose également d'une barrière de sécurité amovible pouvant être installée en haut de l'escalier. Notez cependant la présence des 2 escaliers",
-        },
-        {
-          question:
-            "La maison est-elle adaptée aux personnes à mobilité réduite ?",
-          answer:
-            "Non. La Maison Verte est une maison de village ancienne rénovée sur plusieurs niveaux. Elle comporte plusieurs escaliers intérieurs et n'est donc pas adaptée aux personnes à mobilité réduite.",
-        },
-      ],
-    },
-    {
-      title: "Accès et village",
-      items: [
-        {
-          question: "Comment récupérer les clés ?",
-          answer:
-            "Les clés sont mises à votre disposition dans une boîte à clés. Le code en vigueur est communiqué directement par email avant votre arrivée. Vous pouvez consulter la procédure illustrée d'ouverture et de fermeture de la boîte ci-dessous.",
-          linkUrl: "/livret/procedure-boite-a-cles.png",
-          linkLabel: "Voir la procédure de la boîte à clés →",
-        },
-        {
-          question: "Peut-on se garer facilement à proximité ?",
-          answer:
-            "Oui. Plusieurs parkings gratuits sont accessibles à quelques dizaines de mètres de la maison. Il est généralement facile de stationner à proximité du logement tout au long de l'année.",
-          planUrl: "/livret/plan-acces.jpg",
-        },
-        {
-          question:
-            "Les commerces et restaurants sont-ils accessibles à pied ?",
-          answer:
-            "Oui. La Maison Verte est située dans le centre historique d'Arreau. Boulangerie, boucherie, restaurants, cafés, pharmacie, marché, office de tourisme et commerces sont accessibles en quelques minutes à pied.",
-        },
-        {
-          question: "Où se situe Arreau ?",
-          answer:
-            "Arreau se situe dans les Pyrénées centrales, à 1h30 de l'aéroport de Toulouse, à 1h de Lourdes, à 45 min de la frontière Espagnole, 2h15 de l'océan.",
-        },
-      ],
-    },
-    {
-      title: "Ski, montagne et activités",
-      items: [
-        {
-          question:
-            "Quelles stations de ski et activités sont accessibles depuis la maison ?",
-          answer:
-            "La Maison Verte bénéficie d'une situation centrale idéale dans la vallée d'Aure. Le téléphérique de Saint-Lary est accessible en environ 10 minutes, le Pla d'Adet en 20 minutes, Peyragudes en 20 minutes, Val Louron en 25 minutes et Piau-Engaly en 35 minutes. Le centre de bien-être Balnéa à Loudenvielle se situe également à seulement 15 minutes de la maison.",
-        },
-        {
-          question: "Quelles activités peut-on pratiquer au départ d'Arreau ?",
-          answer:
-            "Arreau constitue un point de départ idéal pour de nombreuses activités de montagne. Les cyclistes peuvent rejoindre directement les cols mythiques d'Aspin, d'Azet, de Peyresourde, du Portet ou la Hourquette d'Ancizan. Les amateurs de VTT trouveront de nombreux itinéraires adaptés à tous les niveaux, du cross-country à l'enduro. Le secteur est également apprécié pour le gravel. Les randonneurs bénéficient d'un vaste choix de balades et de randonnées vers la vallée d'Aure, la vallée du Louron et la réserve naturelle du Néouvielle.",
-        },
-        {
-          question:
-            "Quels cols mythiques des Pyrénées sont accessibles directement depuis Arreau ?",
-          answer:
-            "Depuis La Maison Verte, cyclistes et motards peuvent rejoindre directement plusieurs cols emblématiques des Pyrénées : le col d'Aspin, le col d'Azet, le col de Peyresourde, la Hourquette d'Ancizan et le col du Portet. Ces ascensions régulièrement empruntées par le Tour de France offrent des panoramas exceptionnels.",
-        },
-        {
-          question: "Les lacs du Néouvielle sont-ils facilement accessibles ?",
-          answer:
-            "Oui. Depuis Arreau, il est facile d'accéder à la réserve naturelle nationale du Néouvielle. Les lacs d'Orédon, d'Aubert, d'Aumar et de Cap-de-Long constituent des destinations incontournables pour la randonnée, la photographie et l'observation de la faune et de la flore de montagne.",
-        },
-      ],
-    },
-  ];
-
-  const faqSchema = {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    mainEntity: faqCategories.flatMap((category) =>
-      category.items.map((item) => ({
-        "@type": "Question",
-        name: item.question,
-        acceptedAnswer: {
-          "@type": "Answer",
-          text: item.answer,
-        },
-      })),
-    ),
-  };
-
   function formatLocalDate(date) {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -287,6 +119,7 @@ export default function MaisonVerte() {
     try {
       const response = await fetch("/.netlify/functions/calendar");
 
+      if (!response.ok) throw new Error("Calendrier indisponible.");
       const data = await response.json();
 
       setUnavailableDates(data.unavailableDates || []);
@@ -365,15 +198,13 @@ export default function MaisonVerte() {
 
   useEffect(() => {
     async function fetchPublishedReviews() {
-      const { data, error } = await supabase
-        .from("guest_reviews")
-        .select("*")
-        .eq("status", "published")
-        .order("published_at", { ascending: false })
-        .limit(6);
-
-      if (!error) {
-        setPublishedReviews(data || []);
+      try {
+        const response = await fetch("/.netlify/functions/public-reviews");
+        if (!response.ok) throw new Error("Avis indisponibles.");
+        const data = await response.json();
+        setPublishedReviews(data.reviews || []);
+      } catch (error) {
+        console.error("Erreur avis publiés :", error);
       }
     }
 
@@ -578,6 +409,13 @@ export default function MaisonVerte() {
 
   const isPhoneValid = /^[0-9+\s().-]{8,}$/.test(guestPhone);
 
+  const areAdditionalContactsValid = additionalContacts.every((contact) => (
+    contact.firstName.trim() !== "" &&
+    contact.lastName.trim() !== "" &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email) &&
+    /^[0-9+\s().-]{8,}$/.test(contact.phone)
+  ));
+
   const adultsCount = Number(guestAdults || 0);
   const childrenCount = Number(guestChildren || 0);
   const totalGuests = adultsCount + childrenCount;
@@ -600,6 +438,7 @@ export default function MaisonVerte() {
     guestPostalCode.trim() !== "" &&
     guestCity.trim() !== "" &&
     guestCountry.trim() !== "" &&
+    areAdditionalContactsValid &&
     isGuestCompositionValid;
 
   const canSubmitRequest =
@@ -625,6 +464,22 @@ export default function MaisonVerte() {
     : null;
   const canChooseFullPayment = daysBeforeArrival !== null && daysBeforeArrival > 30;
   const daysUntilBalanceRequest = canChooseFullPayment ? daysBeforeArrival - 30 : null;
+
+  function addAdditionalContact() {
+    setAdditionalContacts((contacts) => (
+      contacts.length >= 4 ? contacts : [...contacts, createEmptyAdditionalContact()]
+    ));
+  }
+
+  function updateAdditionalContact(index, field, value) {
+    setAdditionalContacts((contacts) => contacts.map((contact, contactIndex) => (
+      contactIndex === index ? { ...contact, [field]: value } : contact
+    )));
+  }
+
+  function removeAdditionalContact(index) {
+    setAdditionalContacts((contacts) => contacts.filter((_, contactIndex) => contactIndex !== index));
+  }
 
   function previousMonth() {
     setCurrentMonth(new Date(year, month - 1, 1));
@@ -673,6 +528,27 @@ export default function MaisonVerte() {
     if (guestPostalCode.trim() === "") errors.push({ message: "Renseignez votre code postal.", ref: guestPostalCodeRef });
     if (guestCity.trim() === "") errors.push({ message: "Renseignez votre ville.", ref: guestCityRef });
     if (guestCountry.trim() === "") errors.push({ message: "Renseignez votre pays.", ref: guestCountryRef });
+
+    const seenEmails = new Set([guestEmail.trim().toLowerCase()].filter(Boolean));
+    const seenPhones = new Set([normalizeContactPhone(guestPhone)].filter(Boolean));
+    additionalContacts.forEach((contact, index) => {
+      const label = `Contact ${index + 2}`;
+      const email = contact.email.trim().toLowerCase();
+      const phone = normalizeContactPhone(contact.phone);
+      if (!contact.firstName.trim()) errors.push({ message: `${label} : renseignez le prénom.`, ref: bookingFormRef });
+      if (!contact.lastName.trim()) errors.push({ message: `${label} : renseignez le nom.`, ref: bookingFormRef });
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)) {
+        errors.push({ message: `${label} : renseignez une adresse email valide.`, ref: bookingFormRef });
+      }
+      if (!/^[0-9+\s().-]{8,}$/.test(contact.phone)) {
+        errors.push({ message: `${label} : renseignez un numéro de téléphone valide.`, ref: bookingFormRef });
+      }
+      if ((email && seenEmails.has(email)) || (phone && seenPhones.has(phone))) {
+        errors.push({ message: `${label} : ce contact est déjà renseigné.`, ref: bookingFormRef });
+      }
+      if (email) seenEmails.add(email);
+      if (phone) seenPhones.add(phone);
+    });
 
     if (!isGuestCompositionValid) {
       errors.push({
@@ -731,6 +607,16 @@ export default function MaisonVerte() {
         guestPostalCode: guestPostalCode.trim(),
         guestCity: guestCity.trim(),
         guestCountry: guestCountry.trim(),
+        additionalContacts: additionalContacts.map((contact) => ({
+          firstName: contact.firstName.trim(),
+          lastName: contact.lastName.trim(),
+          email: contact.email.trim(),
+          phone: contact.phone.trim(),
+          address: contact.address.trim(),
+          postalCode: contact.postalCode.trim(),
+          city: contact.city.trim(),
+          country: contact.country.trim(),
+        })),
         adultsCount,
         childrenCount,
         childrenAges: childrenAges.trim(),
@@ -762,6 +648,7 @@ export default function MaisonVerte() {
 
       setBookingConfirmation({
         confirmationPending: Boolean(outcome.confirmationPending),
+        additionalContactsPending: Boolean(outcome.additionalContactsPending),
       });
 
       setGuestFirstName("");
@@ -771,6 +658,11 @@ export default function MaisonVerte() {
 
       setGuestEmail("");
       setGuestPhone("");
+      setGuestAddress("");
+      setGuestPostalCode("");
+      setGuestCity("");
+      setGuestCountry("France");
+      setAdditionalContacts([]);
       setGuestAdults("2");
       setGuestChildren("0");
       setChildrenAges("");
@@ -898,7 +790,7 @@ export default function MaisonVerte() {
 
         {/* FAVICONS */}
 
-        <link rel="icon" type="image/x-icon" href="/favicon/favicon.ico" />
+        <link rel="icon" type="image/x-icon" href="/favicon.ico" />
 
         <link
           rel="icon"
@@ -1097,6 +989,12 @@ export default function MaisonVerte() {
               </>
             )}
 
+            {bookingConfirmation.additionalContactsPending && (
+              <p style={{ lineHeight: "1.7", color: "#8a5a00", background: "#fff7df", padding: "12px", borderRadius: "14px" }}>
+                Votre demande est bien enregistrée. L’enregistrement d’au moins un contact supplémentaire doit être vérifié. Ne renvoyez pas le formulaire ; nous disposons des informations transmises et vous contacterons si nécessaire.
+              </p>
+            )}
+
             <button
               type="button"
               className="button"
@@ -1117,480 +1015,16 @@ export default function MaisonVerte() {
 
       {/* HERO PREMIUM */}
 
-<section id="accueil" className="hero">
-  <div className="overlay">
-    <div
-      style={{
-        animation: "fadeUp 1.2s ease",
-        maxWidth: "920px",
-        padding: "0 24px",
-      }}
-    >
-      <h1
-        style={{
-          fontFamily: "'Cormorant Garamond', serif",
-          fontSize: "clamp(4.2rem, 11vw, 7rem)",
-          marginBottom: "24px",
-          fontWeight: "600",
-          letterSpacing: "-2px",
-          lineHeight: "0.95",
-          color: "#eef5ee",
-          textShadow: `-1.2px -1.2px 0 rgba(0,0,0,0.52),
-           1.2px -1.2px 0 rgba(0,0,0,0.52),
-          -1.2px  1.2px 0 rgba(0,0,0,0.52),
-           1.2px  1.2px 0 rgba(0,0,0,0.52),
-           0 6px 22px rgba(0,0,0,0.78)`,
-        }}
-      >
-        La Maison Verte
-      </h1>
-
-      <h2
-        style={{
-          fontSize: "clamp(1rem, 2vw, 1.6rem)",
-          fontWeight: "500",
-          lineHeight: "1.4",
-          color: "#e4efe4",
-          textShadow: `-1px -1px 0 rgba(0,0,0,0.48),
-           1px -1px 0 rgba(0,0,0,0.48),
-          -1px  1px 0 rgba(0,0,0,0.48),
-           1px  1px 0 rgba(0,0,0,0.48),
-           0 4px 16px rgba(0,0,0,0.70)`,
-          maxWidth: "900px",
-          margin: "0 auto 30px",
-        }}
-      >
-        Location de vacances dans les Hautes-Pyrénées
-        <br />
-        Gîte de charme pour 4 personnes au cœur de la vallée d'Aure
-      </h2>
-
-      <div
-        title="Classement officiel meublé de tourisme 3 étoiles"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "10px",
-          padding: "9px 18px",
-          margin: "0 auto 24px",
-          border: "1px solid rgba(255,255,255,0.75)",
-          borderRadius: "999px",
-          background: "rgba(20,83,45,0.72)",
-          color: "white",
-          fontWeight: "800",
-          fontSize: "clamp(0.9rem, 1.8vw, 1.05rem)",
-          letterSpacing: "0.01em",
-          backdropFilter: "blur(8px)",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.24)",
-          textShadow: "0 2px 6px rgba(0,0,0,0.45)",
-        }}
-      >
-        <span aria-hidden="true" style={{ letterSpacing: "2px" }}>★★★</span>
-        <span>Meublé de tourisme classé 3 étoiles</span>
-      </div>
-
-      <div
-        style={{
-          marginBottom: "42px",
-          padding: "8px 24px",
-          background:
-            "radial-gradient(ellipse at center, rgba(0,0,0,0.28) 0%, rgba(0,0,0,0.14) 45%, rgba(0,0,0,0) 75%)",
-        }}
-      >
-        <div
-          style={{
-            fontFamily: "'Lora', serif",
-            fontSize: "clamp(1.15rem, 2.3vw, 1.6rem)",
-            letterSpacing: "8px",
-            textTransform: "uppercase",
-            marginBottom: "22px",
-            fontWeight: "800",
-            color: "white",
-            textShadow: `-1px -1px 0 rgba(0,0,0,0.58),
-           1px -1px 0 rgba(0,0,0,0.58),
-          -1px  1px 0 rgba(0,0,0,0.58),
-           1px  1px 0 rgba(0,0,0,0.58),
-           0 6px 20px rgba(0,0,0,0.85)`,
-          }}
-        >
-          -Arreau-
-          <br />
-          Pyrénées
-        </div>
-        <p
-          style={{
-            fontFamily: "'Lora', serif",
-            fontSize: "clamp(1.05rem, 2.4vw, 1.45rem)",
-            maxWidth: "760px",
-            lineHeight: "1.8",
-            margin: "auto",
-            color: "#f2f6f2",
-            fontWeight: "600",
-            textShadow: `-1px -1px 0 rgba(0,0,0,0.48),
-           1px -1px 0 rgba(0,0,0,0.48),
-          -1px  1px 0 rgba(0,0,0,0.48),
-           1px  1px 0 rgba(0,0,0,0.48),
-           0 4px 16px rgba(0,0,0,0.70)`,
-          }}
-        >
-          Entre cols mythiques, stations de ski et randonnées,
-          profitez d'un séjour authentique dans une maison de caractère
-          entièrement rénovée au cœur du quartier historique.
-        </p>
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          gap: "20px",
-          justifyContent: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        <a
-          href="#reservation"
-          className="button"
-          style={{
-            fontSize: "17px",
-            padding: "17px 34px",
-            boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
-            textDecoration: "none",
-          }}
-        >
-          Réserver maintenant
-        </a>
-
-        <a
-          href="#galerie"
-          style={{
-            border: "1px solid white",
-            color: "white",
-            padding: "17px 34px",
-            borderRadius: "999px",
-            textDecoration: "none",
-            backdropFilter: "blur(10px)",
-            background: "rgba(255,255,255,0.1)",
-            fontSize: "17px",
-          }}
-        >
-          Voir les photos
-        </a>
-
-        <a
-          href="#faq"
-          style={{
-            border: "1px solid white",
-            color: "white",
-            padding: "17px 34px",
-            borderRadius: "999px",
-            textDecoration: "none",
-            backdropFilter: "blur(10px)",
-            background: "rgba(255,255,255,0.1)",
-            fontSize: "17px",
-          }}
-        >
-          FAQ
-        </a>
-      </div>
-    </div>
-  </div>
-</section>
+<HomeHero />
 
 
       {/* PRESENTATION + EQUIPEMENTS */}
 
-      <section id="presentation" className="section" style={{ scrollMarginTop: "86px" }}>
-        <h2
-          style={{
-            marginBottom: "34px",
-          }}
-        >
-          La maison
-        </h2>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.2fr 0.8fr",
-            gap: "40px",
-            alignItems: "start",
-          }}
-        >
-          <div
-            style={{
-              background: "white",
-              padding: "40px",
-              borderRadius: "35px",
-              boxShadow: "0 15px 45px rgba(0,0,0,0.08)",
-            }}
-          >
-            <h3>Un petit cocon niché au cœur d'un village traditionnel</h3>
-
-            <p
-              style={{
-                lineHeight: "1.9",
-                color: "#555",
-                marginTop: "20px",
-              }}
-            >
-              Meublé de tourisme officiellement classé 3 étoiles, entièrement
-              rénové pour 4 personnes et niché dans le centre historique
-              d’Arreau. Situé à la Confluence des vallées
-              d’Aure (Saint-Lary) et du Louron (Loudenvielle), au pied de 4
-              stations de ski, de nombreux cols mythiques et de multiples
-              possibilités de randonnées.
-            </p>
-
-            <p
-              style={{
-                lineHeight: "1.9",
-                color: "#555",
-              }}
-            >
-              La Maison Verte est une location de vacances de particulier à
-              particulier située au cœur d'Arreau. Réservez directement auprès
-              du propriétaire, sans intermédiaire ni frais de plateforme, pour
-              préparer votre séjour dans les Pyrénées en toute simplicité. Une
-              solution idéale pour les voyageurs recherchant un hébergement
-              authentique proche de Saint-Lary, Loudenvielle, Peyragudes, Val
-              Louron, du Néouvielle et du Mont-Perdu.
-            </p>
-
-
-            <p
-              style={{
-                lineHeight: "1.9",
-                color: "#555",
-              }}
-            >
-              Sur 3 niveaux, elle offre un séjour avec cuisine entièrement
-              équipée, une chambre parentale avec balcon ensoleillé, une salle
-              de bain, des WC séparés et une chambre sous combles avec deux lits
-              jumeaux.
-            </p>
-
-            <p
-              style={{
-                lineHeight: "1.9",
-                color: "#555",
-              }}
-            >
-              Toutes les commodités sont accessibles à pied en moins de 3
-              minutes : boulangerie, boucherie, pharmacie, librairie, bars,
-              restaurants et commerces du village.
-            </p>
-          </div>
-
-          <div
-            style={{
-              background: "#1f6f3d",
-              color: "white",
-              padding: "35px",
-              borderRadius: "35px",
-              boxShadow: "0 15px 45px rgba(0,0,0,0.12)",
-            }}
-          >
-            <h3
-              style={{
-                color: "white",
-                marginBottom: "25px",
-              }}
-            >
-              En bref
-            </h3>
-
-            <div
-              style={{
-                display: "grid",
-                gap: "18px",
-              }}
-            >
-              <div>🏡 Maison rénovée sur 3 niveaux</div>
-              <div>👨‍👩‍👧‍👦 Idéale pour 4 personnes</div>
-              <div>🛏️ 2 chambres : 1 grand lit, 2 lits jumeaux</div>
-              <div>☀️ Balcon exposé sud</div>
-              <div>🚶 Commerces à pied</div>
-              <div>⛷️ Situation centrale stratégique </div>
-              <div>🚴 Hébergement idéal pour cyclistes</div>
-              <div>🏍️ Accueil pratique pour motards</div>
-              <div>📶 Wi-Fi 7</div>
-              <div>🤝 Réservation directe propriétaire</div>
-              <div>🐕 Animaux non acceptés</div>
-            </div>
-
-            <div
-              style={{
-                marginTop: "26px",
-                paddingTop: "22px",
-                borderTop: "1px solid rgba(255,255,255,0.28)",
-                display: "flex",
-                alignItems: "center",
-                gap: "14px",
-              }}
-            >
-              <img
-                src="/classement/panonceau-meuble-tourisme-3-etoiles-2026.png"
-                alt="Panonceau officiel du classement Meublé de tourisme 3 étoiles"
-                style={{ width: "92px", height: "auto", flex: "0 0 auto" }}
-              />
-              <div style={{ lineHeight: 1.45, fontSize: "0.92rem" }}>
-                <strong>Meublé de tourisme classé 3 étoiles</strong>
-                <br />
-                Classement officiel Atout France
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div
-          style={{
-            marginTop: "45px",
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
-            gap: "18px",
-          }}
-        >
-          {[
-            "Cuisine équipée",
-            "Machine à laver",
-            "Lave-vaisselle",
-            "Congélateur",
-            "Smart TV",
-            "Cafetière italienne",
-            "Cafetière à filtres",
-            "Bouilloire",
-            "Grille-pain",
-            "Appareil à raclette",
-            "Sèche cheveux",
-            "Fer à repasser",
-            "Lit parapluie",
-            "58 m²",
-            "Balcon avec table et chaises",
-            "Linge de lit et serviettes fournis",
-            "Poubelle de tri",
-            "Animaux non acceptés",
-            "Parking gratuit proche",
-            "Impasse piétonne",
-          ].map((item) => (
-            <div
-              key={item}
-              style={{
-                background: "white",
-                padding: "20px",
-                borderRadius: "22px",
-                boxShadow: "0 8px 25px rgba(0,0,0,0.06)",
-                textAlign: "center",
-                fontWeight: "500",
-              }}
-            >
-              ✓ {item}
-            </div>
-          ))}
-        </div>
-
-        <div
-          style={{
-            marginTop: "34px",
-            textAlign: "center",
-          }}
-        >
-          <a
-            href="/livret"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: "inline-block",
-              padding: "20px 38px",
-              borderRadius: "999px",
-              background: "#eef7f0",
-              color: "#1f6f3d",
-              fontWeight: "700",
-              fontSize: "1.12rem",
-              textDecoration: "none",
-              boxShadow: "0 8px 24px rgba(0,0,0,0.06)",
-            }}
-          >
-            Consulter le livret d’accueil
-          </a>
-
-          <p
-            style={{
-              marginTop: "12px",
-              color: "#666",
-              lineHeight: "1.7",
-            }}
-          >
-            Vous y trouverez toutes les informations utiles pour préparer votre séjour :
-            fonctionnement du logement, accès, bonnes adresses, activités, consignes et inventaire complet des équipements.
-          </p>
-        </div>
-      </section>
+      <HomePresentation />
 
       {/* GALERIE */}
 
-      <section id="galerie" className="section">
-        <h2>Galerie immersive</h2>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: "16px",
-          }}
-        >
-          {galleryPhotos.map((photo, index) => (
-            <div
-              key={photo.src}
-              className="gallery-item"
-              onClick={() => {
-                setCurrentImageIndex(index);
-                setLightboxOpen(true);
-              }}
-              style={{
-                position: "relative",
-                overflow: "hidden",
-                borderRadius: "22px",
-                cursor: "pointer",
-                boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
-              }}
-            >
-              <img
-                src={photo.src}
-                alt={photo.caption}
-                loading={index === 0 ? "eager" : "lazy"}
-                decoding="async"
-                style={{
-                  width: "100%",
-                  height: "210px",
-                  objectFit: "cover",
-                  display: "block",
-                  transition: "0.35s",
-                }}
-              />
-
-              <div
-                className="gallery-caption"
-                style={{
-                  position: "absolute",
-                  bottom: 0,
-                  left: 0,
-                  width: "100%",
-                  padding: "35px 16px 14px",
-                  background:
-                    "linear-gradient(to top, rgba(0,0,0,0.75), transparent)",
-                  color: "white",
-                  fontSize: "0.95rem",
-                  fontWeight: "500",
-                  opacity: 0,
-                  transition: "0.35s",
-                  pointerEvents: "none",
-                }}
-              >
-                {photo.caption}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+      <HomeGallery galleryPhotos={galleryPhotos} setCurrentImageIndex={setCurrentImageIndex} setLightboxOpen={setLightboxOpen} />
 
       {/* AVIS */}
 
@@ -2081,142 +1515,7 @@ export default function MaisonVerte() {
 
       {/* FAQ */}
 
-      <section id="faq" className="section">
-        <h2>Questions fréquentes</h2>
-
-        <div style={{ maxWidth: "900px", margin: "0 auto" }}>
-          {faqCategories.map((category, categoryIndex) => (
-            <div
-              key={category.title}
-              style={{
-                background: "white",
-                borderRadius: "22px",
-                marginBottom: "18px",
-                boxShadow: "0 8px 25px rgba(0,0,0,0.06)",
-                overflow: "hidden",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() =>
-                  setOpenFaqCategory(
-                    openFaqCategory === categoryIndex ? null : categoryIndex,
-                  )
-                }
-                style={{
-                  width: "100%",
-                  border: "none",
-                  background: "white",
-                  padding: "24px",
-                  textAlign: "left",
-                  fontSize: "1.15rem",
-                  fontWeight: "700",
-                  color: "#2f4f35",
-                  cursor: "pointer",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <span>{category.title}</span>
-                <span>{openFaqCategory === categoryIndex ? "−" : "+"}</span>
-              </button>
-
-              {openFaqCategory === categoryIndex && (
-                <div
-                  style={{
-                    padding: "0 18px 18px",
-                  }}
-                >
-                  {category.items.map((item, index) => {
-                    const itemKey = `${categoryIndex}-${index}`;
-
-                    return (
-                      <div
-                        key={item.question}
-                        style={{
-                          background: "#f8f8f8",
-                          borderRadius: "14px",
-                          marginBottom: "10px",
-                          overflow: "hidden",
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setOpenFaqIndex(
-                              openFaqIndex === itemKey ? null : itemKey,
-                            )
-                          }
-                          style={{
-                            width: "100%",
-                            border: "none",
-                            background: "#f8f8f8",
-                            padding: "18px",
-                            textAlign: "left",
-                            fontWeight: "600",
-                            cursor: "pointer",
-                            display: "flex",
-                            justifyContent: "space-between",
-                          }}
-                        >
-                          <span>{item.question}</span>
-
-                          <span>{openFaqIndex === itemKey ? "−" : "+"}</span>
-                        </button>
-
-                        {openFaqIndex === itemKey && (
-                          <div
-                            style={{
-                              padding: "0 18px 18px",
-                              color: "#555",
-                              lineHeight: "1.8",
-                            }}
-                          >
-                            {item.answer}
-                            {item.linkUrl && (
-                              <div style={{ marginTop: "12px" }}>
-                                <a
-                                  href={item.linkUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{
-                                    color: "#1f6f3d",
-                                    fontWeight: "700",
-                                    textDecoration: "none",
-                                  }}
-                                >
-                                  {item.linkLabel || "Voir le document →"}
-                                </a>
-                              </div>
-                            )}
-                            {item.planUrl && (
-                              <div style={{ marginTop: "12px" }}>
-                                <a
-                                  href={item.planUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{
-                                    color: "#1f6f3d",
-                                    fontWeight: "700",
-                                    textDecoration: "none",
-                                  }}
-                                >
-                                  Voir le plan d’accès et de stationnement →
-                                </a>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
+      <HomeFaq faqCategories={faqCategories} setOpenFaqCategory={setOpenFaqCategory} openFaqCategory={openFaqCategory} setOpenFaqIndex={setOpenFaqIndex} openFaqIndex={openFaqIndex} />
 
       {/* RESERVATION */}
 
@@ -2418,6 +1717,7 @@ export default function MaisonVerte() {
               </div>
 
               <div
+                className="booking-guest-grid"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
@@ -2465,6 +1765,17 @@ export default function MaisonVerte() {
                 >
                   {reservationMessage}
                 </p>
+
+                <div
+                  style={{
+                    gridColumn: "1 / -1",
+                    fontWeight: "700",
+                    color: "#1f6f3d",
+                    marginTop: "2px",
+                  }}
+                >
+                  Contact principal
+                </div>
 
                 <input
                   ref={guestFirstNameRef}
@@ -2606,6 +1917,77 @@ export default function MaisonVerte() {
                   border: "1px solid #e2e8f0",
                 }}
               >
+                <div style={{ fontWeight: "700", color: "#1f6f3d", marginBottom: "6px" }}>
+                  Contacts supplémentaires <span style={{ fontWeight: "400", color: "#64748b" }}>(facultatif)</span>
+                </div>
+                <p style={{ margin: "0 0 14px", color: "#64748b", lineHeight: "1.45", fontSize: "0.9rem" }}>
+                  Ajoutez un autre occupant ou une personne joignable pendant le séjour. Chaque contact disposera de sa propre fiche client.
+                </p>
+
+                {additionalContacts.map((contact, index) => (
+                  <div
+                    key={`additional-contact-${index}`}
+                    style={{
+                      padding: "14px",
+                      marginBottom: "12px",
+                      borderRadius: "14px",
+                      border: "1px solid #d9e4dc",
+                      background: "white",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", marginBottom: "12px" }}>
+                      <strong style={{ color: "#334155" }}>Contact {index + 2}</strong>
+                      <button
+                        type="button"
+                        onClick={() => removeAdditionalContact(index)}
+                        style={{ border: "none", background: "transparent", color: "#a33", cursor: "pointer", textDecoration: "underline" }}
+                      >
+                        Supprimer ce contact
+                      </button>
+                    </div>
+
+                    <div className="booking-additional-contact-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "12px" }}>
+                      <input type="text" placeholder="Prénom *" value={contact.firstName} onChange={(event) => updateAdditionalContact(index, "firstName", event.target.value)} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db" }} />
+                      <input type="text" placeholder="Nom *" value={contact.lastName} onChange={(event) => updateAdditionalContact(index, "lastName", event.target.value)} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db" }} />
+                      <input type="email" placeholder="Email *" value={contact.email} onChange={(event) => updateAdditionalContact(index, "email", event.target.value)} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db" }} />
+                      <input type="tel" placeholder="Téléphone *" value={contact.phone} onChange={(event) => updateAdditionalContact(index, "phone", event.target.value)} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db" }} />
+                      <input type="text" autoComplete="street-address" placeholder="Adresse (facultatif)" value={contact.address} onChange={(event) => updateAdditionalContact(index, "address", event.target.value)} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db", gridColumn: "1 / -1" }} />
+                      <input type="text" autoComplete="postal-code" placeholder="Code postal (facultatif)" value={contact.postalCode} onChange={(event) => updateAdditionalContact(index, "postalCode", event.target.value)} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db" }} />
+                      <input type="text" autoComplete="address-level2" placeholder="Ville (facultatif)" value={contact.city} onChange={(event) => updateAdditionalContact(index, "city", event.target.value)} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db" }} />
+                      <input type="text" autoComplete="country-name" placeholder="Pays (facultatif)" value={contact.country} onChange={(event) => updateAdditionalContact(index, "country", event.target.value)} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db", gridColumn: "1 / -1" }} />
+                    </div>
+                  </div>
+                ))}
+
+                {additionalContacts.length < 4 && (
+                  <button
+                    type="button"
+                    onClick={addAdditionalContact}
+                    style={{
+                      border: "1px solid #1f6f3d",
+                      background: "white",
+                      color: "#1f6f3d",
+                      borderRadius: "999px",
+                      padding: "10px 16px",
+                      fontWeight: "700",
+                      cursor: "pointer",
+                    }}
+                  >
+                    + Ajouter un contact
+                  </button>
+                )}
+              </div>
+
+              <div
+                className="booking-travellers-card"
+                style={{
+                  marginBottom: "16px",
+                  padding: "16px",
+                  borderRadius: "16px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
                 <div
                   style={{
                     fontWeight: "700",
@@ -2617,6 +1999,7 @@ export default function MaisonVerte() {
                 </div>
 
                 <div
+                  className="booking-travellers-grid"
                   style={{
                     display: "grid",
                     gridTemplateColumns: "1fr 1fr auto",
@@ -2625,6 +2008,7 @@ export default function MaisonVerte() {
                   }}
                 >
                   <label
+                    className="booking-traveller-count"
                     style={{
                       display: "grid",
                       gap: "6px",
@@ -2649,6 +2033,7 @@ export default function MaisonVerte() {
                   </label>
 
                   <label
+                    className="booking-traveller-count"
                     style={{
                       display: "grid",
                       gap: "6px",
@@ -2673,6 +2058,7 @@ export default function MaisonVerte() {
                   </label>
 
                   <label
+                    className="booking-baby-bed-option"
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -2693,6 +2079,7 @@ export default function MaisonVerte() {
                 </div>
 
                 <label
+                  className="booking-cleaning-option"
                   style={{
                     display: "flex",
                     alignItems: "flex-start",
@@ -3152,614 +2539,15 @@ export default function MaisonVerte() {
 
       {/* ACTIVITES */}
 
-      <section id="activites" className="section">
-        <h2>Activités & expériences</h2>
-
-        <p
-          style={{
-            textAlign: "center",
-            maxWidth: "780px",
-            margin: "0 auto 55px",
-            lineHeight: "1.8",
-            color: "#555",
-          }}
-        >
-          Profitez de la centralité unique d'Arreau pour vous offir une
-          multitude d'activités possibles. Au coeur d'un cadre naturel
-          exceptionnel, organisez votre séjour sportif, culturel, récréatif ou
-          bien-être selon vos envies.
-        </p>
-
-        {/* OFFRE SKI */}
-
-        <div
-          style={{
-            background: "#1f6f3d",
-            color: "white",
-            borderRadius: "36px",
-            padding: "42px",
-            marginBottom: "42px",
-            display: "grid",
-            gridTemplateColumns: "1fr 320px",
-            gap: "30px",
-            alignItems: "center",
-            boxShadow: "0 20px 60px rgba(0,0,0,0.14)",
-          }}
-        >
-          <div>
-            <h3
-              style={{
-                color: "white",
-                marginBottom: "16px",
-              }}
-            >
-              Offre hiver : logement + cours de ski
-            </h3>
-
-            <p
-              style={{
-                lineHeight: "1.8",
-                opacity: 0.95,
-                marginBottom: "20px",
-              }}
-            >
-              En hiver, combinez votre séjour à La Maison Verte avec des cours
-              de ski et de snowboard personnalisés sur la station de Peyragudes
-              avec un moniteur de ski diplômé.
-            </p>
-
-            <strong>
-              Tarif préférentiel : jusqu’à 15% de réduction sur le logement pour
-              une formule séjour + cours de ski. Nous contacter pour plus
-              d'information.
-            </strong>
-
-            <div style={{ marginTop: "24px" }}>
-              <a
-                href="/ski-vallees-aure-louron"
-                style={{
-                  display: "inline-block",
-                  background: "white",
-                  color: "#1f6f3d",
-                  padding: "12px 20px",
-                  borderRadius: "999px",
-                  textDecoration: "none",
-                  fontWeight: "800",
-                }}
-              >
-                Découvrir les cours de ski
-              </a>
-            </div>
-          </div>
-
-          <img
-            src="/activite-ski.webp"
-            alt="Cours de ski dans les Pyrénées"
-            style={{
-              width: "100%",
-              height: "220px",
-              objectFit: "cover",
-              borderRadius: "28px",
-            }}
-          />
-        </div>
-
-        {/* CARTES ACTIVITES */}
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))",
-            gap: "28px",
-          }}
-        >
-          {[
-            {
-              title: "Nature & randonnées",
-              image: "/activite-randonnee.webp",
-              alt: "Randonnée dans les Pyrénées et réserve du Néouvielle",
-              text: "Lacs d’altitude, panoramas exceptionnels au coeur du massif, depuis un «3000» ou un sommet surplombant le piémont, Parcs Nationaux des Pyrénées et d'Ordessa, réserve du Néouvielle, circuits avec nuités en refuge : une destination idéale pour découvrir les Pyrénées, respirer l'air pur des montagnes, se ressourcer.",
-              links: [
-                {
-                  label: "Réserve du Néouvielle",
-                  url: "https://www.visit-neouvielle.com/",
-                },
-                {
-                  label: "Parc National Pyrénées",
-                  url: "https://www.pyrenees-parcnational.fr/",
-                },
-                {
-                  label: "Pyrénées 2 Vallées",
-                  url: "https://www.pyrenees2vallees.com/la-randonnee-%C3%A0-pyrenees2vall%C3%A9es",
-                },
-                {
-                  label: "Parc national d'Ordessa Mont Perdu",
-                  url: "https://www.turismodearagon.com/fr/ficha/ordesa-y-monte-perdido/",
-                },
-                {
-                  label: "Randonnée et activités outdoor",
-                  url: "https://www.agence-outdoor.fr",
-                },
-                {
-                  label: "Cabanes et refuges",
-                  url: "https://www.pyrenees-refuges.com/",
-                },
-                {
-                  label: "Guide de hte montagne",
-                  url: "http://pierre.guide.free.fr/",
-                },
-              ],
-            },
-            {
-              title: "Vélo & cols mythiques",
-              image: "/activite-velo.webp",
-              alt: "Cyclisme dans les cols des Hautes-Pyrénées",
-              text: "Partez à la découverte des grands cols pyrénéens : Aspin, Peyresourde, Tourmalet, Hourquette d'Ancizan, Portet et Azet : un terrain de jeu rêvé pour les cyclistes. Dévalez en VTT les pistes de la Coupe du Monde Mountain Bike UCI de la vallée du Louron, mais aussi celles en vallée d'Aure et de la Zona Zero en Espagne.",
-              links: [
-                {
-                  label: "Route des cols",
-                  url: "https://www.tourisme-hautes-pyrenees.com/montagne-ete/velo/ascensions-cols-pyrenees/grande-route-cols/",
-                },
-                {
-                  label: "Cols, cartes et profils",
-                  url: "https://climbfinder.com/fr/carte#lnglat=0.359832/42.905098&position=11.22/42.905098/0.359832",
-                },
-                {
-                  label: "Louron Bike & Trail",
-                  url: "https://louronbikeandtrail.com/fr",
-                },
-                {
-                  label: "VTT Aure Louron ",
-                  url: "https://www.pyrenees2vallees.com/vtt",
-                },
-                {
-                  label: "VTT Ainsa - Zona Zero ",
-                  url: "https://zonazeropirineos.com/fr/",
-                },
-              ],
-            },
-            {
-              title: "Eau vive & sensations",
-              image: "/activite-eauvive.webp",
-              alt: "Rafting canyoning eau vive dans les Pyrénées",
-              text: "Descente en rafting de la Neste d'Aure, canyon sportif sur les flancs du Mont Perdu ou ludique dans les eaux turquoises de la Sierra de Guara, via ferrata, activités sportives familiales ou sensationnelles pour ajouter une dose d’aventure à votre séjour.",
-              links: [
-                {
-                  label: "Rafting et Canyoning",
-                  url: "https://pyragua.com/",
-                },
-                {
-                  label: "Canyon Sierra de Guara",
-                  url: "https://www.canyonsierradeguara.com/",
-                },
-                {
-                  label: "Activités Louron",
-                  url: "https://www.vallee-du-louron.com/fr/activites-2",
-                },
-                {
-                  label: "Activités vallée d'Aure",
-                  url: "https://www.tourisme-hautes-pyrenees.com/montagne-ete/lieux-de-sejour/saint-lary-et-la-vallee-aure/",
-                },
-                {
-                  label: "Activités Piémont",
-                  url: "https://coeurdespyrenees.com/office-de-tourisme-lannemezan-et-capvern/je-suis-touriste/",
-                },
-                {
-                  label: "Baronnies - Barousse",
-                  url: "https://tourisme-neste-barousse.fr/",
-                },
-                {
-                  label: "Parapente",
-                  url: "https://virevolte.net/",
-                },
-              ],
-            },
-            {
-              title: "Bien-être & découvertes",
-              image: "/activite-detente.webp",
-              alt: "Balnéa Loudenvielle détente et patrimoine",
-              text: "Après une journée en montagne, profitez d'un moment de détente à Balnéa, découvrez les villages pyrénéens, Saint-Lary, Loudenvielle, le patrimoine architectural, la gastronomie locale ou une escapade vers l’Espagne.",
-              links: [
-                {
-                  label: "Balnéa",
-                  url: "https://www.balnea.fr/",
-                },
-                {
-                  label: "Arreau",
-                  url: "https://www.mairie-arreau.fr/",
-                },
-                {
-                  label: "Le patrimoine des vallées d’Aure et du Louron",
-                  url: "https://patrimoine-aure-louron.fr/notre-patrimoine/focus-sur-les-monuments-incontournables/",
-                },
-                {
-                  label: "Gastronomie et producteurs locaux",
-                  url: "https://www.hapy-saveurs.com/",
-                },
-                {
-                  label: "Infos locales",
-                  url: "https://www.scoop.it.pyrenees-aure-louron.eu/",
-                },
-                {
-                  label: "Le marché d'Arreau",
-                  url: "https://www.paysdesnestes.fr/marche-de-arreau/",
-                },
-              ],
-            },
-          ].map((activity) => (
-            <div
-              key={activity.title}
-              style={{
-                background: "white",
-                borderRadius: "32px",
-                overflow: "hidden",
-                boxShadow: "0 15px 40px rgba(0,0,0,0.08)",
-                transition: "0.35s",
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = "translateY(-6px)";
-                e.currentTarget.style.boxShadow =
-                  "0 22px 55px rgba(0,0,0,0.13)";
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = "translateY(0)";
-                e.currentTarget.style.boxShadow =
-                  "0 15px 40px rgba(0,0,0,0.08)";
-              }}
-            >
-              <img
-                src={activity.image}
-                alt={activity.alt}
-                style={{
-                  width: "100%",
-                  height: "240px",
-                  objectFit: "cover",
-                }}
-              />
-
-              <div
-                style={{
-                  padding: "28px",
-                }}
-              >
-                <h3
-                  style={{
-                    marginBottom: "14px",
-                  }}
-                >
-                  {activity.title}
-                </h3>
-
-                <p
-                  style={{
-                    lineHeight: "1.8",
-                    color: "#555",
-                    marginBottom: "24px",
-                  }}
-                >
-                  {activity.text}
-                </p>
-
-                <details
-                  style={{
-                    marginTop: "18px",
-                  }}
-                >
-                  <summary
-                    style={{
-                      color: "#1f6f3d",
-                      fontWeight: "700",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Liens utiles
-                  </summary>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: "10px",
-                      marginTop: "16px",
-                    }}
-                  >
-                    {activity.links.map((link) => (
-                      <a
-                        key={link.url}
-                        href={link.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          color: "#1f6f3d",
-                          textDecoration: "none",
-                          fontWeight: "500",
-                        }}
-                      >
-                        {link.label} →
-                      </a>
-                    ))}
-                  </div>
-                </details>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div
-          style={{
-            textAlign: "center",
-            maxWidth: "900px",
-            margin: "60px auto 0",
-            padding: "0 24px",
-          }}
-        >
-          <h3
-            style={{
-              fontFamily: "'Cormorant Garamond', serif",
-              fontSize: "clamp(2rem, 4vw, 2.8rem)",
-              color: "#2f4f35",
-              marginBottom: "16px",
-              fontWeight: "600",
-            }}
-          >
-            Découvrir la vallée d'Aure
-          </h3>
-
-          <p
-            style={{
-              fontSize: "1.1rem",
-              lineHeight: "1.8",
-              color: "#555",
-              maxWidth: "750px",
-              margin: "0 auto 28px",
-            }}
-          >
-            Stations de ski, cols mythiques des Pyrénées, lacs du Néouvielle,
-            randonnées, patrimoine, villages de montagne et bien-être :
-            découvrez notre guide complet pour préparer votre séjour à Arreau et
-            explorer les incontournables de la vallée d'Aure.
-          </p>
-
-          <a
-            href="/guide-vallees-aure-louron"
-            style={{
-              display: "inline-block",
-              padding: "16px 34px",
-              background: "#2f4f35",
-              color: "white",
-              borderRadius: "999px",
-              textDecoration: "none",
-              fontWeight: "600",
-              fontSize: "1rem",
-              boxShadow: "0 8px 25px rgba(47,79,53,0.25)",
-              transition: "all 0.3s ease",
-            }}
-          >
-            Voir le guide complet →
-          </a>
-        </div>
-
-      </section>
+      <HomeActivities />
 
       {/* METEO + CARTE */}
 
-      <section id="meteo" className="section">
-        <div style={{ textAlign: "center", marginBottom: "28px" }}>
-          <a
-            href="/livret/plan-acces.jpg"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="button"
-            style={{ textDecoration: "none" }}
-          >
-            Voir le plan d’accès et de stationnement
-          </a>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
-            gap: "30px",
-            alignItems: "stretch",
-          }}
-        >
-          {/* METEO */}
-
-          <div
-            style={{
-              background: "white",
-              borderRadius: "35px",
-              padding: "20px",
-              boxShadow: "0 20px 50px rgba(0,0,0,0.08)",
-            }}
-          >
-            <h2
-              style={{
-                marginBottom: "20px",
-                paddingLeft: "10px",
-              }}
-            >
-              Météo montagne
-            </h2>
-
-            <iframe
-              title="Météo Arreau Meteoblue"
-              src="https://www.meteoblue.com/fr/meteo/widget/daily/arreau_france_3036770?geoloc=fixed&days=4&tempunit=CELSIUS&windunit=KILOMETER_PER_HOUR&layout=light"
-              frameBorder="0"
-              scrolling="NO"
-              style={{
-                width: "125%",
-                height: "620px",
-                border: "0",
-                borderRadius: "25px",
-                overflow: "hidden",
-                transform: "scale(0.8)",
-                transformOrigin: "top left",
-              }}
-            />
-          </div>
-
-          {/* CARTE */}
-
-          <div
-            style={{
-              background: "white",
-              borderRadius: "35px",
-              padding: "20px",
-              boxShadow: "0 20px 50px rgba(0,0,0,0.08)",
-            }}
-          >
-            <h2
-              style={{
-                marginBottom: "20px",
-                paddingLeft: "15px",
-              }}
-            >
-              Emplacement idéal à Arreau
-            </h2>
-
-            <iframe
-              title="Carte Arreau"
-              src="https://www.google.com/maps?q=3+Impasse+Trassens+65240+Arreau&output=embed"
-              style={{
-                width: "100%",
-                height: "420px",
-                border: "0",
-                borderRadius: "25px",
-              }}
-            />
-          </div>
-        </div>
-      </section>
+      <HomeWeather />
 
       {/* CONTACT */}
 
-      <section id="contact" className="section">
-        <div
-          style={{
-            background: "white",
-            borderRadius: "40px",
-            padding: "60px 40px",
-            boxShadow: "0 20px 60px rgba(0,0,0,0.08)",
-            maxWidth: "1100px",
-            margin: "auto",
-          }}
-        >
-          <h2
-            style={{
-              textAlign: "center",
-              marginBottom: "20px",
-            }}
-          >
-            Contact & Réservation
-          </h2>
-
-          <p
-            style={{
-              textAlign: "center",
-              maxWidth: "720px",
-              margin: "auto",
-              marginBottom: "42px",
-              lineHeight: "1.8",
-              color: "#555",
-            }}
-          >
-            Une question sur votre séjour, les disponibilités ou autre ?
-            <br></br>Nous serons ravis de vous répondre.
-          </p>
-
-          {/* CONTACT DIRECT : TELEPHONE + WHATSAPP BUSINESS */}
-
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: "14px",
-              marginBottom: "34px",
-            }}
-          >
-            <a
-              href="tel:+33695938315"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "12px",
-                background: "#f6f3ee",
-                color: "#1f6f3d",
-                padding: "18px 28px",
-                borderRadius: "999px",
-                textDecoration: "none",
-                fontWeight: "700",
-                fontSize: "1.1rem",
-                boxShadow: "0 10px 30px rgba(0,0,0,0.06)",
-              }}
-            >
-              📞 06 95 93 83 15
-            </a>
-
-            <a
-              href="https://wa.me/33695938315?text=Bonjour%2C%20je%20souhaite%20des%20renseignements%20concernant%20La%20Maison%20Verte."
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Écrire à La Maison Verte sur WhatsApp"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "12px",
-                background: "#1f6f3d",
-                color: "white",
-                padding: "18px 28px",
-                borderRadius: "999px",
-                textDecoration: "none",
-                fontWeight: "700",
-                fontSize: "1.1rem",
-                boxShadow: "0 10px 30px rgba(31,111,61,0.18)",
-              }}
-            >
-              💬 Écrire sur WhatsApp
-            </a>
-          </div>
-
-          {/* BANNIERE CONTACT */}
-          <a   href="mailto:lamaisonverte65@gmail.com"  title="Cliquez pour nous envoyer un email">   
-          <img
-            src="/banniere.webp"
-            alt="Email et adresse de La Maison Verte à Arreau"
-            style={{
-              width: "100%",
-              maxWidth: "1050px",
-              display: "block",
-              margin: "0 auto",
-              borderRadius: "28px",
-              boxShadow: "0 20px 60px rgba(0,0,0,0.08)",
-            }}
-          />
-          </a>  
-
-          {/* GOOGLE MAPS */}
-
-          <div
-            style={{
-              textAlign: "center",
-              marginTop: "34px",
-            }}
-          >
-            <a
-              href="https://www.google.com/maps?q=3+Impasse+Trassens+65240+Arreau"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="button"
-              style={{
-                textDecoration: "none",
-              }}
-            >
-              Ouvrir dans Google Maps
-            </a>
-          </div>
-        </div>
-      </section>
+      <HomeContact />
 
       {/* FOOTER */}
 

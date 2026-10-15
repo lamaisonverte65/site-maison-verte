@@ -1,0 +1,119 @@
+[
+  {
+    "old": "banniere avec site.png",
+    "new": "banniere-avec-site.webp",
+    "before": 945701,
+    "after": 662106,
+    "width": 1774,
+    "height": 887,
+    "lossless": true,
+    "removedAsUnused": true,
+    "note": "Fichier converti puis supprimé : variante non référencée par le site."
+  },
+  {
+    "old": "banniere.png",
+    "new": "banniere-source.webp",
+    "before": 1005623,
+    "after": 667662,
+    "width": 1774,
+    "height": 887,
+    "lossless": true,
+    "removedAsUnused": true,
+    "note": "Fichier converti puis supprimé : variante non référencée par le site."
+  },
+  {
+    "old": "classement/panonceau-meuble-tourisme-3-etoiles-2026.png",
+    "new": "classement/panonceau-meuble-tourisme-3-etoiles-2026.webp",
+    "before": 61852,
+    "after": 33176,
+    "width": 429,
+    "height": 428,
+    "lossless": true
+  },
+  {
+    "old": "livret/banniere-contacts.png",
+    "new": "livret/banniere-contacts.webp",
+    "before": 782671,
+    "after": 541528,
+    "width": 1600,
+    "height": 580,
+    "lossless": true
+  },
+  {
+    "old": "livret/plan parking 3.png",
+    "new": "livret/plan-parking-3.webp",
+    "before": 1271502,
+    "after": 872514,
+    "width": 900,
+    "height": 675,
+    "lossless": true
+  },
+  {
+    "old": "livret/plan parking 4.png",
+    "new": "livret/plan-parking-4.webp",
+    "before": 967032,
+    "after": 670880,
+    "width": 900,
+    "height": 675,
+    "lossless": true
+  },
+  {
+    "old": "livret/procedure-boite-a-cles.png",
+    "new": "livret/procedure-boite-a-cles.webp",
+    "before": 1271368,
+    "after": 825644,
+    "width": 768,
+    "height": 1152,
+    "lossless": true,
+    "keepOriginalForEmail": true
+  },
+  {
+    "old": "livret/shared_qr_code.png",
+    "new": "livret/qr-whatsapp.png",
+    "before": 85950,
+    "after": 10437,
+    "width": 371,
+    "height": 371,
+    "lossless": false,
+    "note": "QR WhatsApp extrait de la carte source et conservé sous un chemin canonique unique."
+  },
+  {
+    "old": "logo-google.png",
+    "new": "logo-google.webp",
+    "before": 80972,
+    "after": 48534,
+    "width": 453,
+    "height": 453,
+    "lossless": true
+  },
+  {
+    "old": "logo.png",
+    "new": "logo.webp",
+    "before": 78223,
+    "after": 47928,
+    "width": 391,
+    "height": 333,
+    "lossless": true
+  },
+  {
+    "old": "logo1.png",
+    "new": "logo1.webp",
+    "before": 79116,
+    "after": 48290,
+    "width": 391,
+    "height": 333,
+    "lossless": true,
+    "removedAsUnused": true,
+    "note": "Fichier converti puis supprimé : ancienne variante de logo non référencée par le site."
+  },
+  {
+    "old": "shared_qr_code.png",
+    "new": "livret/qr-whatsapp.png",
+    "before": 85950,
+    "after": 10437,
+    "width": 371,
+    "height": 371,
+    "lossless": false,
+    "note": "QR WhatsApp extrait de la carte source et conservé sous un chemin canonique unique."
+  }
+]

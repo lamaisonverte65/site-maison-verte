@@ -267,7 +267,8 @@ export default function CalendarAdmin({
     setLoading(true);
 
     try {
-      const { calendarData, warnings } = await loadExternalCalendarForAdmin();
+      const { data: { session } } = await supabase.auth.getSession();
+      const { calendarData, warnings } = await loadExternalCalendarForAdmin(fetch, session?.access_token || "");
       setExternalCalendarWarnings(warnings);
 
       const pricing = await loadPricing();

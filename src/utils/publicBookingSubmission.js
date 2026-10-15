@@ -31,6 +31,7 @@ export async function submitPublicBooking(payload, {
 
     if (response.ok && body?.success === true && typeof body.bookingId === "string" && body.bookingId) {
       const confirmationPending = body.confirmationPending === true;
+      const additionalContactsPending = body.additionalContactsPending === true;
       return {
         kind: confirmationPending ? "recorded_confirmation_pending" : "success",
         success: true,
@@ -38,6 +39,7 @@ export async function submitPublicBooking(payload, {
         reload: true,
         bookingId: body.bookingId,
         ...(confirmationPending ? { confirmationPending: true } : {}),
+        ...(additionalContactsPending ? { additionalContactsPending: true } : {}),
       };
     }
     if (response.status === 400) return failure("validation", "Certaines informations sont invalides. Vérifiez le formulaire puis réessayez.");
