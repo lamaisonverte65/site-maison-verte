@@ -83,6 +83,7 @@ export default function MaisonVerte() {
   const [bookingConfirmation, setBookingConfirmation] = useState(null);
   const bookingSubmitLockRef = useRef(false);
   const [bookingValidationErrors, setBookingValidationErrors] = useState([]);
+  const [bookingValidationAttempted, setBookingValidationAttempted] = useState(false);
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
   const bookingFormRef = useRef(null);
   const bookingErrorRef = useRef(null);
@@ -405,16 +406,76 @@ export default function MaisonVerte() {
   const canRequestBooking =
     selectedDates.length === 2 && numberOfNights >= minimumNights;
 
-  const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail);
+  const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const PHONE_PATTERN = /^[+\d][\d\s().-]{5,31}$/;
 
-  const isPhoneValid = /^[0-9+\s().-]{8,}$/.test(guestPhone);
+  function getRequiredTextError(value, label, maxLength, showRequired = bookingValidationAttempted) {
+    const text = String(value ?? "").trim();
+    if (!text) return showRequired ? `${label} requis.` : "";
+    if (text.length > maxLength) return `${label} trop long (${maxLength} caractères maximum).`;
+    return "";
+  }
 
-  const areAdditionalContactsValid = additionalContacts.every((contact) => (
-    contact.firstName.trim() !== "" &&
-    contact.lastName.trim() !== "" &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email) &&
-    /^[0-9+\s().-]{8,}$/.test(contact.phone)
-  ));
+  function getEmailError(value, showRequired = bookingValidationAttempted) {
+    const text = String(value ?? "").trim();
+    if (!text) return showRequired ? "Adresse email requise." : "";
+    if (text.length > 254 || !EMAIL_PATTERN.test(text)) return "Adresse email invalide.";
+    return "";
+  }
+
+  function getPhoneError(value, showRequired = bookingValidationAttempted) {
+    const text = String(value ?? "").trim();
+    if (!text) return showRequired ? "Numéro de téléphone requis." : "";
+    if (text.length > 32 || !PHONE_PATTERN.test(text)) return "Numéro de téléphone invalide.";
+    return "";
+  }
+
+  const mainContactErrors = {
+    firstName: getRequiredTextError(guestFirstName, "Prénom", 80),
+    lastName: getRequiredTextError(guestLastName, "Nom", 80),
+    email: getEmailError(guestEmail),
+    phone: getPhoneError(guestPhone),
+    address: getRequiredTextError(guestAddress, "Adresse", 200),
+    postalCode: getRequiredTextError(guestPostalCode, "Code postal", 20),
+    city: getRequiredTextError(guestCity, "Ville", 100),
+    country: getRequiredTextError(guestCountry, "Pays", 100),
+  };
+
+  const isEmailValid = mainContactErrors.email === "" && guestEmail.trim() !== "";
+  const isPhoneValid = mainContactErrors.phone === "" && guestPhone.trim() !== "";
+
+  function getAdditionalContactFieldErrors(contact, index, showRequired = bookingValidationAttempted) {
+    const email = String(contact.email ?? "").trim().toLowerCase();
+    const phone = normalizeContactPhone(contact.phone);
+    const previousContacts = additionalContacts.slice(0, index);
+    const emailDuplicate = Boolean(email) && (
+      email === guestEmail.trim().toLowerCase()
+      || previousContacts.some((candidate) => candidate.email.trim().toLowerCase() === email)
+    );
+    const phoneDuplicate = Boolean(phone) && (
+      phone === normalizeContactPhone(guestPhone)
+      || previousContacts.some((candidate) => normalizeContactPhone(candidate.phone) === phone)
+    );
+
+    const emailError = getEmailError(contact.email, showRequired);
+    const phoneError = getPhoneError(contact.phone, showRequired);
+
+    return {
+      firstName: getRequiredTextError(contact.firstName, "Prénom", 80, showRequired),
+      lastName: getRequiredTextError(contact.lastName, "Nom", 80, showRequired),
+      email: emailError || (emailDuplicate ? "Adresse email déjà renseignée." : ""),
+      phone: phoneError || (phoneDuplicate ? "Numéro de téléphone déjà renseigné." : ""),
+      address: contact.address.trim().length > 200 ? "Adresse trop longue (200 caractères maximum)." : "",
+      postalCode: contact.postalCode.trim().length > 20 ? "Code postal trop long (20 caractères maximum)." : "",
+      city: contact.city.trim().length > 100 ? "Ville trop longue (100 caractères maximum)." : "",
+      country: contact.country.trim().length > 100 ? "Pays trop long (100 caractères maximum)." : "",
+    };
+  }
+
+  const areAdditionalContactsValid = additionalContacts.every((contact, index) => {
+    const errors = getAdditionalContactFieldErrors(contact, index, true);
+    return Object.values(errors).every((message) => !message);
+  });
 
   const adultsCount = Number(guestAdults || 0);
   const childrenCount = Number(guestChildren || 0);
@@ -504,50 +565,26 @@ export default function MaisonVerte() {
       });
     }
 
-    if (guestFirstName.trim() === "") {
-      errors.push({ message: "Renseignez votre prénom.", ref: guestFirstNameRef });
+    const requiredContactChecks = [
+      [getRequiredTextError(guestFirstName, "Prénom", 80, true), guestFirstNameRef],
+      [getRequiredTextError(guestLastName, "Nom", 80, true), guestLastNameRef],
+      [getEmailError(guestEmail, true), guestEmailRef],
+      [getPhoneError(guestPhone, true), guestPhoneRef],
+      [getRequiredTextError(guestAddress, "Adresse", 200, true), guestAddressRef],
+      [getRequiredTextError(guestPostalCode, "Code postal", 20, true), guestPostalCodeRef],
+      [getRequiredTextError(guestCity, "Ville", 100, true), guestCityRef],
+      [getRequiredTextError(guestCountry, "Pays", 100, true), guestCountryRef],
+    ];
+    for (const [message, ref] of requiredContactChecks) {
+      if (message) errors.push({ message, ref });
     }
 
-    if (guestLastName.trim() === "") {
-      errors.push({ message: "Renseignez votre nom.", ref: guestLastNameRef });
-    }
-
-    if (guestEmail.trim() === "") {
-      errors.push({ message: "Renseignez votre adresse email.", ref: guestEmailRef });
-    } else if (!isEmailValid) {
-      errors.push({ message: "Renseignez une adresse email valide.", ref: guestEmailRef });
-    }
-
-    if (guestPhone.trim() === "") {
-      errors.push({ message: "Renseignez votre numéro de téléphone.", ref: guestPhoneRef });
-    } else if (!isPhoneValid) {
-      errors.push({ message: "Renseignez un numéro de téléphone valide.", ref: guestPhoneRef });
-    }
-
-    if (guestAddress.trim() === "") errors.push({ message: "Renseignez votre adresse.", ref: guestAddressRef });
-    if (guestPostalCode.trim() === "") errors.push({ message: "Renseignez votre code postal.", ref: guestPostalCodeRef });
-    if (guestCity.trim() === "") errors.push({ message: "Renseignez votre ville.", ref: guestCityRef });
-    if (guestCountry.trim() === "") errors.push({ message: "Renseignez votre pays.", ref: guestCountryRef });
-
-    const seenEmails = new Set([guestEmail.trim().toLowerCase()].filter(Boolean));
-    const seenPhones = new Set([normalizeContactPhone(guestPhone)].filter(Boolean));
     additionalContacts.forEach((contact, index) => {
       const label = `Contact ${index + 2}`;
-      const email = contact.email.trim().toLowerCase();
-      const phone = normalizeContactPhone(contact.phone);
-      if (!contact.firstName.trim()) errors.push({ message: `${label} : renseignez le prénom.`, ref: bookingFormRef });
-      if (!contact.lastName.trim()) errors.push({ message: `${label} : renseignez le nom.`, ref: bookingFormRef });
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)) {
-        errors.push({ message: `${label} : renseignez une adresse email valide.`, ref: bookingFormRef });
+      const contactErrors = getAdditionalContactFieldErrors(contact, index, true);
+      for (const message of Object.values(contactErrors)) {
+        if (message) errors.push({ message: `${label} : ${message}`, ref: bookingFormRef });
       }
-      if (!/^[0-9+\s().-]{8,}$/.test(contact.phone)) {
-        errors.push({ message: `${label} : renseignez un numéro de téléphone valide.`, ref: bookingFormRef });
-      }
-      if ((email && seenEmails.has(email)) || (phone && seenPhones.has(phone))) {
-        errors.push({ message: `${label} : ce contact est déjà renseigné.`, ref: bookingFormRef });
-      }
-      if (email) seenEmails.add(email);
-      if (phone) seenPhones.add(phone);
     });
 
     if (!isGuestCompositionValid) {
@@ -575,6 +612,7 @@ export default function MaisonVerte() {
       return;
     }
 
+    setBookingValidationAttempted(true);
     const validationErrors = getBookingValidationErrors();
 
     if (validationErrors.length > 0) {
@@ -675,6 +713,7 @@ export default function MaisonVerte() {
       setSelectedDates([]);
       setContractAccepted(false);
       setBookingValidationErrors([]);
+      setBookingValidationAttempted(false);
 
     } catch (err) {
       console.error(err);
@@ -1777,135 +1816,113 @@ export default function MaisonVerte() {
                   Contact principal
                 </div>
 
-                <input
-                  ref={guestFirstNameRef}
-                  type="text"
-                  placeholder="Votre prénom"
-                  value={guestFirstName}
-                  onChange={(e) => setGuestFirstName(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "16px",
-                    borderRadius: "16px",
-                    border: "1px solid #ddd",
-                  }}
-                />
+                <div className="booking-field">
+                  <input
+                    ref={guestFirstNameRef}
+                    type="text"
+                    placeholder="Votre prénom"
+                    value={guestFirstName}
+                    onChange={(e) => setGuestFirstName(e.target.value)}
+                    aria-invalid={mainContactErrors.firstName ? "true" : undefined}
+                    style={{ width: "100%", padding: "16px", borderRadius: "16px", border: mainContactErrors.firstName ? "1px solid #d33" : "1px solid #ddd" }}
+                  />
+                  {mainContactErrors.firstName && <div className="booking-field-error">{mainContactErrors.firstName}</div>}
+                </div>
 
-                <input
-                  ref={guestLastNameRef}
-                  type="text"
-                  placeholder="Votre nom"
-                  value={guestLastName}
-                  onChange={(e) => setGuestLastName(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "16px",
-                    borderRadius: "16px",
-                    border: "1px solid #ddd",
-                  }}
-                />
+                <div className="booking-field">
+                  <input
+                    ref={guestLastNameRef}
+                    type="text"
+                    placeholder="Votre nom"
+                    value={guestLastName}
+                    onChange={(e) => setGuestLastName(e.target.value)}
+                    aria-invalid={mainContactErrors.lastName ? "true" : undefined}
+                    style={{ width: "100%", padding: "16px", borderRadius: "16px", border: mainContactErrors.lastName ? "1px solid #d33" : "1px solid #ddd" }}
+                  />
+                  {mainContactErrors.lastName && <div className="booking-field-error">{mainContactErrors.lastName}</div>}
+                </div>
 
-                <div>
+                <div className="booking-field">
                   <input
                     ref={guestEmailRef}
                     type="email"
                     placeholder="Votre email"
                     value={guestEmail}
                     onChange={(e) => setGuestEmail(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "16px",
-                      borderRadius: "16px",
-                      border:
-                        isEmailValid || guestEmail === ""
-                          ? "1px solid #ddd"
-                          : "1px solid #d33",
-                    }}
+                    aria-invalid={mainContactErrors.email ? "true" : undefined}
+                    style={{ width: "100%", padding: "16px", borderRadius: "16px", border: mainContactErrors.email ? "1px solid #d33" : "1px solid #ddd" }}
                   />
-
-                  {guestEmail !== "" && !isEmailValid && (
-                    <div
-                      style={{
-                        color: "#d33",
-                        fontSize: "0.85rem",
-                        marginTop: "8px",
-                      }}
-                    >
-                      Adresse email invalide.
-                    </div>
-                  )}
+                  {mainContactErrors.email && <div className="booking-field-error">{mainContactErrors.email}</div>}
                 </div>
 
-                <div>
+                <div className="booking-field">
                   <input
                     ref={guestPhoneRef}
                     type="tel"
                     placeholder="Votre téléphone"
                     value={guestPhone}
                     onChange={(e) => setGuestPhone(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "16px",
-                      borderRadius: "16px",
-                      border:
-                        isPhoneValid || guestPhone === ""
-                          ? "1px solid #ddd"
-                          : "1px solid #d33",
-                    }}
+                    aria-invalid={mainContactErrors.phone ? "true" : undefined}
+                    style={{ width: "100%", padding: "16px", borderRadius: "16px", border: mainContactErrors.phone ? "1px solid #d33" : "1px solid #ddd" }}
                   />
-
-                  {guestPhone !== "" && !isPhoneValid && (
-                    <div
-                      style={{
-                        color: "#d33",
-                        fontSize: "0.85rem",
-                        marginTop: "8px",
-                      }}
-                    >
-                      Numéro de téléphone invalide.
-                    </div>
-                  )}
+                  {mainContactErrors.phone && <div className="booking-field-error">{mainContactErrors.phone}</div>}
                 </div>
 
-                <input
-                  ref={guestAddressRef}
-                  type="text"
-                  autoComplete="street-address"
-                  placeholder="Votre adresse"
-                  value={guestAddress}
-                  onChange={(e) => setGuestAddress(e.target.value)}
-                  style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #ddd", gridColumn: "1 / -1" }}
-                />
+                <div className="booking-field booking-field--wide">
+                  <input
+                    ref={guestAddressRef}
+                    type="text"
+                    autoComplete="street-address"
+                    placeholder="Votre adresse"
+                    value={guestAddress}
+                    onChange={(e) => setGuestAddress(e.target.value)}
+                    aria-invalid={mainContactErrors.address ? "true" : undefined}
+                    style={{ width: "100%", padding: "16px", borderRadius: "16px", border: mainContactErrors.address ? "1px solid #d33" : "1px solid #ddd" }}
+                  />
+                  {mainContactErrors.address && <div className="booking-field-error">{mainContactErrors.address}</div>}
+                </div>
 
-                <input
-                  ref={guestPostalCodeRef}
-                  type="text"
-                  autoComplete="postal-code"
-                  placeholder="Code postal"
-                  value={guestPostalCode}
-                  onChange={(e) => setGuestPostalCode(e.target.value)}
-                  style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #ddd" }}
-                />
+                <div className="booking-field">
+                  <input
+                    ref={guestPostalCodeRef}
+                    type="text"
+                    autoComplete="postal-code"
+                    placeholder="Code postal"
+                    value={guestPostalCode}
+                    onChange={(e) => setGuestPostalCode(e.target.value)}
+                    aria-invalid={mainContactErrors.postalCode ? "true" : undefined}
+                    style={{ width: "100%", padding: "16px", borderRadius: "16px", border: mainContactErrors.postalCode ? "1px solid #d33" : "1px solid #ddd" }}
+                  />
+                  {mainContactErrors.postalCode && <div className="booking-field-error">{mainContactErrors.postalCode}</div>}
+                </div>
 
-                <input
-                  ref={guestCityRef}
-                  type="text"
-                  autoComplete="address-level2"
-                  placeholder="Ville"
-                  value={guestCity}
-                  onChange={(e) => setGuestCity(e.target.value)}
-                  style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #ddd" }}
-                />
+                <div className="booking-field">
+                  <input
+                    ref={guestCityRef}
+                    type="text"
+                    autoComplete="address-level2"
+                    placeholder="Ville"
+                    value={guestCity}
+                    onChange={(e) => setGuestCity(e.target.value)}
+                    aria-invalid={mainContactErrors.city ? "true" : undefined}
+                    style={{ width: "100%", padding: "16px", borderRadius: "16px", border: mainContactErrors.city ? "1px solid #d33" : "1px solid #ddd" }}
+                  />
+                  {mainContactErrors.city && <div className="booking-field-error">{mainContactErrors.city}</div>}
+                </div>
 
-                <input
-                  ref={guestCountryRef}
-                  type="text"
-                  autoComplete="country-name"
-                  placeholder="Pays"
-                  value={guestCountry}
-                  onChange={(e) => setGuestCountry(e.target.value)}
-                  style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #ddd", gridColumn: "1 / -1" }}
-                />
+                <div className="booking-field booking-field--wide">
+                  <input
+                    ref={guestCountryRef}
+                    type="text"
+                    autoComplete="country-name"
+                    placeholder="Pays"
+                    value={guestCountry}
+                    onChange={(e) => setGuestCountry(e.target.value)}
+                    aria-invalid={mainContactErrors.country ? "true" : undefined}
+                    style={{ width: "100%", padding: "16px", borderRadius: "16px", border: mainContactErrors.country ? "1px solid #d33" : "1px solid #ddd" }}
+                  />
+                  {mainContactErrors.country && <div className="booking-field-error">{mainContactErrors.country}</div>}
+                </div>
               </div>
 
               <div
@@ -1924,40 +1941,67 @@ export default function MaisonVerte() {
                   Ajoutez un autre occupant ou une personne joignable pendant le séjour. Chaque contact disposera de sa propre fiche client.
                 </p>
 
-                {additionalContacts.map((contact, index) => (
-                  <div
-                    key={`additional-contact-${index}`}
-                    style={{
-                      padding: "14px",
-                      marginBottom: "12px",
-                      borderRadius: "14px",
-                      border: "1px solid #d9e4dc",
-                      background: "white",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", marginBottom: "12px" }}>
-                      <strong style={{ color: "#334155" }}>Contact {index + 2}</strong>
-                      <button
-                        type="button"
-                        onClick={() => removeAdditionalContact(index)}
-                        style={{ border: "none", background: "transparent", color: "#a33", cursor: "pointer", textDecoration: "underline" }}
-                      >
-                        Supprimer ce contact
-                      </button>
-                    </div>
+                {additionalContacts.map((contact, index) => {
+                  const contactErrors = getAdditionalContactFieldErrors(contact, index);
+                  return (
+                    <div
+                      key={`additional-contact-${index}`}
+                      style={{
+                        padding: "14px",
+                        marginBottom: "12px",
+                        borderRadius: "14px",
+                        border: "1px solid #d9e4dc",
+                        background: "white",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", marginBottom: "12px" }}>
+                        <strong style={{ color: "#334155" }}>Contact {index + 2}</strong>
+                        <button
+                          type="button"
+                          onClick={() => removeAdditionalContact(index)}
+                          style={{ border: "none", background: "transparent", color: "#a33", cursor: "pointer", textDecoration: "underline" }}
+                        >
+                          Supprimer ce contact
+                        </button>
+                      </div>
 
-                    <div className="booking-additional-contact-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "12px" }}>
-                      <input type="text" placeholder="Prénom *" value={contact.firstName} onChange={(event) => updateAdditionalContact(index, "firstName", event.target.value)} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db" }} />
-                      <input type="text" placeholder="Nom *" value={contact.lastName} onChange={(event) => updateAdditionalContact(index, "lastName", event.target.value)} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db" }} />
-                      <input type="email" placeholder="Email *" value={contact.email} onChange={(event) => updateAdditionalContact(index, "email", event.target.value)} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db" }} />
-                      <input type="tel" placeholder="Téléphone *" value={contact.phone} onChange={(event) => updateAdditionalContact(index, "phone", event.target.value)} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db" }} />
-                      <input type="text" autoComplete="street-address" placeholder="Adresse (facultatif)" value={contact.address} onChange={(event) => updateAdditionalContact(index, "address", event.target.value)} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db", gridColumn: "1 / -1" }} />
-                      <input type="text" autoComplete="postal-code" placeholder="Code postal (facultatif)" value={contact.postalCode} onChange={(event) => updateAdditionalContact(index, "postalCode", event.target.value)} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db" }} />
-                      <input type="text" autoComplete="address-level2" placeholder="Ville (facultatif)" value={contact.city} onChange={(event) => updateAdditionalContact(index, "city", event.target.value)} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db" }} />
-                      <input type="text" autoComplete="country-name" placeholder="Pays (facultatif)" value={contact.country} onChange={(event) => updateAdditionalContact(index, "country", event.target.value)} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db", gridColumn: "1 / -1" }} />
+                      <div className="booking-additional-contact-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "12px" }}>
+                        <div className="booking-field">
+                          <input type="text" placeholder="Prénom *" value={contact.firstName} onChange={(event) => updateAdditionalContact(index, "firstName", event.target.value)} aria-invalid={contactErrors.firstName ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.firstName ? "1px solid #d33" : "1px solid #d1d5db" }} />
+                          {contactErrors.firstName && <div className="booking-field-error">{contactErrors.firstName}</div>}
+                        </div>
+                        <div className="booking-field">
+                          <input type="text" placeholder="Nom *" value={contact.lastName} onChange={(event) => updateAdditionalContact(index, "lastName", event.target.value)} aria-invalid={contactErrors.lastName ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.lastName ? "1px solid #d33" : "1px solid #d1d5db" }} />
+                          {contactErrors.lastName && <div className="booking-field-error">{contactErrors.lastName}</div>}
+                        </div>
+                        <div className="booking-field">
+                          <input type="email" placeholder="Email *" value={contact.email} onChange={(event) => updateAdditionalContact(index, "email", event.target.value)} aria-invalid={contactErrors.email ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.email ? "1px solid #d33" : "1px solid #d1d5db" }} />
+                          {contactErrors.email && <div className="booking-field-error">{contactErrors.email}</div>}
+                        </div>
+                        <div className="booking-field">
+                          <input type="tel" placeholder="Téléphone *" value={contact.phone} onChange={(event) => updateAdditionalContact(index, "phone", event.target.value)} aria-invalid={contactErrors.phone ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.phone ? "1px solid #d33" : "1px solid #d1d5db" }} />
+                          {contactErrors.phone && <div className="booking-field-error">{contactErrors.phone}</div>}
+                        </div>
+                        <div className="booking-field booking-field--wide">
+                          <input type="text" autoComplete="street-address" placeholder="Adresse (facultatif)" value={contact.address} onChange={(event) => updateAdditionalContact(index, "address", event.target.value)} aria-invalid={contactErrors.address ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.address ? "1px solid #d33" : "1px solid #d1d5db" }} />
+                          {contactErrors.address && <div className="booking-field-error">{contactErrors.address}</div>}
+                        </div>
+                        <div className="booking-field">
+                          <input type="text" autoComplete="postal-code" placeholder="Code postal (facultatif)" value={contact.postalCode} onChange={(event) => updateAdditionalContact(index, "postalCode", event.target.value)} aria-invalid={contactErrors.postalCode ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.postalCode ? "1px solid #d33" : "1px solid #d1d5db" }} />
+                          {contactErrors.postalCode && <div className="booking-field-error">{contactErrors.postalCode}</div>}
+                        </div>
+                        <div className="booking-field">
+                          <input type="text" autoComplete="address-level2" placeholder="Ville (facultatif)" value={contact.city} onChange={(event) => updateAdditionalContact(index, "city", event.target.value)} aria-invalid={contactErrors.city ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.city ? "1px solid #d33" : "1px solid #d1d5db" }} />
+                          {contactErrors.city && <div className="booking-field-error">{contactErrors.city}</div>}
+                        </div>
+                        <div className="booking-field booking-field--wide">
+                          <input type="text" autoComplete="country-name" placeholder="Pays (facultatif)" value={contact.country} onChange={(event) => updateAdditionalContact(index, "country", event.target.value)} aria-invalid={contactErrors.country ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.country ? "1px solid #d33" : "1px solid #d1d5db" }} />
+                          {contactErrors.country && <div className="booking-field-error">{contactErrors.country}</div>}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {additionalContacts.length < 4 && (
                   <button

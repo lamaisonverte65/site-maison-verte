@@ -68,9 +68,10 @@ test('booking contact migration and endpoint persist linked customer records aft
   const migration = fs.readFileSync('supabase/migrations/202610150001_v412_booking_contacts.sql', 'utf8');
   assert.match(migration, /create table(?: if not exists)? public\.booking_contacts/i);
   assert.match(migration, /booking_request_id uuid not null references public\.booking_requests\(id\)/i);
-  assert.match(migration, /customer_id uuid references public\.customers\(id\)/i);
+  assert.match(migration, /customer_id bigint references public\.customers\(id\)/i);
   assert.match(migration, /enable row level security/i);
   assert.match(migration, /is_v4_owner\(\)/i);
+  assert.match(migration, /drop policy if exists booking_contacts_owner_only/i);
 
   const endpoint = fs.readFileSync('netlify/functions/send-booking-request.js', 'utf8');
   assert.match(endpoint, /persistAdditionalBookingContacts/);
