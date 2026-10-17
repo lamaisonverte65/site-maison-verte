@@ -1,5 +1,5 @@
 import { applyDiscountToNightlyAccommodation, applyPercentageDiscountCents, calculateTouristTaxStay, centsToEuros, eurosToCents } from "./tourist-tax.js";
-import { getStayNightKeys, loadTouristTaxRulesForStay } from "./tourist-tax-rules.js";
+import { getStayNightKeys, loadTouristTaxRulesForStay, resolveTouristTaxRulesByNight } from "./tourist-tax-rules.js";
 
 const PROMO_PATTERN = /^[A-Z0-9_-]{1,40}$/;
 
@@ -122,7 +122,18 @@ export async function calculatePublicBookingQuote(supabase, {
     ? applyDiscountToNightlyAccommodation(grossNightlyCents, promotion.discount_basis_points)
     : grossNightlyCents;
 
-  const rulesByNight = await loadTouristTaxRulesForStay(supabase, { startDate, endDate, classification: pricing.touristTaxClassification });
+  const hasPreservedTouristTaxRules = Object.prototype.hasOwnProperty.call(financialContext, "touristTaxRules");
+  if (hasPreservedTouristTaxRules && !Array.isArray(financialContext.touristTaxRules)) {
+    throw new Error("Règles historiques de taxe de séjour invalides.");
+  }
+  const rulesByNight = hasPreservedTouristTaxRules
+    ? resolveTouristTaxRulesByNight({
+        startDate,
+        endDate,
+        rules: financialContext.touristTaxRules,
+        classification: pricing.touristTaxClassification,
+      })
+    : await loadTouristTaxRulesForStay(supabase, { startDate, endDate, classification: pricing.touristTaxClassification });
   const touristTax = calculateTouristTaxStay({
     nightlyAccommodationCents: netNightlyCents,
     occupants: adults + children,

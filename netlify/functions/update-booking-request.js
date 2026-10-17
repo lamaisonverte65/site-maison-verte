@@ -77,6 +77,22 @@ function nightsBetween(startDate, endDate) {
   return Math.max(Math.round((end - start) / (1000 * 60 * 60 * 24)), 0);
 }
 
+function historicalTouristTaxRules(taxSnapshot = {}) {
+  const rules = (Array.isArray(taxSnapshot.nights) ? taxSnapshot.nights : [])
+    .map((night) => night?.rule)
+    .filter((rule) => rule && typeof rule === "object");
+  if (!rules.length) {
+    throw new Error("Snapshot historique de taxe de séjour incomplet : règle historique manquante.");
+  }
+
+  const unique = new Map();
+  for (const rule of rules) {
+    const key = String(rule.id || JSON.stringify(rule));
+    if (!unique.has(key)) unique.set(key, rule);
+  }
+  return [...unique.values()];
+}
+
 async function calculateV410ModificationQuote(existingBooking, { startDate, endDate, adults, children }) {
   if (!Number.isInteger(adults) || adults < 1 || !Number.isInteger(children || 0) || (adults + (children || 0)) > 4) {
     throw new Error("Composition des voyageurs invalide.");
@@ -86,6 +102,7 @@ async function calculateV410ModificationQuote(existingBooking, { startDate, endD
   const financialContext = {
     depositRate: Number(existingBooking.deposit_rate),
     touristTaxClassification: taxSnapshot.classification || undefined,
+    touristTaxRules: historicalTouristTaxRules(taxSnapshot),
     cleaningFeeCents: Math.round(Number(existingBooking.cleaning_fee || 0) * 100),
     promotion: existingBooking.promotion_code && Number.isFinite(preservedPromotionRate)
       ? { code: existingBooking.promotion_code, discountBasisPoints: Math.round(preservedPromotionRate * 10000) }
