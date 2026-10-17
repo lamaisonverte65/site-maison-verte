@@ -12,15 +12,20 @@ const quote = read("netlify/functions/_lib/booking-quote.js");
 const rules = read("netlify/functions/_lib/tourist-tax-rules.js");
 const declaration = read("netlify/functions/_lib/tourist-tax-declaration.js");
 
-test("tourist tax supports classifications from unclassified through 5 stars everywhere", () => {
+test("tourist tax supports classifications from unclassified through 5 stars in live rule resolution", () => {
   for (const classification of ["4_star", "5_star"]) {
     assert.match(migration, new RegExp(classification));
     assert.match(endpoint, new RegExp(classification));
     assert.match(pricingAdmin, new RegExp(classification));
     assert.match(quote, new RegExp(classification));
     assert.match(rules, new RegExp(classification));
-    assert.match(declaration, new RegExp(classification));
   }
+});
+
+test("historical tourist-tax declaration is snapshot-based and no longer resolves the live classification catalog", () => {
+  assert.match(declaration, /tourist_tax_snapshot|snapshotTaxCents|snapshotClassification/);
+  assert.doesNotMatch(declaration, /calculateTouristTaxNight/);
+  assert.doesNotMatch(declaration, /resolveRegulatoryClassification|resolveRegulatoryRule/);
 });
 
 test("2026 4-star and 5-star Aure-Louron fixed rates are seeded", () => {

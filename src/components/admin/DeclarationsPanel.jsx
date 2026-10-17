@@ -143,7 +143,7 @@ function TouristTaxDeclarationPanel({ year }) {
   const centsMoney = (value) => money((Number(value) || 0) / 100);
   return <>
     <div style={styles.panelHeader}>
-      <div><h3>Taxe de séjour — registre réglementaire</h3><p style={styles.muted}>Registre en lecture seule, ventilé par nuit. Le calcul réglementaire ne modifie jamais la taxe facturée au voyageur.</p></div>
+      <div><h3>Taxe de séjour — registre historique</h3><p style={styles.muted}>Registre en lecture seule, ventilé par nuit. Les montants proviennent du snapshot enregistré avec chaque réservation et ne sont jamais recalculés avec une règle saisie ultérieurement.</p></div>
       <label style={styles.accountingYear}>Mois <select style={styles.select} value={month} onChange={(event) => setMonth(event.target.value)}>
         {Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{new Intl.DateTimeFormat("fr-FR", { month: "long" }).format(new Date(2026, index, 1))}</option>)}
       </select></label>
@@ -152,25 +152,24 @@ function TouristTaxDeclarationPanel({ year }) {
     {registryError && <p style={styles.error}>{registryError}</p>}
     {!loadingRegistry && registry && <>
       <div style={styles.homeFinanceGrid}>
-        <div style={styles.accountingStat}><span>Facturé voyageurs</span><strong>{centsMoney(totals.commercialTaxCents)}</strong></div>
+        <div style={styles.accountingStat}><span>Taxe enregistrée</span><strong>{centsMoney(totals.snapshotTaxCents)}</strong></div>
+        <div style={styles.accountingStat}><span>Encaissé</span><strong>{centsMoney(totals.collectedCents)}</strong></div>
+        <div style={styles.accountingStat}><span>Remboursé</span><strong>{centsMoney(totals.refundedCents)}</strong></div>
         <div style={styles.accountingStat}><span>Encaissé net</span><strong>{centsMoney(totals.netCollectedCents)}</strong></div>
-        <div style={styles.accountingStat}><span>Dû Aure-Louron</span><strong>{centsMoney(totals.regulatoryTaxCents)}</strong></div>
-        <div style={styles.accountingStat}><span>Écart réglementaire</span><strong>{centsMoney(totals.regulatoryDeltaCents)}</strong></div>
       </div>
       <p style={styles.muted}>Encaissé : {centsMoney(totals.collectedCents)} · Remboursé : {centsMoney(totals.refundedCents)} · Nuitées LMV : {totals.nights || 0} · Nuitées plateforme en contrôle : {totals.platformNights || 0}</p>
-      {totals.missingRegulatoryNights > 0 && <p style={styles.error}>{totals.missingRegulatoryNights} nuitée(s) sans classement ou barème réglementaire historique complet : elles ne sont pas incluses dans le total « Dû Aure-Louron ».</p>}
+      {totals.missingSnapshotNights > 0 && <p style={styles.error}>{totals.missingSnapshotNights} nuitée(s) avec un snapshot historique incomplet : elles ne sont pas incluses dans le total « Taxe enregistrée ».</p>}
       <div style={styles.tableWrapper}><table style={{ ...styles.table, minWidth: 1180 }}><thead><tr>
         <th style={styles.th}>Nuit</th><th style={styles.th}>Voyageur</th><th style={styles.th}>Occupants</th><th style={styles.th}>Taxables</th>
-        <th style={styles.th}>Classement client</th><th style={styles.th}>Facturé</th><th style={styles.th}>Encaissé</th><th style={styles.th}>Remboursé</th>
-        <th style={styles.th}>Net</th><th style={styles.th}>Classement réglementaire</th><th style={styles.th}>Dû Aure-Louron</th><th style={styles.th}>Écart</th>
+        <th style={styles.th}>Classement enregistré</th><th style={styles.th}>Taxe enregistrée</th><th style={styles.th}>Encaissé</th><th style={styles.th}>Remboursé</th>
+        <th style={styles.th}>Net</th><th style={styles.th}>Règle enregistrée</th>
       </tr></thead><tbody>
         {(registry.directRows || []).map((row) => <tr key={`${row.bookingId}-${row.nightDate}`}>
           <td style={styles.td}>{row.nightDate}</td><td style={styles.td}>{row.guestName}</td><td style={styles.td}>{row.occupants}</td><td style={styles.td}>{row.taxablePeople}</td>
-          <td style={styles.td}>{row.commercialClassification || "—"}</td><td style={styles.td}>{centsMoney(row.commercialTaxCents)}</td><td style={styles.td}>{centsMoney(row.collectedCents)}</td><td style={styles.td}>{centsMoney(row.refundedCents)}</td>
-          <td style={styles.td}>{centsMoney(row.netCollectedCents)}</td><td style={styles.td}>{row.regulatoryClassification || "À compléter"}</td>
-          <td style={styles.td}>{row.regulatoryTaxCents === null ? "—" : centsMoney(row.regulatoryTaxCents)}</td><td style={styles.td}>{row.regulatoryDeltaCents === null ? "—" : centsMoney(row.regulatoryDeltaCents)}</td>
+          <td style={styles.td}>{row.snapshotClassification || "—"}</td><td style={styles.td}>{row.snapshotTaxCents === null ? "—" : centsMoney(row.snapshotTaxCents)}</td><td style={styles.td}>{centsMoney(row.collectedCents)}</td><td style={styles.td}>{centsMoney(row.refundedCents)}</td>
+          <td style={styles.td}>{centsMoney(row.netCollectedCents)}</td><td style={styles.td}>{row.snapshotRuleId || "—"}</td>
         </tr>)}
-        {!(registry.directRows || []).length && <tr><td style={styles.td} colSpan="12">Aucune nuitée directe LMV à déclarer pour ce mois. Registre à 0.</td></tr>}
+        {!(registry.directRows || []).length && <tr><td style={styles.td} colSpan="10">Aucune nuitée directe LMV à déclarer pour ce mois. Registre à 0.</td></tr>}
       </tbody></table></div>
       {(registry.platformRows || []).length > 0 && <><h4>Plateformes — contrôle uniquement</h4><p style={styles.muted}>Ces nuitées sont isolées du montant LMV à reverser. Leur collecte doit rester justifiée par les données de la plateforme.</p></>}
     </>}

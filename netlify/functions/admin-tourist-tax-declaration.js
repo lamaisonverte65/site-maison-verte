@@ -26,37 +26,21 @@ export async function handler(event) {
   const nextMonth = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, "0")}-01`;
 
   try {
-    const [bookingsResult, historyResult, rulesResult] = await Promise.all([
-      supabase.from("booking_requests")
-        .select("id,start_date,end_date,guest_first_name,guest_last_name,tourist_tax_amount,tourist_tax_collected,tourist_tax_refunded,tourist_tax_collector,tourist_tax_snapshot")
-        .lt("start_date", nextMonth)
-        .gt("end_date", firstNight)
-        .not("tourist_tax_snapshot", "is", null)
-        .in("tourist_tax_collector", ["la_maison_verte", "platform"])
-        .order("start_date", { ascending: true }),
-      supabase.from("tourist_tax_classification_history")
-        .select("id,classification,effective_from,effective_to,change_type,notes")
-        .lt("effective_from", nextMonth)
-        .order("effective_from", { ascending: true }),
-      supabase.from("tourist_tax_rules")
-        .select("id,effective_from,effective_to,classification,calculation_type,base_rate_basis_points,department_additional_basis_points,regional_additional_basis_points,base_cap_cents,fixed_rate_cents,is_active")
-        .eq("is_active", true)
-        .order("effective_from", { ascending: true }),
-    ]);
+    const bookingsResult = await supabase.from("booking_requests")
+      .select("id,start_date,end_date,guest_first_name,guest_last_name,tourist_tax_amount,tourist_tax_collected,tourist_tax_refunded,tourist_tax_collector,tourist_tax_snapshot")
+      .lt("start_date", nextMonth)
+      .gt("end_date", firstNight)
+      .not("tourist_tax_snapshot", "is", null)
+      .in("tourist_tax_collector", ["la_maison_verte", "platform"])
+      .order("start_date", { ascending: true });
     if (bookingsResult.error) throw bookingsResult.error;
-    if (historyResult.error) throw historyResult.error;
-    if (rulesResult.error) throw rulesResult.error;
 
-    const rows = buildTouristTaxDeclarationRows({
-      bookings: bookingsResult.data || [],
-      classificationHistory: historyResult.data || [],
-      rules: rulesResult.data || [],
-    });
+    const rows = buildTouristTaxDeclarationRows({ bookings: bookingsResult.data || [] });
     const summary = summarizeTouristTaxDeclaration(rows, { year, month });
     return json(200, {
       ...summary,
       generatedAt: new Date().toISOString(),
-      note: "Registre calculé en lecture seule. Le dû réglementaire ne modifie jamais le snapshot commercial de la réservation.",
+      note: "Registre historique en lecture seule. Les montants proviennent des snapshots enregistrés avec les réservations et ne sont pas recalculés avec des règles saisies ultérieurement.",
     });
   } catch (error) {
     console.error("Erreur registre taxe de séjour :", error);
