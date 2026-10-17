@@ -17,9 +17,9 @@ import {
   matchBookingStatementReservations,
   parseBookingStatement,
 } from "../../utils/bookingStatementImport";
-import { airbnbStatementToEntries, detectAccountingImportFormat, importExerciseYear, parseAirbnbStatement } from "../../utils/accountingImport";
+import { airbnbStatementToEntries, detectAccountingImportFormat, importExerciseYear, parseAirbnbReservations, parseAirbnbStatement } from "../../utils/accountingImport";
 import { matchBookingOverviewReservations, parseBookingOverview } from "../../utils/bookingOverviewImport";
-import { bookingOverviewToFinancialRows, bookingStatementToFinancialRows } from "../../utils/externalReservationFinancialImport";
+import { airbnbReservationsToFinancialRows, airbnbStatementToFinancialRows, bookingOverviewToFinancialRows, bookingStatementToFinancialRows } from "../../utils/externalReservationFinancialImport";
 import { fetchTouristTaxDeclaration } from "../../services/touristTaxDeclarationService";
 
 const SUBTABS = [
@@ -78,15 +78,15 @@ function BookingImportPanel({ data, year, preview, importing, onFile, onCancel, 
       <div style={styles.contactButtons}><button style={styles.smallButton} onClick={() => window.dispatchEvent(new CustomEvent("lmv:add-manual-receipt"))}>+ Encaissement manuel</button><label style={styles.addButton}>Importer un fichier<input type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={(event) => { onFile(event.target.files?.[0]); event.target.value = ""; }} /></label></div>
     </div>
     {statement && preview.externalFinancialOnly && <div style={{ ...styles.accountingAssetBox, minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>
-      <div style={styles.panelHeader}><div><h3 style={{ margin: 0 }}>Prévisualisation Booking Overview</h3><p style={styles.muted}>{preview.file.name} · ces données enrichissent le registre financier plateforme et ne créent aucune écriture comptable.</p></div><button style={styles.smallButton} onClick={onCancel}>Annuler</button></div>
+      <div style={styles.panelHeader}><div><h3 style={{ margin: 0 }}>Prévisualisation {preview.sourceLabel}</h3><p style={styles.muted}>{preview.file.name} · ces données enrichissent le registre financier plateforme et ne créent aucune écriture comptable.</p></div><button style={styles.smallButton} onClick={onCancel}>Annuler</button></div>
       <div style={styles.homeFinanceGrid}>
         <div style={styles.accountingStat}><span>Réservations</span><strong>{statement.items.length}</strong></div>
         <div style={styles.accountingStat}><span>Rapprochées site</span><strong>{statement.items.filter((item) => item.matchStatus === "matched_persisted").length}</strong></div>
         <div style={styles.accountingStat}><span>À vérifier</span><strong>{statement.items.filter((item) => ["ambiguous", "not_found"].includes(item.matchStatus)).length}</strong></div>
       </div>
-      <p style={styles.muted}><strong>Aucune déduction financière :</strong> Original amount et Final amount sont conservés comme données source. Ils ne deviennent automatiquement ni hébergement, ni taxe de séjour, ni ménage. Les valeurs inconnues restent NULL.</p>
+      <p style={styles.muted}><strong>Aucune déduction financière :</strong> les champs sources sont conservés avec leur provenance. Les valeurs inconnues restent NULL et aucun montant n’est requalifié en hébergement, taxe ou ménage sans preuve explicite.</p>
       <div style={{ ...styles.tableWrapper, width: "100%", maxWidth: "100%", minWidth: 0, maxHeight: 430, overflowX: "auto" }}><table style={{ ...styles.table, minWidth: 1050 }}><thead><tr><th style={styles.th}>Rapprochement</th><th style={styles.th}>Réservation</th><th style={styles.th}>Séjour</th><th style={styles.th}>Client</th><th style={styles.th}>Personnes</th><th style={styles.th}>Nuits</th><th style={styles.th}>Original</th><th style={styles.th}>Final</th><th style={styles.th}>Commission</th><th style={styles.th}>Frais paiement</th></tr></thead><tbody>
-        {statement.items.map((item) => <tr key={`${item.line}-${item.reservationNumber}`}><td style={styles.td}>{item.matchStatus === "matched_persisted" ? "Réservation du site retrouvée" : item.matchStatus === "matched_calendar" ? "Séjour iCal retrouvé" : item.matchStatus === "ambiguous" ? "À vérifier" : "Non rapprochée"}</td><td style={styles.td}>{item.reservationNumber || "—"}</td><td style={styles.td}>{item.arrivalDate ? `${item.arrivalDate} → ${item.checkoutDate}` : "—"}</td><td style={styles.td}>{item.guestName || "—"}</td><td style={styles.td}>{item.persons ?? "—"}</td><td style={styles.td}>{item.nights ?? "—"}</td><td style={styles.td}>{money(item.originalAmount)}</td><td style={styles.td}>{money(item.finalAmount)}</td><td style={styles.td}>{money(item.commissionAmount)}</td><td style={styles.td}>{money(item.paymentFee)}</td></tr>)}
+        {statement.items.map((item) => <tr key={`${item.line}-${item.reservationNumber}`}><td style={styles.td}>{item.matchStatus === "matched_persisted" ? "Réservation du site retrouvée" : item.matchStatus === "matched_calendar" ? "Séjour iCal retrouvé" : item.matchStatus === "ambiguous" ? "À vérifier" : item.matchStatus === "not_applicable" ? "Non applicable" : "Non rapprochée"}</td><td style={styles.td}>{item.reservationNumber || "—"}</td><td style={styles.td}>{item.arrivalDate ? `${item.arrivalDate} → ${item.checkoutDate}` : "—"}</td><td style={styles.td}>{item.guestName || "—"}</td><td style={styles.td}>{item.persons ?? "—"}</td><td style={styles.td}>{item.nights ?? "—"}</td><td style={styles.td}>{item.originalAmount == null ? "—" : money(item.originalAmount)}</td><td style={styles.td}>{item.finalAmount == null ? "—" : money(item.finalAmount)}</td><td style={styles.td}>{item.commissionAmount == null ? "—" : money(item.commissionAmount)}</td><td style={styles.td}>{item.paymentFee == null ? "—" : money(item.paymentFee)}</td></tr>)}
       </tbody></table></div>
       <div style={styles.modalActions}><button style={styles.smallButton} onClick={onCancel}>Annuler</button><button style={styles.addButton} disabled={importing || !preview.financialRows?.length} onClick={onValidate}>{importing ? "Import en cours…" : "Valider l'import"}</button></div>
     </div>}
@@ -95,21 +95,22 @@ function BookingImportPanel({ data, year, preview, importing, onFile, onCancel, 
       <div style={styles.homeFinanceGrid}>
         <div style={styles.accountingStat}><span>Lignes source</span><strong>{statement.items.length}</strong></div>
         <div style={styles.accountingStat}><span>Lignes à synchroniser</span><strong>{newRows.length}</strong></div>
-        <div style={styles.accountingStat}><span>Mode</span><strong>{preview.sameFile && preview.source === "booking" ? "Registre financier uniquement" : preview.activeBatch ? "Remplacement comptable + synchronisation" : "Nouvel import + synchronisation"}</strong></div>
+        <div style={styles.accountingStat}><span>Mode</span><strong>{preview.sameFile && ["booking", "airbnb"].includes(preview.source) ? "Registre financier uniquement" : preview.activeBatch ? "Remplacement comptable + synchronisation" : "Nouvel import + synchronisation"}</strong></div>
         <div style={styles.accountingStat}><span>Versements</span><strong>{statement.payments.length}</strong></div>
         <div style={styles.accountingStat}><span>Brut</span><strong>{money(statement.totals.gross)}</strong></div>
-        <div style={styles.accountingStat}><span>Commissions + frais</span><strong>{money((statement.totals.commission || 0) + (statement.totals.paymentFee || statement.totals.serviceFee || 0))}</strong></div>
+        <div style={styles.accountingStat}><span>Commissions + frais</span><strong>{money((statement.totals.commission || statement.totals.serviceFee || 0) + (statement.totals.paymentFee || 0))}</strong></div>
         <div style={styles.accountingStat}><span>Net {preview.sourceLabel}</span><strong>{money(statement.totals.net)}</strong></div>
       </div>
-      {preview.sameFile && preview.source === "booking" && <p style={styles.info}><strong>Comptabilité déjà à jour :</strong> ce fichier est identique au snapshot Booking déjà importé. La validation ne remplacera pas la comptabilité ; elle synchronisera seulement le registre financier plateforme.</p>}
-      {preview.sameFile && preview.source !== "booking" && <p style={styles.info}><strong>Aucune donnée nouvelle :</strong> ce fichier a déjà été importé. Choisis un export cumulatif plus récent.</p>}
+      {preview.sameFile && ["booking", "airbnb"].includes(preview.source) && <p style={styles.info}><strong>Comptabilité déjà à jour :</strong> ce fichier est identique au snapshot déjà importé. La validation ne remplacera pas la comptabilité ; elle synchronisera seulement le registre financier plateforme.</p>}
       {preview.activeBatch && !preview.sameFile && <p style={styles.info}><strong>Instantané existant :</strong> cet import remplacera uniquement {preview.sourceLabel} {preview.exerciseYear}. Les écritures manuelles et les autres sources resteront intactes.</p>}
-      <p style={styles.muted}><strong>Rapprochement :</strong> il recherche d’abord les réservations Booking déjà enregistrées dans le site (dates du séjour, puis nom du client en cas d’ambiguïté). Le calendrier iCal Booking actuel n’est utilisé qu’en secours. Une ligne non rapprochée n’empêche pas l’import comptable.</p>
+      {preview.source === "booking"
+        ? <p style={styles.muted}><strong>Rapprochement :</strong> il recherche d’abord les réservations Booking déjà enregistrées dans le site (dates du séjour, puis nom du client en cas d’ambiguïté). Le calendrier iCal Booking actuel n’est utilisé qu’en secours. Une ligne non rapprochée n’empêche pas l’import comptable.</p>
+        : <p style={styles.muted}><strong>Airbnb :</strong> le code de confirmation alimente le registre financier plateforme. L’import ne modifie ni ne recrée les réservations du site.</p>}
       <p style={styles.muted}><strong>Principe :</strong> la <strong>Date d'encaissement</strong> détermine l'exercice comptable. Un nouvel export cumulatif du même exercice remplace l'ancien instantané de cette source ; les autres sources et les écritures manuelles ne sont pas touchées.</p>
-      <div style={{ ...styles.tableWrapper, width: "100%", maxWidth: "100%", minWidth: 0, maxHeight: 430, overflowX: "auto" }}><table style={{ ...styles.table, minWidth: 1250 }}><thead><tr><th style={styles.th}>État</th><th style={styles.th}>Rapprochement</th><th style={styles.th}>Type</th><th style={styles.th}>Réservation</th><th style={styles.th}>Séjour</th><th style={styles.th}>Client</th><th style={styles.th}>Date d'encaissement</th><th style={styles.th}>Paiement</th><th style={styles.th}>Brut</th><th style={styles.th}>Commission</th><th style={styles.th}>Frais paiement</th><th style={styles.th}>Net</th></tr></thead><tbody>
-        {statement.items.map((item) => <tr key={`${item.line}-${item.reservationNumber}-${item.paymentId}`}><td style={styles.td}>{preview.activeBatch ? "Remplace l’ancien instantané" : "Nouvelle"}</td><td style={styles.td}>{item.matchStatus === "matched_persisted" ? "Réservation du site retrouvée" : item.matchStatus === "matched_calendar" ? "Séjour iCal retrouvé" : item.matchStatus === "ambiguous" ? "À vérifier" : item.matchStatus === "not_found" ? "Non rapprochée" : "—"}</td><td style={styles.td}>{item.type}</td><td style={styles.td}>{item.reservationNumber || "—"}</td><td style={styles.td}>{item.arrivalDate ? `${item.arrivalDate} → ${item.checkoutDate}` : "—"}</td><td style={styles.td}>{item.guestName || "—"}</td><td style={styles.td}><strong>{item.paymentDate}</strong></td><td style={styles.td}>{item.paymentId || "—"}</td><td style={styles.td}>{money(item.gross)}</td><td style={styles.td}>{money(item.commission)}</td><td style={styles.td}>{money(item.paymentFee)}</td><td style={styles.td}><strong>{money(item.net)}</strong>{Math.abs(item.netDifference) > 0.01 && <div style={{ color: "#b45309" }}>Écart {money(item.netDifference)}</div>}</td></tr>)}
+      <div style={{ ...styles.tableWrapper, width: "100%", maxWidth: "100%", minWidth: 0, maxHeight: 430, overflowX: "auto" }}><table style={{ ...styles.table, minWidth: preview.source === "airbnb" ? 1450 : 1250 }}><thead><tr><th style={styles.th}>État</th><th style={styles.th}>Rapprochement</th><th style={styles.th}>Type</th><th style={styles.th}>Réservation</th><th style={styles.th}>Séjour</th><th style={styles.th}>Client</th><th style={styles.th}>Date d'encaissement</th><th style={styles.th}>Paiement</th><th style={styles.th}>Brut</th><th style={styles.th}>Commission</th>{preview.source === "airbnb" && <><th style={styles.th}>Ménage</th><th style={styles.th}>Taxe Airbnb</th></>}<th style={styles.th}>Frais paiement</th><th style={styles.th}>Net</th></tr></thead><tbody>
+        {statement.items.map((item) => <tr key={`${item.line}-${item.reservationNumber}-${item.paymentId}`}><td style={styles.td}>{preview.activeBatch ? "Remplace l’ancien instantané" : "Nouvelle"}</td><td style={styles.td}>{item.matchStatus === "matched_persisted" ? "Réservation du site retrouvée" : item.matchStatus === "matched_calendar" ? "Séjour iCal retrouvé" : item.matchStatus === "ambiguous" ? "À vérifier" : item.matchStatus === "not_found" ? "Non rapprochée" : "—"}</td><td style={styles.td}>{item.type}</td><td style={styles.td}>{item.reservationNumber || "—"}</td><td style={styles.td}>{item.arrivalDate ? `${item.arrivalDate} → ${item.checkoutDate}` : "—"}</td><td style={styles.td}>{item.guestName || "—"}</td><td style={styles.td}><strong>{item.paymentDate || "—"}</strong></td><td style={styles.td}>{item.paymentId || "—"}</td><td style={styles.td}>{money(item.gross)}</td><td style={styles.td}>{money(item.commission)}</td>{preview.source === "airbnb" && <><td style={styles.td}>{item.cleaningFee == null ? "—" : money(item.cleaningFee)}</td><td style={styles.td}>{item.taxRemitted == null ? "—" : money(item.taxRemitted)}</td></>}<td style={styles.td}>{item.paymentFee == null ? "—" : money(item.paymentFee)}</td><td style={styles.td}><strong>{money(item.net)}</strong>{Math.abs(item.netDifference) > 0.01 && <div style={{ color: "#b45309" }}>Écart {money(item.netDifference)}</div>}</td></tr>)}
       </tbody></table></div>
-      <div style={styles.modalActions}><button style={styles.smallButton} onClick={onCancel}>Annuler</button><button style={styles.addButton} disabled={importing || !newRows.length || (preview.sameFile && preview.source !== "booking")} onClick={onValidate}>{importing ? "Import en cours…" : preview.sameFile && preview.source === "booking" ? "Synchroniser le registre financier" : "Valider l'import"}</button></div>
+      <div style={styles.modalActions}><button style={styles.smallButton} onClick={onCancel}>Annuler</button><button style={styles.addButton} disabled={importing || !newRows.length} onClick={onValidate}>{importing ? "Import en cours…" : preview.sameFile && preview.source === "booking" ? "Synchroniser le registre financier" : preview.sameFile && preview.source === "airbnb" ? "Synchroniser le registre financier" : "Valider l'import"}</button></div>
     </div>}
   </div>;
 }
@@ -237,6 +238,16 @@ export default function DeclarationsPanel() {
           });
           return;
         }
+      } else if (source === "airbnb_reservations") {
+        statement = parseAirbnbReservations(text);
+        const financialRows = airbnbReservationsToFinancialRows(statement);
+        const exerciseYear = Number(statement.items.find((item) => item.arrivalDate)?.arrivalDate?.slice(0, 4)) || Number(year);
+        setBookingPreview({
+          file, sha256: hash, source: "airbnb", sourceLabel: "Airbnb Réservations",
+          statement, entries: [], financialRows, exerciseYear,
+          activeBatch: null, sameFile: null, externalFinancialOnly: true,
+        });
+        return;
       } else {
         statement = parseAirbnbStatement(text);
         entries = airbnbStatementToEntries(statement, data.categories);
@@ -244,7 +255,12 @@ export default function DeclarationsPanel() {
       const exerciseYear = importExerciseYear(entries);
       const activeBatch = data.importBatches.find((batch) => batch.source === source && Number(batch.exercise_year) === exerciseYear && batch.status === "validated");
       const sameFile = data.importBatches.find((batch) => batch.source === source && batch.file_sha256 === hash);
-      setBookingPreview({ file, sha256: hash, source, sourceLabel: source === "booking" ? "Booking" : "Airbnb", statement, entries, exerciseYear, activeBatch, sameFile });
+      setBookingPreview({
+        file, sha256: hash, source, sourceLabel: source === "booking" ? "Booking" : "Airbnb",
+        statement, entries,
+        financialRows: source === "airbnb" ? airbnbStatementToFinancialRows(statement) : undefined,
+        exerciseYear, activeBatch, sameFile,
+      });
     } catch (e) {
       setBookingPreview(null);
       alert(`Erreur import : ${e.message}`);
@@ -253,13 +269,14 @@ export default function DeclarationsPanel() {
   async function validateBookingImport() {
     if (!bookingPreview || bookingImporting) return;
     if (bookingPreview.externalFinancialOnly) {
-      if (!bookingPreview.financialRows?.length) { alert("Aucune donnée Booking Overview à importer."); return; }
-      if (!confirm(`Enregistrer ${bookingPreview.financialRows.length} réservation(s) Booking Overview dans le registre financier plateforme ?`)) return;
+      const sourceLabel = bookingPreview.sourceLabel || "Plateforme";
+      if (!bookingPreview.financialRows?.length) { alert(`Aucune donnée ${sourceLabel} à importer.`); return; }
+      if (!confirm(`Enregistrer ${bookingPreview.financialRows.length} réservation(s) ${sourceLabel} dans le registre financier plateforme ?`)) return;
       setBookingImporting(true);
       try {
         await saveExternalReservationFinancials(supabase, bookingPreview.financialRows);
         setBookingPreview(null);
-        alert("Booking Overview enregistré dans le registre financier plateforme.");
+        alert(`${sourceLabel} enregistré dans le registre financier plateforme.`);
       } catch (e) {
         alert(`Erreur import : ${e.message}`);
       } finally { setBookingImporting(false); }
@@ -268,8 +285,9 @@ export default function DeclarationsPanel() {
     if (!bookingPreview.entries.length) { alert("Aucune donnée à importer dans ce fichier."); return; }
     const replacing = Boolean(bookingPreview.activeBatch);
     const accountingAlreadyCurrent = Boolean(bookingPreview.sameFile);
-    const message = accountingAlreadyCurrent && bookingPreview.source === "booking"
-      ? `La comptabilité Booking ${bookingPreview.exerciseYear} est déjà à jour avec ce fichier. Synchroniser uniquement le registre financier plateforme ?`
+    const financialSyncOnly = accountingAlreadyCurrent && ["booking", "airbnb"].includes(bookingPreview.source);
+    const message = financialSyncOnly
+      ? `La comptabilité ${bookingPreview.sourceLabel} ${bookingPreview.exerciseYear} est déjà à jour avec ce fichier. Synchroniser uniquement le registre financier plateforme ?`
       : replacing
         ? `Remplacer l'import ${bookingPreview.sourceLabel} ${bookingPreview.exerciseYear} existant par ce nouvel export cumulatif ?`
         : `Importer ${bookingPreview.sourceLabel} ${bookingPreview.exerciseYear} et créer ${bookingPreview.entries.length} écritures comptables ?`;
@@ -278,6 +296,8 @@ export default function DeclarationsPanel() {
     try {
       if (bookingPreview.source === "booking") {
         await saveExternalReservationFinancials(supabase, bookingStatementToFinancialRows(bookingPreview.statement));
+      } else if (bookingPreview.source === "airbnb") {
+        await saveExternalReservationFinancials(supabase, bookingPreview.financialRows || airbnbStatementToFinancialRows(bookingPreview.statement));
       }
       if (!accountingAlreadyCurrent) {
         await saveAccountingImportSnapshot(supabase, { ...bookingPreview, format: bookingPreview.source === "booking" ? "booking_statements_csv_v2" : "airbnb_payout_csv_v1" });
@@ -286,7 +306,9 @@ export default function DeclarationsPanel() {
       await reload();
       alert(accountingAlreadyCurrent && bookingPreview.source === "booking"
         ? "Registre financier Booking synchronisé ; comptabilité inchangée."
-        : replacing ? `Import ${bookingPreview.sourceLabel} ${bookingPreview.exerciseYear} remplacé.` : "Import validé.");
+        : financialSyncOnly
+          ? `Registre financier ${bookingPreview.sourceLabel} synchronisé ; comptabilité inchangée.`
+          : replacing ? `Import ${bookingPreview.sourceLabel} ${bookingPreview.exerciseYear} remplacé.` : "Import validé.");
     } catch (e) {
       alert(`Erreur import : ${e.message}`);
     } finally { setBookingImporting(false); }

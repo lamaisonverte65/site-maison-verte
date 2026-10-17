@@ -132,7 +132,9 @@ export async function saveAccountingImportSnapshot(supabase, { file, sha256, sou
   if (duplicate.error) throw new Error(duplicate.error.message || "Impossible de contrôler le fichier importé.");
   if (duplicate.data) throw new Error("Ce fichier a déjà été importé.");
   const totals=statement.totals || {};
-  const fees = source === "booking" ? Number(totals.commission||0)+Number(totals.paymentFee||0) : -Math.abs(Number(totals.serviceFee||0));
+  const fees = source === "booking"
+    ? Number(totals.commission||0)+Number(totals.paymentFee||0)
+    : -(Math.abs(Number(totals.serviceFee||0)) + Math.abs(Number(totals.paymentFee||0)));
   const batch = assertSupabase(await supabase.from("accounting_import_batches").insert({
     source, original_filename:file.name, file_sha256:sha256, status:"draft", exercise_year:exerciseYear,
     imported_rows:statement.items.length, accepted_rows:statement.items.length, rejected_rows:0,

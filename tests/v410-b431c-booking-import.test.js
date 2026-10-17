@@ -79,7 +79,7 @@ test("B4.3.1C generalized imports support Airbnb and atomic replacement", () => 
   assert.match(util, /tax_remitted_by_airbnb/);
   assert.match(service, /admin_commit_accounting_import_snapshot/);
   assert.match(panel, /Remplacer l.import/);
-  assert.match(panel, /Aucune donnée nouvelle/);
+  assert.match(panel, /financialSyncOnly/);
 });
 
 test("B4.3.1C manual receipt is platform agnostic and treatment labels are explicit", () => {

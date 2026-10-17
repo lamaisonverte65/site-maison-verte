@@ -12,9 +12,10 @@ function mergeObject(left, right) {
 }
 
 function sourcePriority(provenanceValue) {
-  if (String(provenanceValue || "").startsWith("booking_statement:")) return 30;
-  if (String(provenanceValue || "").startsWith("booking_overview:")) return 20;
-  if (String(provenanceValue || "").startsWith("derived:")) return 10;
+  const provenance = String(provenanceValue || "");
+  if (provenance.startsWith("booking_statement:") || provenance.startsWith("airbnb_statement:")) return 30;
+  if (provenance.startsWith("booking_overview:") || provenance.startsWith("airbnb_reservations:")) return 20;
+  if (provenance.startsWith("derived:")) return 10;
   return 0;
 }
 
@@ -131,6 +132,116 @@ export function bookingOverviewToFinancialRows(overview) {
     }));
 }
 
+export function airbnbStatementToFinancialRows(statement) {
+  const byReference = new Map();
+  for (const item of statement.items || []) {
+    if (!item.confirmationCode) continue;
+    const key = String(item.confirmationCode);
+    const row = {
+      source: "airbnb",
+      external_reference: key,
+      booking_request_id: null,
+      currency: nonblank(item.currency)?.toLowerCase() || "eur",
+      start_date: item.arrivalDate || null,
+      end_date: item.checkoutDate || null,
+      nights: item.nights ?? null,
+      adults_count: null,
+      children_count: null,
+      accommodation_amount: null,
+      cleaning_fee: money(item.cleaningFee),
+      tourist_tax_amount: money(item.taxRemitted),
+      traveler_total: null,
+      commission_amount: money(item.serviceFee),
+      payment_fee_amount: money(item.paymentFee),
+      net_payout: money(item.net),
+      payment_date: item.paymentDate || null,
+      payment_reference: nonblank(item.paymentId),
+      provenance: {
+        start_date: "airbnb_statement:date_de_debut",
+        end_date: "airbnb_statement:date_de_fin",
+        nights: "airbnb_statement:nuits",
+        cleaning_fee: "airbnb_statement:frais_de_menage",
+        tourist_tax_amount: "airbnb_statement:taxes_reversees_par_airbnb",
+        commission_amount: "airbnb_statement:frais_de_service",
+        payment_fee_amount: "airbnb_statement:frais_de_versement_sur_carte_bancaire",
+        net_payout: "airbnb_statement:montant",
+        payment_date: "airbnb_statement:date",
+        payment_reference: "airbnb_statement:code_de_reference",
+      },
+      raw_snapshot: {
+        airbnb_statement: {
+          line: item.line,
+          confirmation_code: key,
+          booked_on: item.bookedOn || null,
+          guest_name: item.guestName || null,
+          start_date: item.arrivalDate || null,
+          end_date: item.checkoutDate || null,
+          nights: item.nights ?? null,
+          gross: item.gross,
+          service_fee: item.serviceFee,
+          payment_fee: item.paymentFee,
+          cleaning_fee: item.cleaningFee,
+          tax_remitted: item.taxRemitted,
+          net: item.net,
+        },
+      },
+    };
+    const previous = byReference.get(key);
+    byReference.set(key, previous ? mergeExternalFinancialRow(previous, row) : row);
+  }
+  return [...byReference.values()];
+}
+
+export function airbnbReservationsToFinancialRows(reservations) {
+  return (reservations.items || [])
+    .filter((item) => item.confirmationCode)
+    .map((item) => ({
+      source: "airbnb",
+      external_reference: String(item.confirmationCode),
+      booking_request_id: null,
+      currency: nonblank(item.currency)?.toLowerCase() || "eur",
+      start_date: item.arrivalDate || null,
+      end_date: item.checkoutDate || null,
+      nights: item.nights ?? null,
+      adults_count: item.adults ?? null,
+      children_count: item.children ?? null,
+      accommodation_amount: null,
+      cleaning_fee: null,
+      tourist_tax_amount: null,
+      traveler_total: null,
+      commission_amount: null,
+      payment_fee_amount: null,
+      net_payout: null,
+      payment_date: null,
+      payment_reference: null,
+      provenance: {
+        start_date: "airbnb_reservations:date_de_debut",
+        end_date: "airbnb_reservations:date_de_fin",
+        nights: "airbnb_reservations:nuits",
+        adults_count: "airbnb_reservations:adultes",
+        children_count: "airbnb_reservations:enfants",
+        revenue: "airbnb_reservations:revenus",
+      },
+      raw_snapshot: {
+        airbnb_reservations: {
+          line: item.line,
+          confirmation_code: String(item.confirmationCode),
+          status: item.status || null,
+          guest_name: item.guestName || null,
+          adults: item.adults ?? null,
+          children: item.children ?? null,
+          babies: item.babies ?? null,
+          start_date: item.arrivalDate || null,
+          end_date: item.checkoutDate || null,
+          nights: item.nights ?? null,
+          booked_on: item.bookedOn || null,
+          listing: item.listing || null,
+          revenue: item.revenue,
+        },
+      },
+    }));
+}
+
 export function deriveBookingHistoricalBreakdown(row) {
   if (row?.source !== "booking") return row;
   const overview = row.raw_snapshot?.booking_overview;
@@ -206,7 +317,7 @@ export function mergeExternalFinancialRow(existing, incoming) {
   merged.provenance = mergeObject(existing.provenance, incoming.provenance);
   merged.raw_snapshot = mergeObject(existing.raw_snapshot, incoming.raw_snapshot);
 
-  // Les champs Statement restent prioritaires si un Overview est réimporté ensuite.
+  // Les sources financières détaillées restent prioritaires si les exports complémentaires sont réimportés ensuite.
   for (const field of ["traveler_total", "commission_amount", "payment_fee_amount", "net_payout", "payment_date", "payment_reference"]) {
     if (sourcePriority(existing.provenance?.[field]) > sourcePriority(incoming.provenance?.[field])) {
       merged.provenance[field] = existing.provenance[field];
