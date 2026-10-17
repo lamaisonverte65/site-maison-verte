@@ -591,7 +591,7 @@ export default function PricingAdmin({ mode = "all" }) {
         </div>
         <div style={styles.taxSummary}>
           <div><span style={styles.muted}>Classement utilisé</span><strong style={styles.rulePrice}>{taxClassificationLabel(taxClassification)}</strong></div>
-          <div><span style={styles.muted}>Règle en vigueur aujourd’hui</span><strong>{formatTaxRule(currentTaxRule)}</strong>{currentTaxRule && <small style={styles.muted}>Depuis le {formatDate(currentTaxRule.effective_from)} · saisie le {formatDate(currentTaxRule.created_at)}</small>}</div>
+          <div><span style={styles.muted}>Règle en vigueur aujourd’hui</span><strong>{formatTaxRule(currentTaxRule)}</strong>{currentTaxRule && <small style={styles.muted}>Depuis le {formatDate(currentTaxRule.created_at)} · saisie le {formatDate(currentTaxRule.created_at)}</small>}</div>
         </div>
         <div style={styles.grid}>
           {TAX_CLASSIFICATIONS.map(([classification, label]) => {
