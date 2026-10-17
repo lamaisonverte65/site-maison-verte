@@ -42,13 +42,15 @@ export RCLONE_CONFIG_LMVCRYPT_PASSWORD2="$RCLONE_CRYPT_PASSWORD2"
 export RCLONE_CONFIG_LMVCRYPT_FILENAME_ENCRYPTION=standard
 export RCLONE_CONFIG_LMVCRYPT_DIRECTORY_NAME_ENCRYPTION=true
 
-# The crypt backend preserves the underlying directory ID. Ask rclone for the
-# final logical backup directory directly instead of reconstructing its encrypted
-# physical path and querying the pCloud API ourselves.
-LOGICAL_PATH="${REMOTE_ROOT}/${TIER}/${BACKUP_ID}"
-STAT_JSON="$(rclone lsjson --stat "LMVCRYPT:${LOGICAL_PATH}")"
+# Asking rclone to stat the final directory roots the filesystem there, so rclone
+# reports a synthetic root directory without its backend ID.
+# List the logical parent instead: the child directory entry keeps the underlying
+# pCloud directory ID through the crypt wrapper.
+LOGICAL_PARENT="${REMOTE_ROOT}/${TIER}"
+LIST_JSON="$(rclone lsjson "LMVCRYPT:${LOGICAL_PARENT}" --dirs-only --no-modtime --no-mimetype)"
 
-FOLDER_ID="$(printf '%s' "$STAT_JSON" | node -e '
+FOLDER_ID="$(printf '%s' "$LIST_JSON" | node -e '
+  const backupId = process.argv[1];
   let input = "";
   process.stdin.setEncoding("utf8");
   process.stdin.on("data", chunk => { input += chunk; });
@@ -57,17 +59,26 @@ FOLDER_ID="$(printf '%s' "$STAT_JSON" | node -e '
     try {
       payload = JSON.parse(input);
     } catch {
-      console.error("Invalid JSON returned by rclone lsjson --stat.");
+      console.error("Invalid JSON returned by rclone lsjson.");
       process.exit(2);
     }
-    const id = String(payload?.ID ?? "").trim();
-    if (!payload?.IsDir || !/^d[1-9]\d*$/.test(id)) {
-      console.error("rclone stat did not return a valid pCloud directory ID.");
+    if (!Array.isArray(payload)) {
+      console.error("rclone lsjson did not return a directory listing.");
       process.exit(3);
     }
-    process.stdout.write(id.slice(1));
+    const matches = payload.filter(item => item?.IsDir && item?.Name === backupId);
+    if (matches.length !== 1) {
+      console.error(`Expected exactly one backup directory named ${backupId}; found ${matches.length}.`);
+      process.exit(3);
+    }
+    const id = String(matches[0]?.ID ?? "").trim();
+    if (!/^d?[1-9]\d*$/.test(id)) {
+      console.error("rclone listing did not return a valid pCloud directory ID.");
+      process.exit(3);
+    }
+    process.stdout.write(id.startsWith("d") ? id.slice(1) : id);
   });
-')"
+' "$BACKUP_ID")"
 
 LATEST_FILE="$(mktemp)"
 trap 'rm -f "$LATEST_FILE"' EXIT

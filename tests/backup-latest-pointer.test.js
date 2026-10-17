@@ -32,11 +32,13 @@ test('latest pointer stores only non-sensitive metadata and a pCloud folder id',
   assert.doesNotMatch(jsonWriter, /PCLOUD_TOKEN|RCLONE_CRYPT_PASSWORD/);
 });
 
-test('latest publisher lets rclone resolve the final encrypted directory id without a direct pCloud API call', () => {
+test('latest publisher resolves the final encrypted directory id by listing its logical parent', () => {
   const src = read('scripts/backup/publish-latest-backup.sh');
-  assert.match(src, /rclone lsjson --stat \"LMVCRYPT:\$\{LOGICAL_PATH\}\"/);
-  assert.match(src, /String\(payload\?\.ID \?\? \"\"\)/);
-  assert.match(src, /payload\?\.IsDir/);
+  assert.match(src, /LOGICAL_PARENT=\"\$\{REMOTE_ROOT\}\/\$\{TIER\}\"/);
+  assert.match(src, /rclone lsjson \"LMVCRYPT:\$\{LOGICAL_PARENT\}\" --dirs-only/);
+  assert.match(src, /item\?\.Name === backupId/);
+  assert.match(src, /matches\.length !== 1/);
+  assert.doesNotMatch(src, /lsjson --stat/);
   assert.doesNotMatch(src, /cryptdecode/);
   assert.doesNotMatch(src, /eapi\.pcloud\.com\/listfolder/);
   assert.doesNotMatch(src, /PCLOUD_AUTH_TOKEN/);
@@ -59,9 +61,9 @@ test('latest publisher rejects malformed backup ids before external calls', () =
 test('latest publisher preserves 64-bit pCloud folder ids as decimal strings', () => {
   const src = read('scripts/backup/publish-latest-backup.sh');
   assert.doesNotMatch(src, /Number\(|parseInt\(|parseFloat\(|BigInt\(/);
-  assert.match(src, /const id = String\(payload\?\.ID \?\? \"\"\)\.trim\(\)/);
-  assert.ok(src.includes('!/^d[1-9]\\d*$/.test(id)'));
-  assert.match(src, /id\.slice\(1\)/);
+  assert.match(src, /const id = String\(matches\[0\]\?\.ID \?\? \"\"\)\.trim\(\)/);
+  assert.ok(src.includes('!/^d?[1-9]\\d*$/.test(id)'));
+  assert.match(src, /id\.startsWith\(\"d\"\) \? id\.slice\(1\) : id/);
 });
 
 test('latest publisher restricts tiers and rejects path traversal inputs', () => {
