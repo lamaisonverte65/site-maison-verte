@@ -4,7 +4,7 @@ const OK = 'coherent';
 const MISSING = 'manquant';
 const REVIEW = 'a_verifier';
 const NA = 'non_applicable';
-const ACCOUNTING_TOLERANCE_CENTS = 1;
+const ACCOUNTING_TOLERANCE_CENTS = 0;
 const PAID_PAYMENT_STATUSES = new Set(['paid', 'partially_refunded', 'refunded']);
 
 function eurosToCents(value) {

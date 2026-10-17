@@ -85,12 +85,13 @@ test('successful refunds are negative financial movements at completed_at and re
   assert.ok(row.reasons.includes('credit_note_missing_for_issued_stay_invoice'));
 });
 
-test('one cent is accepted by accounting reconciliation but two cents becomes a mismatch', () => {
+test('one cent difference is already an accounting mismatch', () => {
   const oneCent = buildAccountingReconciliation(baseInput({
     bookings: [directBooking], payments: [directPayment()],
     accountingEntries: [{ id: 'e1', entry_date: '2026-06-01', entry_kind: 'income', amount_ttc: 1000.01, source: 'manual', source_record_key: 'direct:payment:p1', booking_request_id: 'b1' }],
   })).rows[0];
-  assert.equal(oneCent.accountingStatus, 'coherent');
+  assert.equal(oneCent.accountingStatus, 'a_verifier');
+  assert.ok(oneCent.reasons.includes('accounting_amount_mismatch'));
 
   const twoCents = buildAccountingReconciliation(baseInput({
     bookings: [directBooking], payments: [directPayment()],
