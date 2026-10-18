@@ -375,6 +375,32 @@ function buildDirectPaymentRow(context, payment, fiscalGroup) {
   const netCents = stripe.match && nonnegativeCents(stripe.match.net) !== null
     ? nonnegativeCents(stripe.match.net)
     : (grossKnownCents !== null && feeCents !== null ? grossKnownCents - feeCents : grossKnownCents);
+
+  // Les frais Stripe sont des écritures comptables distinctes, mais leur valeur
+  // est DÉJÀ déduite du net économique de ce paiement. On doit donc les absorber
+  // dans sa ligne de rapprochement, sinon ils sont comptés une deuxième fois.
+  const feeEntries = accountingEntries.filter((entry) => entry.entry_kind === 'expense'
+    && entry.source === 'stripe' && entry.source_record_key === `direct:fee:${payment.id}`);
+  const importedReceipt = accounting.entries.some((entry) => entry.source === 'stripe'
+    && entry.source_record_key === `direct:payment:${payment.id}`);
+  let feeAccountingStatus = OK;
+  if (feeEntries.length > 1) {
+    feeAccountingStatus = REVIEW;
+    addReason(reasons, 'direct_stripe_fee_entries_ambiguous');
+  } else if (feeEntries.length === 1) {
+    const entry = feeEntries[0];
+    if (feeCents === null || nonnegativeCents(entry.amount_ttc) !== feeCents
+      || isoDate(entry.entry_date) !== isoDate(payment.paid_at || payment.created_at)
+      || entry.booking_request_id !== payment.booking_request_id) {
+      feeAccountingStatus = REVIEW;
+      addReason(reasons, 'direct_stripe_fee_mismatch');
+    }
+  } else if (importedReceipt && feeCents !== null && feeCents > 0) {
+    feeAccountingStatus = MISSING;
+    addReason(reasons, 'direct_stripe_fee_entry_missing');
+  }
+  const accountingStatus = statusFromDimensions(accounting.status, feeAccountingStatus);
+  const accountingEntryIds = unique([...accounting.entries.map((entry) => entry.id), ...feeEntries.map((entry) => entry.id)]);
   let fiscalStatus = REVIEW;
   let fiscalCategory = null;
   let fiscalGrossAmountCents = null;
@@ -437,12 +463,12 @@ function buildDirectPaymentRow(context, payment, fiscalGroup) {
     commissionCents: 0,
     paymentFeeCents: feeCents,
     netCents,
-    accountingEntryIds: accounting.entries.map((entry) => entry.id),
+    accountingEntryIds,
     invoiceIds: documentIds,
     creditNoteIds: [],
     accountingCategory: null,
     financialStatus,
-    accountingStatus: accounting.status,
+    accountingStatus,
     documentStatus,
     fiscalStatus,
     fiscalCategory,
@@ -451,7 +477,7 @@ function buildDirectPaymentRow(context, payment, fiscalGroup) {
     fiscalAggregationKey: fiscalGroup?.groupKey || null,
     fiscalAnchor: fiscalGroup?.isAnchor === true,
     reasons,
-    status: statusFromDimensions(financialStatus, accounting.status, documentStatus, fiscalStatus),
+    status: statusFromDimensions(financialStatus, accountingStatus, documentStatus, fiscalStatus),
   };
 }
 

@@ -25,6 +25,7 @@ import { fetchAccountingReconciliation } from "../../services/accountingReconcil
 import { fetchPlatformFinancialRegistry } from "../../services/accountingImportHistoryService.js";
 import AccountingImportHistory from "./AccountingImportHistory";
 import AccountingImportGuide from "./AccountingImportGuide";
+import DirectStripeAccountingImport from "./DirectStripeAccountingImport.jsx";
 import ReconciliationTableView from "./AccountingReconciliationPanel";
 
 const SUBTABS = [
@@ -379,6 +380,7 @@ export default function DeclarationsPanel() {
     {!loading && !error && subtab === "assets" && <><h3>Immobilisations</h3><p style={styles.muted}>Inventaire des dépenses classées en immobilisation. Aucun amortissement fiscal n'est calculé automatiquement à ce stade.</p>{renderTable(yearEntries.filter((entry) => entry.treatment === "fixed_asset"))}</>}
     {subtab === "imports" && <>
       {!loading && !error && <BookingImportPanel data={data} year={year} preview={bookingPreview} importing={bookingImporting} onFile={previewBookingFile} onCancel={() => setBookingPreview(null)} onValidate={validateBookingImport} />}
+      {!loading && !error && <DirectStripeAccountingImport year={Number(year)} onCreated={reload} />}
       <AccountingImportHistory
         year={year}
         entries={data.entries}
