@@ -2,6 +2,7 @@ import { schedule } from "@netlify/functions";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { listAllBalanceTransactions } from "./_lib/stripe-balance-transactions.js";
+import { syncAutoDirectStripeAccounting } from "./_lib/auto-direct-stripe-accounting.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(
@@ -189,6 +190,10 @@ async function syncPaymentIntentsWithoutPayout() {
 
       const row = await upsertStripeBalanceTransaction(balanceTransaction, payout);
       await recomputeBookingFinancialAggregates(row?.booking_request_id);
+      if (row?.payment_id) {
+        try { await syncAutoDirectStripeAccounting(supabase, { paymentId: row.payment_id }); }
+        catch (error) { console.error("Synchronisation comptable Stripe :", row.payment_id, error); }
+      }
       results.push({ id: booking.id, status: "synced", balanceTransaction: row?.id, payout: row?.payout_id || null });
     } catch (error) {
       console.error("Erreur sync Stripe réservation:", booking.id, error.message);
@@ -216,6 +221,10 @@ async function syncRecentPayouts() {
     for (const transaction of transactions) {
       const row = await upsertStripeBalanceTransaction(transaction, payout);
       if (row?.booking_request_id) affectedBookingIds.add(row.booking_request_id);
+      if (row?.payment_id) {
+        try { await syncAutoDirectStripeAccounting(supabase, { paymentId: row.payment_id }); }
+        catch (error) { console.error("Synchronisation comptable Stripe :", row.payment_id, error); }
+      }
       transactionResults.push({ id: transaction.id, bookingRequestId: row?.booking_request_id || null, net: row?.net || 0, status: row?.reconciliation_status });
     }
 

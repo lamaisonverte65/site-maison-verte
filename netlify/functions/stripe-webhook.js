@@ -5,6 +5,7 @@ import { processCheckoutSessionCompleted } from "./_lib/stripe-checkout-complete
 import { listAllBalanceTransactions } from "./_lib/stripe-balance-transactions.js";
 import { contractualDeposit, contractualTotal, remainingContractualDue } from "./_lib/booking-financial-authority.js";
 import { resendEmail } from "./_lib/resend-email.js";
+import { syncAutoDirectStripeAccounting } from "./_lib/auto-direct-stripe-accounting.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -249,8 +250,18 @@ async function reconcilePayout(payout) {
         if (row?.booking_request_id) {
           affectedBookingIds.add(row.booking_request_id);
           updated += 1;
+        } else {
+          skipped += 1;
         }
-        else skipped += 1;
+        // Les frais Stripe peuvent devenir disponibles seulement au versement.
+        if (row?.payment_id) {
+          try {
+            const accounting = await syncAutoDirectStripeAccounting(supabase, { paymentId: row.payment_id });
+            if (accounting.outcome === "needs_review") console.warn("Payout : comptabilité à vérifier", row.payment_id, accounting.reason);
+          } catch (error) {
+            console.error("Payout : rattrapage comptable requis", row.payment_id, error);
+          }
+        }
       } catch (error) {
         console.error("Erreur transaction payout Stripe:", transaction.id, error.message);
         skipped += 1;
@@ -545,6 +556,20 @@ export async function handler(event) {
       });
 
       console.log("Traitement Checkout Stripe :", stripeEvent.data.object.id, result.outcome, result.reviewReason || null);
+      // Paiement confirmé dans le ledger : comptabilisation additive best-effort.
+      // Une panne comptable NE DOIT PAS rejouer la confirmation de réservation ni l'email.
+      if (result.outcome === "applied" || result.outcome === "already_applied") {
+        try {
+          const accounting = await syncAutoDirectStripeAccounting(supabase, {
+            checkoutSessionId: stripeEvent.data.object.id,
+          });
+          if (accounting.outcome === "needs_review" || accounting.outcome === "concurrent_write") {
+            console.warn("Comptabilité Stripe à vérifier :", stripeEvent.data.object.id, accounting.reason || accounting.outcome);
+          }
+        } catch (error) {
+          console.error("Comptabilité Stripe automatique : rattrapage admin requis", error);
+        }
+      }
     }
 
     if (stripeEvent.type === "payout.paid" || stripeEvent.type === "payout.reconciliation_completed") {
