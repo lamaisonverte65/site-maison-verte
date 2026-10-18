@@ -116,7 +116,10 @@ export function accountingYearSummary(entries, year) {
   const selected = (entries || []).filter((entry) => String(entry.entry_date || "").startsWith(`${year}-`));
   const income = selected.filter((entry) => entry.entry_kind === "income").reduce((sum, entry) => sum + Number(entry.amount_ttc || 0), 0);
   const expense = selected.filter((entry) => entry.entry_kind === "expense").reduce((sum, entry) => sum + Number(entry.amount_ttc || 0), 0);
-  return { income, expense, result: income - expense, count: selected.length };
+  // Un remboursement client est une sortie d'argent, pas une charge d'exploitation.
+  // Le journal conserve les montants positifs ; seul le solde économique les retranche.
+  const refunds = selected.filter((entry) => entry.entry_kind === "refund").reduce((sum, entry) => sum + Number(entry.amount_ttc || 0), 0);
+  return { income, expense, refunds, result: income - expense - refunds, count: selected.length };
 }
 
 export async function sha256File(file) {

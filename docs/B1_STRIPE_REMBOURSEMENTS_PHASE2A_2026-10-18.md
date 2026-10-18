@@ -1,6 +1,6 @@
 # La Maison Verte V4.13 — B1 remboursements Stripe — Phase 2A
 
-**Point de départ :** commit local utilisateur `5aff916` (phase 1 encaissements validée).  
+**Point de départ :** commit local utilisateur `5aff916` (phase 1 encaissements validée).
 **Livrable :** préparation SQL et tests seulement. **Ne pas exécuter la migration en production à cette étape.**
 
 ## Objectif et effet exact

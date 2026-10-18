@@ -513,9 +513,22 @@ function buildRefundRow(context, refund) {
   } else if (explicitAccounting.length > 1) {
     accountingStatus = REVIEW;
     addReason(reasons, 'accounting_match_ambiguous');
-  } else if (amountCents !== null) {
-    const actual = nonnegativeCents(explicitAccounting[0].amount_ttc);
-    if (actual === null || Math.abs(actual - amountCents) > ACCOUNTING_TOLERANCE_CENTS) {
+  } else {
+    const entry = explicitAccounting[0];
+    if (entry.entry_kind !== 'refund') {
+      accountingStatus = REVIEW;
+      addReason(reasons, 'refund_accounting_kind_invalid');
+    }
+    if (entry.source !== 'stripe') {
+      accountingStatus = REVIEW;
+      addReason(reasons, 'refund_accounting_source_invalid');
+    }
+    if (yearOf(entry.entry_date) !== yearOf(refund.completed_at || refund.updated_at || refund.created_at)) {
+      accountingStatus = REVIEW;
+      addReason(reasons, 'accounting_entry_year_mismatch');
+    }
+    const actual = nonnegativeCents(entry.amount_ttc);
+    if (amountCents === null || actual === null || Math.abs(actual - amountCents) > ACCOUNTING_TOLERANCE_CENTS) {
       accountingStatus = REVIEW;
       addReason(reasons, 'accounting_amount_mismatch');
     }
@@ -592,23 +605,29 @@ function buildPlatformRow(context, external) {
 function buildAccountingOnlyRow(entry) {
   const amountCents = nonnegativeCents(entry.amount_ttc);
   const isExpense = entry.entry_kind === 'expense';
+  const isRefund = entry.entry_kind === 'refund';
   const reasons = [];
   if (amountCents === null) addReason(reasons, 'accounting_amount_invalid');
-  // A standalone income entry has no demonstrated counterpart in the payment sources.
-  if (!isExpense) addReason(reasons, 'accounting_income_unlinked');
+  // Une écriture refund orpheline ne devient JAMAIS une recette ni une charge.
+  if (isRefund) {
+    addReason(reasons, 'refund_origin_unlinked');
+    if (amountCents === 0) addReason(reasons, 'refund_zero_amount');
+  } else if (!isExpense) {
+    addReason(reasons, 'accounting_income_unlinked');
+  }
   return {
     id: `accounting-entry:${entry.id}`,
     date: isoDate(entry.entry_date),
     source: entry.source || 'manual',
-    type: isExpense ? 'expense' : 'income',
+    type: isRefund ? 'refund' : isExpense ? 'expense' : 'income',
     bookingRequestId: entry.booking_request_id || null,
     externalReference: entry.external_reference || null,
     grossKnownCents: amountCents,
-    signedAmountCents: amountCents,
+    signedAmountCents: isRefund && amountCents !== null ? -amountCents : amountCents,
     touristTaxCents: null,
     commissionCents: accountingCategory(entry) === 'platform_fees' ? amountCents : 0,
     paymentFeeCents: accountingCategory(entry) === 'payment_fees' ? amountCents : 0,
-    netCents: isExpense && amountCents !== null ? -amountCents : amountCents,
+    netCents: (isExpense || isRefund) && amountCents !== null ? -amountCents : amountCents,
     accountingEntryIds: [entry.id],
     invoiceIds: [],
     creditNoteIds: [],

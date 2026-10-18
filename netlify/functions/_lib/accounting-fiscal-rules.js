@@ -123,7 +123,9 @@ export function buildFiscalSummary(rows = [], incomeYear, declarant = 2) {
 
     if (!eligible || !rule) {
       pendingRows += 1;
-      pendingKnownGrossAmountCents += integerCents(row?.grossKnownCents) ?? 0;
+      // Un remboursement est une sortie à qualifier, pas un brut de recette
+      // en attente : ne jamais ajouter son montant aux recettes potentielles.
+      if (row?.type !== 'refund') pendingKnownGrossAmountCents += integerCents(row?.grossKnownCents) ?? 0;
       continue;
     }
 
