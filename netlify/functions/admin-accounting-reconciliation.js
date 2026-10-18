@@ -11,7 +11,7 @@ const PAID_PAYMENT_STATUSES = ["paid", "partially_refunded", "refunded"];
 
 const PAYMENT_FIELDS = "id,booking_request_id,payment_type,manual_reason,amount,currency,status,stripe_checkout_session_id,stripe_payment_intent_id,paid_at,created_at";
 const REFUND_FIELDS = "id,booking_request_id,status,refunded_amount_cents,created_at,updated_at,completed_at";
-const EXTERNAL_FIELDS = "id,source,external_reference,booking_request_id,accommodation_amount,cleaning_fee,tourist_tax_amount,traveler_total,commission_amount,payment_fee_amount,net_payout,payment_date,provenance";
+const EXTERNAL_FIELDS = "id,source,external_reference,booking_request_id,accommodation_amount,cleaning_fee,tourist_tax_amount,traveler_total,commission_amount,payment_fee_amount,net_payout,payment_date,provenance,raw_snapshot";
 const ACCOUNTING_FIELDS = "id,entry_date,entry_kind,amount_ttc,source,source_record_key,external_reference,booking_request_id,metadata,category_id,accounting_categories(code,name,entry_kind)";
 const BOOKING_FIELDS = "id,tourist_tax_amount,tourist_tax_snapshot";
 const STRIPE_FIELDS = "id,booking_request_id,payment_id,payment_intent_id,type,amount,fee,net,created_at_stripe";

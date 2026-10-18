@@ -244,6 +244,10 @@ export function airbnbReservationsToFinancialRows(reservations) {
 
 export function deriveBookingHistoricalBreakdown(row) {
   if (row?.source !== "booking") return row;
+  // Ne jamais remplacer une taxe explicitement justifiée par une différence
+  // arithmétique entre deux exports, même après une réimportation.
+  const existingTaxSource = String(row.provenance?.tourist_tax_amount || '');
+  if (row.tourist_tax_amount != null && existingTaxSource && !existingTaxSource.startsWith('derived:')) return row;
   const overview = row.raw_snapshot?.booking_overview;
   const statement = row.raw_snapshot?.booking_statement;
   if (!overview || !statement) return row;

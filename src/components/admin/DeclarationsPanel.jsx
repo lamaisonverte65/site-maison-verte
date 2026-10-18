@@ -24,6 +24,7 @@ import { fetchTouristTaxDeclaration } from "../../services/touristTaxDeclaration
 import { fetchAccountingReconciliation } from "../../services/accountingReconciliationService";
 import { fetchPlatformFinancialRegistry } from "../../services/accountingImportHistoryService.js";
 import AccountingImportHistory from "./AccountingImportHistory";
+import AccountingImportGuide from "./AccountingImportGuide";
 import ReconciliationTableView from "./AccountingReconciliationPanel";
 
 const SUBTABS = [
@@ -81,6 +82,7 @@ function BookingImportPanel({ data, year, preview, importing, onFile, onCancel, 
     <div style={styles.panelHeader}><div><h3 style={{ margin: 0 }}>Imports</h3><p style={styles.muted}>{yearBatches.length} lot{yearBatches.length > 1 ? "s" : ""} avec des écritures encaissées en {year}. L'import ne modifie ni ne recrée les réservations.</p></div>
       <div style={styles.contactButtons}><button style={styles.smallButton} onClick={() => window.dispatchEvent(new CustomEvent("lmv:add-manual-receipt"))}>+ Encaissement manuel</button><label style={styles.addButton}>Importer un fichier<input type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={(event) => { onFile(event.target.files?.[0]); event.target.value = ""; }} /></label></div>
     </div>
+    <AccountingImportGuide />
     {statement && preview.externalFinancialOnly && <div style={{ ...styles.accountingAssetBox, minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>
       <div style={styles.panelHeader}><div><h3 style={{ margin: 0 }}>Prévisualisation {preview.sourceLabel}</h3><p style={styles.muted}>{preview.file.name} · ces données enrichissent le registre financier plateforme et ne créent aucune écriture comptable.</p></div><button style={styles.smallButton} onClick={onCancel}>Annuler</button></div>
       <div style={styles.homeFinanceGrid}>
@@ -302,7 +304,9 @@ export default function DeclarationsPanel() {
       }
       const exerciseYear = importExerciseYear(entries);
       const activeBatch = data.importBatches.find((batch) => batch.source === source && Number(batch.exercise_year) === exerciseYear && batch.status === "validated");
-      const sameFile = data.importBatches.find((batch) => batch.source === source && batch.file_sha256 === hash);
+      // Un ancien lot « replaced » ne certifie pas que la comptabilité actuelle
+      // correspond au fichier : seul le lot encore validé autorise la synchronisation seule.
+      const sameFile = activeBatch?.file_sha256 === hash ? activeBatch : null;
       setBookingPreview({
         file, sha256: hash, source, sourceLabel: source === "booking" ? "Booking" : "Airbnb",
         statement, entries,

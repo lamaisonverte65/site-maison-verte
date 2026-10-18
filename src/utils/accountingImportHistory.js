@@ -18,7 +18,8 @@ export function buildAccountingImportHistory({ year, entries = [], batches = [],
     existing.push(entry);
     ledgerByRef.set(key, existing);
   }
-  const financialKeys = new Set(financialRows.filter(item => knownPlatform(item.source)).map(item => sourceRef(item.source,item.external_reference)));
+  const financialByKey = new Map(financialRows.filter(item => knownPlatform(item.source)).map(item => [sourceRef(item.source,item.external_reference), item]));
+  const financialKeys = new Set(financialByKey.keys());
   const allFilteredEntries = yearEntries.filter(entry => visibleSource(entry.source));
   const visibleEntries = allFilteredEntries.filter(entry => passesSearch([entry.external_reference,entry.label,entry.source]));
   const auditRow = item => {
@@ -35,6 +36,11 @@ export function buildAccountingImportHistory({ year, entries = [], batches = [],
   const undatedRegistryRows = financialRows.filter(item => knownPlatform(item.source) && !item.payment_date && !item.start_date && visibleSource(item.source) && passesSearch([item.source,item.external_reference]));
   const unmatchedIncomeRows = visibleEntries.filter(entry => knownPlatform(entry.source) && entry.entry_kind === 'income' && entry.external_reference && !financialKeys.has(sourceRef(entry.source,entry.external_reference)))
     .sort((a,b) => String(b.entry_date).localeCompare(String(a.entry_date)));
+  const incomeWithoutDatedRegistryRows = visibleEntries.filter(entry => {
+    if (!knownPlatform(entry.source) || entry.entry_kind !== 'income' || !entry.external_reference) return false;
+    const financial = financialByKey.get(sourceRef(entry.source,entry.external_reference));
+    return financial && !financial.payment_date;
+  }).sort((a,b) => String(b.entry_date).localeCompare(String(a.entry_date)));
   const batchEntries = new Map();
   for (const entry of entries) if (entry.import_batch_id) {
     const list = batchEntries.get(entry.import_batch_id) || [];
@@ -51,12 +57,14 @@ export function buildAccountingImportHistory({ year, entries = [], batches = [],
     registryRows,
     undatedRegistryRows,
     unmatchedIncomeRows,
+    incomeWithoutDatedRegistryRows,
     summary: {
       entries: allFilteredEntries.length,
       importedEntries: allFilteredEntries.filter(entry => entry.import_batch_id).length,
       registryRows: registryRows.length,
       withoutPaymentDate: registryRows.filter(item => item.yearBasis === 'stay_without_payment_date').length,
-      unmatchedIncome: yearEntries.filter(entry => visibleSource(entry.source) && knownPlatform(entry.source) && entry.entry_kind === 'income' && entry.external_reference && !financialKeys.has(sourceRef(entry.source,entry.external_reference))).length,
+      unmatchedIncome: unmatchedIncomeRows.length,
+      incomeWithoutDatedRegistry: incomeWithoutDatedRegistryRows.length,
     },
   };
 }

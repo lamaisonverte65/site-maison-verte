@@ -122,4 +122,13 @@ export function airbnbStatementToEntries(statement,categories){
   return out;
 }
 
-export function importExerciseYear(entries){ const years=[...new Set(entries.map(e=>Number(String(e.entry_date).slice(0,4))))]; if(years.length!==1 || !years[0]) throw new Error("Le fichier doit contenir un seul exercice d'encaissement."); return years[0]; }
+export function importExerciseYear(entries){
+  const years = [...new Set(entries.map(e => Number(String(e.entry_date || '').slice(0, 4))))].sort((a,b) => a-b);
+  if (years.length !== 1 || !Number.isInteger(years[0]) || years[0] < 2000 || years[0] > 2100) {
+    const detected = years.filter(y => Number.isInteger(y) && y >= 2000 && y <= 2100);
+    throw new Error(detected.length > 1
+      ? `Transactions sur plusieurs exercices (${detected.join(', ')}). Aucun import effectué. Exporte les transactions en un CSV par année de paiement ; les fichiers de réservations peuvent couvrir plusieurs années.`
+      : "Impossible de déterminer un exercice d'encaissement unique ; vérifie les dates de paiement du CSV. Aucun import effectué.");
+  }
+  return years[0];
+}

@@ -32,8 +32,10 @@ function yearOf(value) {
 
 function statusFromDimensions(...statuses) {
   const active = statuses.filter((value) => value && value !== NA);
-  if (active.includes(REVIEW)) return REVIEW;
+  // Une pièce réellement manquante doit rester prioritaire sur une incertitude
+  // fiscale : sinon les encaissements Direct non comptabilisés sont masqués.
   if (active.includes(MISSING)) return MISSING;
+  if (active.includes(REVIEW)) return REVIEW;
   return OK;
 }
 
@@ -47,6 +49,17 @@ function unique(items) {
 
 function bookingClassification(booking) {
   return booking?.tourist_tax_snapshot?.classification || null;
+}
+
+// La finalisation d'une annulation sans paiement produit une refund_operation
+// 'succeeded' à 0 centime : elle ne constitue PAS un mouvement de trésorerie.
+// Les remboursements positifs et les montants inconnus restent contrôlables.
+function financialRefundOperation(refund) {
+  if (refund?.status !== 'succeeded') return false;
+  const cents = Number.isInteger(refund.refunded_amount_cents)
+    ? refund.refunded_amount_cents
+    : nonnegativeCents(refund.refunded_amount);
+  return cents !== 0;
 }
 
 function addReason(reasons, reason) {
@@ -163,7 +176,7 @@ function directMovementYears(bookingId, payments, refundOperations, cleaningIssu
     if (year) years.push(year);
   }
   for (const refund of refundOperations) {
-    if (refund.booking_request_id === bookingId && refund.status === 'succeeded') {
+    if (refund.booking_request_id === bookingId && financialRefundOperation(refund)) {
       const year = yearOf(refund.completed_at || refund.updated_at || refund.created_at);
       if (year) years.push(year);
     }
@@ -187,7 +200,7 @@ function directSameYearFiscalGroups({ year, bookingsById, payments, refundOperat
     const booking = bookingsById.get(bookingId);
     if (!booking) continue;
     const years = directMovementYears(bookingId, payments, refundOperations, cleaningIssues, additionalCharges);
-    const hasRefund = refundOperations.some((refund) => refund.booking_request_id === bookingId && refund.status === 'succeeded');
+    const hasRefund = refundOperations.some((refund) => refund.booking_request_id === bookingId && financialRefundOperation(refund));
     const inYear = allPayments.filter((payment) => yearOf(payment.paid_at || payment.created_at) === year);
     if (years.length !== 1 || years[0] !== year || hasRefund || inYear.length === 0) continue;
 
@@ -225,11 +238,27 @@ function suffixMatch(entry, suffixes) {
     || (suffixes.includes(':payment_fee') && category === 'payment_fees');
 }
 
+// Airbnb distingue le revenu brut des taxes collectées séparément pour son compte.
+// L'export Transactions fournit le brut explicite dans son instantané ;
+// traveler_total peut donc rester NULL sans empêcher le rapprochement comptable.
+function airbnbStatementGrossCents(external) {
+  if (external.source !== 'airbnb') return null;
+  const snapshot = external.raw_snapshot?.airbnb_statement;
+  if (!snapshot || snapshot.confirmation_code !== external.external_reference) return null;
+  return nonnegativeCents(snapshot.gross);
+}
+
+function platformAccountingGrossCents(external) {
+  return airbnbStatementGrossCents(external) ?? nonnegativeCents(external.traveler_total);
+}
+
 function expectedPlatformAccounting(external, entries, reasons) {
-  const related = platformComponentEntries(entries, external.source, external.external_reference);
+  const allRelated = platformComponentEntries(entries, external.source, external.external_reference);
+  const paymentYear = yearOf(external.payment_date);
+  const related = allRelated.filter(entry => paymentYear !== null && yearOf(entry.entry_date) === paymentYear);
   const checks = [];
 
-  const incomeExpected = nonnegativeCents(external.traveler_total);
+  const incomeExpected = platformAccountingGrossCents(external);
   if (incomeExpected !== null) {
     const income = related.filter((entry) => entry.entry_kind === 'income');
     checks.push({ kind: 'income', expected: incomeExpected, candidates: income });
@@ -266,6 +295,10 @@ function expectedPlatformAccounting(external, entries, reasons) {
       addReason(reasons, `accounting_${check.kind}_amount_mismatch`);
     }
   }
+  if (allRelated.length > related.length) {
+    status = REVIEW;
+    addReason(reasons, 'accounting_entry_year_mismatch');
+  }
   if (checks.length === 0) {
     status = related.length ? REVIEW : MISSING;
     addReason(reasons, related.length ? 'accounting_platform_components_not_demonstrated' : 'accounting_entry_missing');
@@ -279,6 +312,13 @@ function expectedPlatformAccounting(external, entries, reasons) {
 }
 
 function platformFiscal(external, booking, reasons) {
+  // L'intitulé Airbnb « taxes reversées » inclut potentiellement plusieurs taxes
+  // (TVA/TPS et taxe de séjour) : il ne justifie pas seul une taxe de séjour.
+  if (external.source === 'airbnb'
+    && String(external.provenance?.tourist_tax_amount || '').startsWith('airbnb_statement:taxes_reversees_par_airbnb')) {
+    addReason(reasons, 'platform_airbnb_tax_type_not_demonstrated');
+    return { fiscalStatus: REVIEW, fiscalCategory: null, fiscalGrossAmountCents: null, touristTaxCents: null };
+  }
   const traveler = nonnegativeCents(external.traveler_total);
   const accommodation = nonnegativeCents(external.accommodation_amount);
   const cleaning = nonnegativeCents(external.cleaning_fee);
@@ -481,14 +521,14 @@ function buildRefundRow(context, refund) {
     fiscalGrossAmountCents: null,
     fiscalRelevant: true,
     reasons,
-    status: REVIEW,
+    status: statusFromDimensions(amountCents === null ? REVIEW : OK, accountingStatus, documentStatus, REVIEW),
   };
 }
 
 function buildPlatformRow(context, external) {
   const reasons = [];
   const booking = external.booking_request_id ? context.bookingsById.get(external.booking_request_id) : null;
-  const grossKnownCents = nonnegativeCents(external.traveler_total);
+  const grossKnownCents = platformAccountingGrossCents(external);
   const accounting = expectedPlatformAccounting(external, context.accountingEntries, reasons);
   const fiscal = platformFiscal(external, booking, reasons);
   const document = documentForPlatform(external, context.invoices, reasons);
@@ -638,7 +678,7 @@ export function buildAccountingReconciliation(input = {}) {
   const additionalCharges = input.additionalCharges || [];
 
   const bookingsById = new Map(bookings.map((booking) => [booking.id, booking]));
-  const bookingRefundIds = new Set(refundOperations.filter((refund) => refund.status === 'succeeded').map((refund) => refund.booking_request_id));
+  const bookingRefundIds = new Set(refundOperations.filter(financialRefundOperation).map((refund) => refund.booking_request_id));
   const directFiscalGroups = directSameYearFiscalGroups({ year, bookingsById, payments, refundOperations, cleaningIssues, additionalCharges });
   const rows = [];
   const consumedAccounting = new Set();
@@ -656,7 +696,7 @@ export function buildAccountingReconciliation(input = {}) {
   }
 
   for (const refund of refundOperations) {
-    if (refund.status !== 'succeeded') continue;
+    if (!financialRefundOperation(refund)) continue;
     if (yearOf(refund.completed_at || refund.updated_at || refund.created_at) !== year) continue;
     const row = buildRefundRow({ bookingsById, accountingEntries, invoices, creditNotes }, refund);
     rows.push(row);

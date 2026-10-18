@@ -41,7 +41,8 @@ export default function AccountingImportHistory({year, entries = [], batches = [
       <div style={styles.homeFinanceGrid}>
         <div style={styles.accountingStat}><span>Écritures comptables de l'exercice</span><strong>{view.summary.entries}</strong></div>
         <div style={styles.accountingStat}><span>Dont issues d'un lot suivi</span><strong>{view.summary.importedEntries}</strong></div>
-        <div style={styles.accountingStat}><span>Recettes plateforme sans fiche financière</span><strong>{view.summary.unmatchedIncome}</strong></div>
+        <div style={styles.accountingStat}><span>Recettes sans fiche financière</span><strong>{view.summary.unmatchedIncome}</strong></div>
+        <div style={styles.accountingStat}><span>Recettes avec fiche mais paiement non daté</span><strong>{view.summary.incomeWithoutDatedRegistry}</strong></div>
       </div>
       <div>
         <h4>Lots d'import comptable</h4>
@@ -73,14 +74,14 @@ export default function AccountingImportHistory({year, entries = [], batches = [
           <div style={styles.accountingStat}><span>Sans date ni séjour (hors exercice)</span><strong>{view.undatedRegistryRows.length}</strong></div>
         </div>
         <div style={tableBox}><table style={{...styles.table,minWidth:1180}}><thead><tr>
-          <th style={styles.th}>Plateforme / référence</th><th style={styles.th}>Séjour</th><th style={styles.th}>Date paiement</th><th style={styles.th}>Montant voyageur</th><th style={styles.th}>Taxe indiquée</th><th style={styles.th}>Net plateforme</th><th style={styles.th}>Lien journal</th><th style={styles.th}>Provenance enregistrée</th><th style={styles.th}>Mise à jour fiche</th>
+          <th style={styles.th}>Plateforme / référence</th><th style={styles.th}>Séjour</th><th style={styles.th}>Date paiement</th><th style={styles.th}>Montant voyageur</th><th style={styles.th}>Taxes indiquées par la plateforme (à qualifier)</th><th style={styles.th}>Net plateforme</th><th style={styles.th}>Lien journal</th><th style={styles.th}>Provenance enregistrée</th><th style={styles.th}>Mise à jour fiche</th>
         </tr></thead><tbody>
           {view.registryRows.map(row=><tr key={row.id || `${row.source}:${row.external_reference}`}>
             <td style={styles.td}><strong>{labelSource(row.source)}</strong><div>{row.external_reference}</div></td>
             <td style={styles.td}>{row.start_date || '—'}{row.end_date ? ` → ${row.end_date}` : ''}</td>
             <td style={styles.td}>{row.payment_date || <strong>Inconnue — séjour uniquement</strong>}</td>
             <td style={styles.td}>{euro(row.traveler_total)}</td>
-            <td style={styles.td}>{euro(row.tourist_tax_amount)}</td>
+            <td style={styles.td}>{euro(row.tourist_tax_amount)}{String(row.provenance?.tourist_tax_amount || '').startsWith('derived:') && <div style={small}>Calcul par différence, non justifié comme taxe de séjour</div>}{String(row.provenance?.tourist_tax_amount || '').startsWith('airbnb_statement:') && <div style={small}>Taxes Airbnb reversées (nature non détaillée)</div>}</td>
             <td style={styles.td}>{euro(row.net_payout)}</td>
             <td style={styles.td}>{!ledgerAvailable ? 'Contrôle indisponible' : row.journalLinks.length === 0 ? 'Aucune recette liée' : row.hasIncomeThisYear ? `${row.journalLinks.length} recette(s) — ${year}` : `Recette(s) d'un autre exercice : ${row.journalYears.join(', ')}`}</td>
             <td style={styles.td}>{sourceTags(row.provenance).join(' + ') || 'Source non précisée'}<div style={small}>Nom du fichier non suivi par le registre</div></td>
@@ -100,6 +101,17 @@ export default function AccountingImportHistory({year, entries = [], batches = [
         {view.unmatchedIncomeRows.map(entry=><tr key={entry.id}><td style={styles.td}>{entry.entry_date}</td><td style={styles.td}>{labelSource(entry.source)}</td><td style={styles.td}>{entry.external_reference}</td><td style={styles.td}>{euro(entry.amount_ttc)}</td><td style={styles.td}>{batches.find(batch=>batch.id===entry.import_batch_id)?.original_filename || 'Non renseigné'}</td></tr>)}
         {!view.unmatchedIncomeRows.length && <tr><td style={styles.td} colSpan="5">Aucune recette plateforme sans fiche financière dans la sélection.</td></tr>}
       </tbody></table></div>
+    </div>}
+    {ledgerAvailable && registryAvailable && <div>
+      <h4>Recettes comptables dont la fiche financière n'a pas de date de paiement ({view.incomeWithoutDatedRegistryRows.length})</h4>
+      <p style={styles.muted}>La réservation existe au registre, mais aucun encaissement n'y est daté. Cela ne remet pas en cause la date de l'écriture comptable : le Statement d'origine peut la justifier.</p>
+      {view.incomeWithoutDatedRegistryRows.length > 0 && <details>
+        <summary>Voir les {view.incomeWithoutDatedRegistryRows.length} référence(s) à synchroniser</summary>
+        <div style={tableBox}><table style={{ ...styles.table, minWidth: 540 }}><thead><tr><th style={styles.th}>Date du journal</th><th style={styles.th}>Plateforme</th><th style={styles.th}>Référence</th><th style={styles.th}>Brut comptable</th></tr></thead><tbody>
+          {view.incomeWithoutDatedRegistryRows.map(entry => <tr key={entry.id}><td style={styles.td}>{entry.entry_date}</td><td style={styles.td}>{labelSource(entry.source)}</td><td style={styles.td}>{entry.external_reference}</td><td style={styles.td}>{euro(entry.amount_ttc)}</td></tr>)}
+        </tbody></table></div>
+      </details>}
+      {!view.incomeWithoutDatedRegistryRows.length && <p style={styles.muted}>Aucune recette à dater dans cette sélection.</p>}
     </div>}
     <p style={styles.muted}>Ce tableau consulte les enregistrements existants ; il ne conserve pas rétroactivement le nom des CSV qui ont seulement alimenté le registre financier, ne crée pas d'écritures et ne constitue pas une validation fiscale.</p>
   </section>;
