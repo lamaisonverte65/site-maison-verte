@@ -22,6 +22,8 @@ import { matchBookingOverviewReservations, parseBookingOverview } from "../../ut
 import { airbnbReservationsToFinancialRows, airbnbStatementToFinancialRows, bookingOverviewToFinancialRows, bookingStatementToFinancialRows } from "../../utils/externalReservationFinancialImport";
 import { fetchTouristTaxDeclaration } from "../../services/touristTaxDeclarationService";
 import { fetchAccountingReconciliation } from "../../services/accountingReconciliationService";
+import { fetchPlatformFinancialRegistry } from "../../services/accountingImportHistoryService.js";
+import AccountingImportHistory from "./AccountingImportHistory";
 import ReconciliationTableView from "./AccountingReconciliationPanel";
 
 const SUBTABS = [
@@ -194,6 +196,10 @@ export default function DeclarationsPanel() {
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [bookingPreview, setBookingPreview] = useState(null);
   const [bookingImporting, setBookingImporting] = useState(false);
+  const [financialRegistry, setFinancialRegistry] = useState(null);
+  const [financialRegistryLoading, setFinancialRegistryLoading] = useState(false);
+  const [financialRegistryError, setFinancialRegistryError] = useState("");
+  const [financialRegistryVersion, setFinancialRegistryVersion] = useState(0);
   const [reconciliation, setReconciliation] = useState(null);
   const [reconciliationRequestYear, setReconciliationRequestYear] = useState(null);
   const [reconciliationLoading, setReconciliationLoading] = useState(false);
@@ -214,13 +220,28 @@ export default function DeclarationsPanel() {
       .finally(() => { if (!cancelled) setReconciliationLoading(false); });
     return () => { cancelled = true; };
   }, [year, subtab]);
+  useEffect(() => {
+    if (subtab !== "imports") return;
+    let cancelled = false;
+    setFinancialRegistryLoading(true);
+    setFinancialRegistryError("");
+    fetchPlatformFinancialRegistry(supabase)
+      .then((rows) => { if (!cancelled) setFinancialRegistry(rows); })
+      .catch((importError) => { if (!cancelled) { setFinancialRegistry(null); setFinancialRegistryError(importError.message); } })
+      .finally(() => { if (!cancelled) setFinancialRegistryLoading(false); });
+    return () => { cancelled = true; };
+  }, [subtab, financialRegistryVersion]);
   useEffect(() => { const handler=()=>setForm(emptyForm("income")); window.addEventListener("lmv:add-manual-receipt",handler); return()=>window.removeEventListener("lmv:add-manual-receipt",handler); }, []);
   const years = useMemo(() => {
     const currentYear = new Date().getFullYear();
-    const entryYears = data.entries.map((e) => Number(String(e.entry_date || "").slice(0, 4))).filter(Number.isFinite);
-    const firstYear = Math.min(currentYear - 2, ...entryYears, currentYear);
+    const yearsFromDates = [
+      ...data.entries.map((entry) => entry.entry_date),
+      ...(financialRegistry || []).flatMap((entry) => [entry.payment_date, entry.start_date]),
+    ].map((date) => Number(String(date || "").slice(0, 4))).filter((value) => Number.isInteger(value) && value >= 2000 && value <= currentYear);
+    const batchYears = data.importBatches.map((batch) => Number(batch.exercise_year)).filter((value) => Number.isInteger(value) && value >= 2000 && value <= currentYear);
+    const firstYear = Math.min(currentYear - 2, ...yearsFromDates, ...batchYears, currentYear);
     return Array.from({ length: currentYear - firstYear + 1 }, (_, index) => String(currentYear - index));
-  }, [data.entries]);
+  }, [data.entries, data.importBatches, financialRegistry]);
   const summary = accountingYearSummary(data.entries, year);
   const yearEntries = data.entries.filter((entry) => String(entry.entry_date || "").startsWith(`${year}-`));
   const categoryName = (entry) => entry.accounting_categories?.name || "Sans domaine";
@@ -303,7 +324,8 @@ export default function DeclarationsPanel() {
       try {
         await saveExternalReservationFinancials(supabase, bookingPreview.financialRows);
         setBookingPreview(null);
-        alert(`${sourceLabel} enregistré dans le registre financier plateforme.`);
+        setFinancialRegistryVersion((version) => version + 1);
+        alert(`${sourceLabel} : réservations enregistrées dans le registre financier. Aucune écriture comptable n'a été créée. Consulte l'historique ci-dessous.`);
       } catch (e) {
         alert(`Erreur import : ${e.message}`);
       } finally { setBookingImporting(false); }
@@ -330,6 +352,7 @@ export default function DeclarationsPanel() {
         await saveAccountingImportSnapshot(supabase, { ...bookingPreview, format: bookingPreview.source === "booking" ? "booking_statements_csv_v2" : "airbnb_payout_csv_v1" });
       }
       setBookingPreview(null);
+      setFinancialRegistryVersion((version) => version + 1);
       await reload();
       alert(accountingAlreadyCurrent && bookingPreview.source === "booking"
         ? "Registre financier Booking synchronisé ; comptabilité inchangée."
@@ -350,7 +373,20 @@ export default function DeclarationsPanel() {
     {!loading && !error && subtab === "summary" && <><div style={styles.homeFinanceGrid}><div style={styles.accountingStat}><span>Recettes</span><strong>{money(summary.income)}</strong></div><div style={styles.accountingStat}><span>Dépenses</span><strong>{money(summary.expense)}</strong></div><div style={styles.accountingStat}><span>Solde indicatif</span><strong>{money(summary.result)}</strong></div><div style={styles.accountingStat}><span>Écritures</span><strong>{summary.count}</strong></div></div><p style={styles.muted}>Synthèse comptable indicative. Le traitement fiscal de la déclaration sera défini séparément selon le régime applicable à l'exercice.</p>{renderTable(yearEntries)}</>}
     {!loading && !error && ["income", "expense"].includes(subtab) && <><div style={styles.panelHeader}><h3>{subtab === "income" ? "Recettes" : "Dépenses"} {year}</h3><div style={styles.contactButtons}><button style={styles.smallButton} onClick={() => addDomain(subtab)}>+ Ajouter un domaine</button><button style={styles.addButton} onClick={() => openNew(subtab)}>+ Ajouter {subtab === "income" ? "une recette" : "une dépense"}</button></div></div>{renderTable(yearEntries.filter((entry) => entry.entry_kind === subtab))}</>}
     {!loading && !error && subtab === "assets" && <><h3>Immobilisations</h3><p style={styles.muted}>Inventaire des dépenses classées en immobilisation. Aucun amortissement fiscal n'est calculé automatiquement à ce stade.</p>{renderTable(yearEntries.filter((entry) => entry.treatment === "fixed_asset"))}</>}
-    {!loading && !error && subtab === "imports" && <BookingImportPanel data={data} year={year} preview={bookingPreview} importing={bookingImporting} onFile={previewBookingFile} onCancel={() => setBookingPreview(null)} onValidate={validateBookingImport} />}
+    {subtab === "imports" && <>
+      {!loading && !error && <BookingImportPanel data={data} year={year} preview={bookingPreview} importing={bookingImporting} onFile={previewBookingFile} onCancel={() => setBookingPreview(null)} onValidate={validateBookingImport} />}
+      <AccountingImportHistory
+        year={year}
+        entries={data.entries}
+        batches={data.importBatches}
+        financialRows={financialRegistry || []}
+        registryLoading={financialRegistryLoading}
+        registryError={financialRegistryError}
+        accountingLoading={loading}
+        accountingError={error}
+        onRefresh={() => { reload(); setFinancialRegistryVersion((version) => version + 1); }}
+      />
+    </>}
     {subtab === "reconciliation" && <AccountingReconciliationPanel
       year={year}
       reconciliation={reconciliationRequestYear === Number(year) ? reconciliation : null}
