@@ -4,6 +4,7 @@ import { schedule } from '@netlify/functions';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { syncConfirmedRefundAccounting } from './_lib/auto-direct-stripe-refund-accounting.js';
+import { reconcilePendingStripeRefunds } from './_lib/reconcile-delayed-stripe-refund.js';
 
 export async function reconcileSavedStripeRefunds(supabase, stripe, {pageSize = 100, maxRows = 5000} = {}) {
   const outcomes = {created: 0, already_recorded: 0, needs_review: 0, concurrent_write: 0, failed: 0, other: 0};
@@ -30,6 +31,7 @@ export async function reconcileSavedStripeRefunds(supabase, stripe, {pageSize = 
   // Un lot incomplet n'est jamais présenté comme un contrôle exhaustif.
   return {processed, outcomes, truncated: true};
 }
+
 
 // Détection seulement : remboursements effectués hors de l'application.
 // Aucun enregistrement dans refunds ou dans le journal sans allocation locale fiable.
@@ -76,10 +78,15 @@ export const handler = schedule('37 4 * * *', async () => {
   const supabase = createClient(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY);
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  const pending = await reconcilePendingStripeRefunds(supabase, stripe);
+  if (pending.outcomes.recovered_requires_finalization) {
+    console.warn('Remboursements confirmés tardivement : finalisation métier/admin requise :',
+      pending.outcomes.recovered_requires_finalization);
+  }
   const result = await reconcileSavedStripeRefunds(supabase, stripe);
   console.log('Rattrapage journal des remboursements Stripe :', result);
   const external = await auditUnlinkedStripeRefunds(supabase, stripe);
   if (external.unlinkedIds.length) console.warn('Remboursements Stripe non reliés à vérifier :', external.unlinkedIds);
-  if (result.truncated || external.truncated) throw new Error('Contrôle Stripe incomplet : plafond atteint');
-  return {statusCode: 200, body: JSON.stringify({result, externalUnlinkedCount: external.unlinkedIds.length})};
+  if (pending.truncated || result.truncated || external.truncated) throw new Error('Contrôle Stripe incomplet : plafond atteint');
+  return {statusCode: 200, body: JSON.stringify({pending, result, externalUnlinkedCount: external.unlinkedIds.length})};
 });

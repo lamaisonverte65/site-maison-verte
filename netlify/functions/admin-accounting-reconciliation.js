@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { authorizeAdminRequest, authorizationResponse } from "./_lib/admin-auth.js";
+import { authorizeAdminRequest as authorizeOwnerRequest, authorizationResponse } from "./_lib/admin-auth.js";
 import { buildAccountingReconciliation } from "./_lib/accounting-reconciliation.js";
 import { stripeRefundParisDate } from "./_lib/auto-direct-stripe-refund-accounting.js";
 
@@ -16,19 +16,19 @@ const ALLOCATION_FIELDS = "id,operation_id,booking_request_id,payment_id,amount,
 
 // L'année d'une allocation est portée par la création Stripe conservée dans metadata,
 // et non par la finalisation (potentiellement ultérieure) de refund_operations.
-function allocationPage(start, pageSize) {
+function allocationPage(supabase, start, pageSize) {
   return supabase.from('refunds').select(ALLOCATION_FIELDS)
     .eq('status', 'succeeded').not('operation_id', 'is', null)
     .order('id', {ascending: true}).range(start, start + pageSize - 1);
 }
-function refundOperationsByIds(ids) {
+function refundOperationsByIds(supabase, ids) {
   return supabase.from('refund_operations').select(REFUND_FIELDS).in('id', ids);
 }
-async function readSucceededRefundAllocations() {
+async function readSucceededRefundAllocations(supabase) {
   const rows = [];
   const pageSize = 500;
   for (let start = 0; start < 20000; start += pageSize) {
-    const response = await allocationPage(start, pageSize);
+    const response = await allocationPage(supabase, start, pageSize);
     const page = checked(response, 'Allocations de remboursements');
     rows.push(...page);
     if (page.length < pageSize) return rows;
@@ -116,7 +116,9 @@ function accountingKeysForMovements(payments, refunds, allocations = []) {
   return { keys: unique(keys), references: unique(references) };
 }
 
-export async function handler(event) {
+export async function runAnnualReconciliation(event, { client = supabase, authorize = authorizeOwnerRequest } = {}) {
+  const supabase = client;
+  const authorizeAdminRequest = authorize;
   if (event.httpMethod !== "GET") return json(405, { error: "Method Not Allowed" });
 
   const auth = await authorizeAdminRequest(event, supabase, { ownerOnly: true });
@@ -131,6 +133,12 @@ export async function handler(event) {
   const nextYearStartIso = `${nextYearStart}T00:00:00Z`;
 
   try {
+    // La date comptable d'une allocation est celle de Stripe, pas celle de
+    // la finalisation de l'opération. Extraction paginée, sans résultat tronqué.
+    const allocationsAll = await readSucceededRefundAllocations(supabase);
+    const allocationsYear = allocationsAll.filter(row =>
+      stripeRefundParisDate(Number(row.metadata?.created))?.slice(0, 4) === String(year));
+
     // Phase 1 — opérations qui appartiennent réellement à l'exercice demandé.
     const [paymentsYearResult, refundsYearResult, externalYearResult, accountingYearResult] = await Promise.all([
       supabase
@@ -204,7 +212,7 @@ export async function handler(event) {
     const missingOperationIds = unique(refundAllocations.map(row => row.operation_id))
       .filter(id => !refundOperations.some(op => String(op.id) === id));
     for (let i = 0; i < missingOperationIds.length; i += 100) {
-      const response = await refundOperationsByIds(missingOperationIds.slice(i, i + 100));
+      const response = await refundOperationsByIds(supabase, missingOperationIds.slice(i, i + 100));
       refundOperations.push(...checked(response, 'Opérations des allocations'));
     }
     const accountingEntries = mergeById(
@@ -279,4 +287,8 @@ export async function handler(event) {
     console.error("Erreur rapprochement comptable annuel :", error);
     return json(500, { error: "Impossible de calculer le rapprochement comptable annuel." });
   }
+}
+
+export async function handler(event) {
+  return runAnnualReconciliation(event);
 }

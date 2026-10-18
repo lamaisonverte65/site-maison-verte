@@ -783,13 +783,21 @@ export function buildAccountingReconciliation(input = {}) {
   for (const allocation of refundAllocations) {
     if (allocation.status !== 'succeeded') continue;
     const refundOperation = operationsById.get(String(allocation.operation_id));
-    if (!refundOperation || !financialRefundOperation(refundOperation)) continue;
+    // Une allocation confirmée Stripe est financièrement réelle même si
+    // l'opération métier doit encore être finalisée (emails/statut réservation).
+    if (!refundOperation || !(financialRefundOperation(refundOperation)
+      || refundOperation.status === 'stripe_succeeded')) continue;
     const refundDate = stripeRefundParisDate(Number(allocation.metadata?.created));
     // Date inconnue : visible sur l'exercice de finalisation comme anomalie, jamais comptabilisée automatiquement.
     const yearToShow = refundDate ? Number(refundDate.slice(0, 4))
       : yearOf(refundOperation.completed_at || refundOperation.updated_at || refundOperation.created_at);
     if (yearToShow !== year) continue;
     const row = buildRefundRow({bookingsById, accountingEntries, invoices, creditNotes}, refundOperation, allocation);
+    if (refundOperation.status !== 'succeeded') {
+      addReason(row.reasons, 'refund_operation_requires_business_finalization');
+      row.financialStatus = REVIEW;
+      row.status = statusFromDimensions(row.financialStatus, row.accountingStatus, row.documentStatus, row.fiscalStatus);
+    }
     const legacy = accountingEntries.filter(e => e.entry_kind === 'refund'
       && (String(e.source_record_key || '') === `direct:refund:${refundOperation.id}`
         || String(e.external_reference || '') === String(refundOperation.id)));

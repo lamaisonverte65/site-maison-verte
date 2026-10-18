@@ -7,6 +7,7 @@ import { contractualDeposit, contractualTotal, remainingContractualDue } from ".
 import { resendEmail } from "./_lib/resend-email.js";
 import { syncAutoDirectStripeAccounting } from "./_lib/auto-direct-stripe-accounting.js";
 import { syncConfirmedRefundAccounting } from "./_lib/auto-direct-stripe-refund-accounting.js";
+import { reconcileDelayedStripeRefund } from "./_lib/reconcile-delayed-stripe-refund.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -578,6 +579,14 @@ export async function handler(event) {
     if (["refund.created", "refund.updated"].includes(stripeEvent.type)
       && stripeEvent.data.object?.status === "succeeded") {
       try {
+        const recovered = await reconcileDelayedStripeRefund(supabase, stripe, {
+          stripeRefundId: stripeEvent.data.object.id,
+        });
+        if (recovered.outcome === 'recovered_requires_finalization') {
+          console.warn('Remboursement confirmé localement, finalisation métier/admin nécessaire :', recovered.operationId);
+        } else if (recovered.outcome === 'needs_review') {
+          console.warn('Remboursement à vérifier avant comptabilisation :', stripeEvent.data.object.id, recovered.reason);
+        }
         const accounting = await syncConfirmedRefundAccounting(supabase, stripe, {
           stripeRefundId: stripeEvent.data.object.id,
         });
