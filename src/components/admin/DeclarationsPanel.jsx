@@ -22,6 +22,7 @@ import { matchBookingOverviewReservations, parseBookingOverview } from "../../ut
 import { airbnbReservationsToFinancialRows, airbnbStatementToFinancialRows, bookingOverviewToFinancialRows, bookingStatementToFinancialRows } from "../../utils/externalReservationFinancialImport";
 import { fetchTouristTaxDeclaration } from "../../services/touristTaxDeclarationService";
 import { fetchAccountingReconciliation } from "../../services/accountingReconciliationService";
+import ReconciliationTableView from "./AccountingReconciliationPanel";
 
 const SUBTABS = [
   ["summary", "Synthèse"], ["income", "Recettes"], ["expense", "Dépenses"],
@@ -178,26 +179,12 @@ function TouristTaxDeclarationPanel({ year }) {
 }
 
 function AccountingReconciliationPanel({ year, reconciliation, loading, error }) {
-  const summary = reconciliation?.accountingSummary || {};
-  const rows = reconciliation?.rows || [];
-  const centsMoney = (value) => money((Number(value) || 0) / 100);
-
   if (loading) return <p style={styles.info}>Chargement du rapprochement…</p>;
   if (error) return <p style={styles.error}>{error}</p>;
-  if (!reconciliation || rows.length === 0) return <p style={styles.empty}>Aucune opération à rapprocher pour cet exercice.</p>;
-
-  return <>
-    <div style={styles.panelHeader}>
-      <div><h3 style={{ margin: 0 }}>Rapprochement {year}</h3><p style={styles.muted}>Vue calculée en lecture seule. Elle compare les sources financières, le journal comptable et les justificatifs sans créer ni modifier d’écriture.</p></div>
-    </div>
-    <div style={styles.homeFinanceGrid}>
-      <div style={styles.accountingStat}><span>Opérations</span><strong>{summary.rowCount || rows.length}</strong></div>
-      <div style={styles.accountingStat}><span>Recettes connues</span><strong>{centsMoney(summary.receiptsCents)}</strong></div>
-      <div style={styles.accountingStat}><span>À vérifier</span><strong>{summary.statuses?.a_verifier || 0}</strong></div>
-      <div style={styles.accountingStat}><span>Manquants</span><strong>{summary.statuses?.manquant || 0}</strong></div>
-    </div>
-    <p style={styles.muted}>Le détail, les filtres, les tris et la préparation fiscale seront ajoutés dans l’étape suivante.</p>
-  </>;
+  if (!reconciliation || !Array.isArray(reconciliation.rows) || !reconciliation.rows.length) {
+    return <p style={styles.empty}>Aucune opération à rapprocher pour cet exercice.</p>;
+  }
+  return <ReconciliationTableView year={year} reconciliation={reconciliation} />;
 }
 
 export default function DeclarationsPanel() {

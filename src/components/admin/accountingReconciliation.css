@@ -1,0 +1,46 @@
+.lmv-reconciliation { min-width: 0; max-width: 100%; display: grid; gap: 12px; }
+.lmv-reconciliation h3, .lmv-reconciliation h4 { margin: 0; }
+.lmv-reconciliation h4 { margin-top: 12px; }
+.lmv-reconciliation-header p, .lmv-reconciliation-muted, .lmv-reconciliation-note { color: #536579; }
+.lmv-reconciliation-header p, .lmv-reconciliation-note { margin: 6px 0 0; font-size: 0.9rem; }
+.lmv-reconciliation-muted { font-size: 0.86rem; font-weight: 400; }
+.lmv-reconciliation-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 9px; }
+.lmv-reconciliation-stat { display: flex; flex-direction: column; gap: 4px; min-width: 0; border: 1px solid #d7e4f1; border-radius: 10px; background: #f7fbff; padding: 12px; }
+.lmv-reconciliation-stat > span { font-size: 0.85rem; color: #46617b; }
+.lmv-reconciliation-stat strong { font-size: 1.1rem; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.lmv-reconciliation-stat small { color: #536579; font-size: 0.78rem; }
+.lmv-reconciliation-controls { border: 1px solid #d7e4f1; border-radius: 10px; padding: 14px; }
+.lmv-reconciliation-controls h4 { margin: 0 0 10px; }
+.lmv-reconciliation-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 205px), 1fr)); gap: 10px; align-items: end; }
+.lmv-reconciliation-filters label { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: 0.86rem; font-weight: 600; color: #244461; }
+.lmv-reconciliation-filters select, .lmv-reconciliation-filters input { box-sizing: border-box; width: 100%; min-height: 38px; padding: 7px 9px; border: 1px solid #b7cbde; border-radius: 7px; background: #fff; color: #172b43; font: inherit; font-weight: normal; }
+.lmv-reconciliation-reset button { width: 100%; min-height: 38px; border: 1px solid #8faac4; color: #244461; background: #fff; border-radius: 7px; font-weight: 600; cursor: pointer; }
+.lmv-reconciliation-warning { margin: 0; padding: 9px 12px; border-left: 3px solid #b47c32; background: #fffaf1; color: #714918; font-size: 0.9rem; }
+.lmv-reconciliation-empty { padding: 18px; border: 1px dashed #b7cbde; border-radius: 8px; color: #52647b; }
+.lmv-reconciliation-table { width: 100%; max-width: 100%; overflow-x: auto; border: 1px solid #d7e4f1; border-radius: 8px; }
+.lmv-reconciliation-table table { border-collapse: collapse; width: 100%; min-width: 1480px; font-size: 0.82rem; }
+.lmv-reconciliation-table th { text-align: left; background: #eaf3fb; color: #244461; font-weight: 700; padding: 10px 8px; white-space: nowrap; border-bottom: 1px solid #d7e4f1; }
+.lmv-reconciliation-table td { padding: 9px 8px; border-bottom: 1px solid #e6eef6; vertical-align: top; }
+.lmv-reconciliation-table tbody tr:nth-child(even) { background: #f7fafc; }
+.lmv-reconciliation-number { text-align: right !important; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lmv-reconciliation-reference { max-width: 185px; overflow-wrap: anywhere; }
+.lmv-reconciliation-negative { color: #9e3d3d; }
+.lmv-reconciliation-state { display: inline-block; border-radius: 6px; padding: 3px 6px; font-size: 0.78rem; white-space: nowrap; background: #f0f4f8; color: #44556c; }
+.lmv-reconciliation-state--coherent { background: #e5f4ef; color: #17604a; }
+.lmv-reconciliation-state--manquant { background: #fff2dc; color: #86530b; }
+.lmv-reconciliation-state--a_verifier { background: #fae9e9; color: #933c3c; }
+.lmv-reconciliation-mobile-list { display: none; }
+@media (max-width: 760px) {
+  .lmv-reconciliation { gap: 10px; }
+  .lmv-reconciliation-controls { padding: 10px; }
+  .lmv-reconciliation-filters { grid-template-columns: 1fr; }
+  .lmv-reconciliation-table { display: none; }
+  .lmv-reconciliation-mobile-list { display: grid; gap: 10px; }
+  .lmv-reconciliation-mobile-card { border: 1px solid #d7e4f1; border-radius: 9px; padding: 12px; min-width: 0; }
+  .lmv-reconciliation-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+  .lmv-reconciliation-card-header > div { min-width: 0; display: grid; gap: 4px; }
+  .lmv-reconciliation-card-header small { color: #536579; }
+  .lmv-reconciliation-mobile-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 8px; font-size: 0.85rem; align-items: center; }
+  .lmv-reconciliation-mobile-fields > :nth-child(even) { min-width: 0; overflow-wrap: anywhere; text-align: right; font-variant-numeric: tabular-nums; }
+  .lmv-reconciliation-mobile-fields > :nth-child(odd) { color: #536579; }
+}
