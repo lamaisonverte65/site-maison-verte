@@ -21,10 +21,11 @@ import { airbnbStatementToEntries, detectAccountingImportFormat, importExerciseY
 import { matchBookingOverviewReservations, parseBookingOverview } from "../../utils/bookingOverviewImport";
 import { airbnbReservationsToFinancialRows, airbnbStatementToFinancialRows, bookingOverviewToFinancialRows, bookingStatementToFinancialRows } from "../../utils/externalReservationFinancialImport";
 import { fetchTouristTaxDeclaration } from "../../services/touristTaxDeclarationService";
+import { fetchAccountingReconciliation } from "../../services/accountingReconciliationService";
 
 const SUBTABS = [
   ["summary", "Synthèse"], ["income", "Recettes"], ["expense", "Dépenses"],
-  ["assets", "Immobilisations"], ["imports", "Imports"], ["tax", "Taxe de séjour"],
+  ["assets", "Immobilisations"], ["imports", "Imports"], ["reconciliation", "Rapprochement"], ["tax", "Taxe de séjour"],
 ];
 const money = (value) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(value || 0));
 const today = () => new Date().toISOString().slice(0, 10);
@@ -176,6 +177,29 @@ function TouristTaxDeclarationPanel({ year }) {
   </>;
 }
 
+function AccountingReconciliationPanel({ year, reconciliation, loading, error }) {
+  const summary = reconciliation?.accountingSummary || {};
+  const rows = reconciliation?.rows || [];
+  const centsMoney = (value) => money((Number(value) || 0) / 100);
+
+  if (loading) return <p style={styles.info}>Chargement du rapprochement…</p>;
+  if (error) return <p style={styles.error}>{error}</p>;
+  if (!reconciliation || rows.length === 0) return <p style={styles.empty}>Aucune opération à rapprocher pour cet exercice.</p>;
+
+  return <>
+    <div style={styles.panelHeader}>
+      <div><h3 style={{ margin: 0 }}>Rapprochement {year}</h3><p style={styles.muted}>Vue calculée en lecture seule. Elle compare les sources financières, le journal comptable et les justificatifs sans créer ni modifier d’écriture.</p></div>
+    </div>
+    <div style={styles.homeFinanceGrid}>
+      <div style={styles.accountingStat}><span>Opérations</span><strong>{summary.rowCount || rows.length}</strong></div>
+      <div style={styles.accountingStat}><span>Recettes connues</span><strong>{centsMoney(summary.receiptsCents)}</strong></div>
+      <div style={styles.accountingStat}><span>À vérifier</span><strong>{summary.statuses?.a_verifier || 0}</strong></div>
+      <div style={styles.accountingStat}><span>Manquants</span><strong>{summary.statuses?.manquant || 0}</strong></div>
+    </div>
+    <p style={styles.muted}>Le détail, les filtres, les tris et la préparation fiscale seront ajoutés dans l’étape suivante.</p>
+  </>;
+}
+
 export default function DeclarationsPanel() {
   const [data, setData] = useState({ categories: [], entries: [], importBatches: [] });
   const [loading, setLoading] = useState(true); const [error, setError] = useState("");
@@ -183,9 +207,26 @@ export default function DeclarationsPanel() {
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [bookingPreview, setBookingPreview] = useState(null);
   const [bookingImporting, setBookingImporting] = useState(false);
+  const [reconciliation, setReconciliation] = useState(null);
+  const [reconciliationRequestYear, setReconciliationRequestYear] = useState(null);
+  const [reconciliationLoading, setReconciliationLoading] = useState(false);
+  const [reconciliationError, setReconciliationError] = useState("");
 
   async function reload() { setLoading(true); setError(""); try { setData(await fetchAccountingData(supabase)); } catch (e) { setError(e.message); } finally { setLoading(false); } }
   useEffect(() => { reload(); }, []);
+  useEffect(() => {
+    if (subtab !== "reconciliation") return;
+    let cancelled = false;
+    setReconciliationRequestYear(Number(year));
+    setReconciliation(null);
+    setReconciliationLoading(true);
+    setReconciliationError("");
+    fetchAccountingReconciliation(Number(year))
+      .then((result) => { if (!cancelled) setReconciliation(result); })
+      .catch((reconciliationError) => { if (!cancelled) { setReconciliation(null); setReconciliationError(reconciliationError.message); } })
+      .finally(() => { if (!cancelled) setReconciliationLoading(false); });
+    return () => { cancelled = true; };
+  }, [year, subtab]);
   useEffect(() => { const handler=()=>setForm(emptyForm("income")); window.addEventListener("lmv:add-manual-receipt",handler); return()=>window.removeEventListener("lmv:add-manual-receipt",handler); }, []);
   const years = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -318,11 +359,17 @@ export default function DeclarationsPanel() {
 
   return <div style={{ ...styles.accountingPanel, minWidth: 0, maxWidth: "100%" }}>
     <div style={styles.accountingToolbar}><div style={styles.tabs}>{SUBTABS.map(([key, label]) => <button key={key} style={subtab === key ? styles.activeTab : styles.tab} onClick={() => setSubtab(key)}>{label}</button>)}</div><label style={styles.accountingYear}>Exercice <select style={styles.select} value={year} onChange={(e) => setYear(e.target.value)}>{years.map((y) => <option key={y}>{y}</option>)}</select></label></div>
-    {loading && <p style={styles.info}>Chargement de la comptabilité…</p>}{error && <p style={styles.error}>{error}</p>}
+    {subtab !== "reconciliation" && loading && <p style={styles.info}>Chargement de la comptabilité…</p>}{subtab !== "reconciliation" && error && <p style={styles.error}>{error}</p>}
     {!loading && !error && subtab === "summary" && <><div style={styles.homeFinanceGrid}><div style={styles.accountingStat}><span>Recettes</span><strong>{money(summary.income)}</strong></div><div style={styles.accountingStat}><span>Dépenses</span><strong>{money(summary.expense)}</strong></div><div style={styles.accountingStat}><span>Solde indicatif</span><strong>{money(summary.result)}</strong></div><div style={styles.accountingStat}><span>Écritures</span><strong>{summary.count}</strong></div></div><p style={styles.muted}>Synthèse comptable indicative. Le traitement fiscal de la déclaration sera défini séparément selon le régime applicable à l'exercice.</p>{renderTable(yearEntries)}</>}
     {!loading && !error && ["income", "expense"].includes(subtab) && <><div style={styles.panelHeader}><h3>{subtab === "income" ? "Recettes" : "Dépenses"} {year}</h3><div style={styles.contactButtons}><button style={styles.smallButton} onClick={() => addDomain(subtab)}>+ Ajouter un domaine</button><button style={styles.addButton} onClick={() => openNew(subtab)}>+ Ajouter {subtab === "income" ? "une recette" : "une dépense"}</button></div></div>{renderTable(yearEntries.filter((entry) => entry.entry_kind === subtab))}</>}
     {!loading && !error && subtab === "assets" && <><h3>Immobilisations</h3><p style={styles.muted}>Inventaire des dépenses classées en immobilisation. Aucun amortissement fiscal n'est calculé automatiquement à ce stade.</p>{renderTable(yearEntries.filter((entry) => entry.treatment === "fixed_asset"))}</>}
     {!loading && !error && subtab === "imports" && <BookingImportPanel data={data} year={year} preview={bookingPreview} importing={bookingImporting} onFile={previewBookingFile} onCancel={() => setBookingPreview(null)} onValidate={validateBookingImport} />}
+    {subtab === "reconciliation" && <AccountingReconciliationPanel
+      year={year}
+      reconciliation={reconciliationRequestYear === Number(year) ? reconciliation : null}
+      loading={reconciliationRequestYear !== Number(year) || reconciliationLoading}
+      error={reconciliationRequestYear === Number(year) ? reconciliationError : ""}
+    />}
     {!loading && !error && subtab === "tax" && <TouristTaxDeclarationPanel year={year} />}
     {form && <EntryModal form={form} categories={data.categories} onChange={(key, value) => setForm((current) => ({ ...current, [key]: value }))} onClose={() => setForm(null)} onSave={save} />}
   </div>;
