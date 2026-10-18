@@ -44,3 +44,33 @@
   .lmv-reconciliation-mobile-fields > :nth-child(even) { min-width: 0; overflow-wrap: anywhere; text-align: right; font-variant-numeric: tabular-nums; }
   .lmv-reconciliation-mobile-fields > :nth-child(odd) { color: #536579; }
 }
+
+/* Task 9: operation details and year-wide fiscal preparation; all data is read-only. */
+.lmv-reconciliation-detail-button { border: 1px solid #8faac4; border-radius: 6px; background: #fff; color: #244461; padding: 7px 10px; font: inherit; font-size: 0.84rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.lmv-reconciliation-detail-button:focus-visible { outline: 3px solid #3278b0; outline-offset: 2px; }
+.lmv-reconciliation-detail { border: 1px solid #9ebfda; border-radius: 10px; background: #f9fcff; padding: 16px; min-width: 0; }
+.lmv-reconciliation-detail-heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.lmv-reconciliation-detail-heading p { color: #536579; margin: 5px 0 0; }
+.lmv-reconciliation-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 215px), 1fr)); gap: 10px; margin: 12px 0; }
+.lmv-reconciliation-detail-grid > div { min-width: 0; padding: 9px 11px; background: #fff; border: 1px solid #e0eaf3; border-radius: 7px; }
+.lmv-reconciliation-detail-grid dt { color: #536579; font-size: 0.8rem; margin-bottom: 5px; }
+.lmv-reconciliation-detail-grid dd { margin: 0; font-weight: 600; font-size: 0.86rem; overflow-wrap: anywhere; }
+.lmv-reconciliation-ids, .lmv-reconciliation-reasons { padding-left: 18px; margin: 5px 0; overflow-wrap: anywhere; }
+.lmv-reconciliation-ids li { padding: 2px 0; font-weight: normal; }
+.lmv-reconciliation-reasons { display: grid; gap: 9px; }
+.lmv-reconciliation-reasons li { padding: 7px 0; }
+.lmv-reconciliation-reasons li span, .lmv-reconciliation-reasons li small { display: block; padding-top: 3px; color: #536579; }
+.lmv-reconciliation-declaration { min-width: 0; display: grid; gap: 12px; margin-top: 14px; border-top: 2px solid #d7e4f1; padding-top: 16px; }
+.lmv-reconciliation-declaration-status { margin: 0; background: #eff4f9; border-left: 3px solid #536579; padding: 10px 12px; font-weight: 650; }
+.lmv-reconciliation-declaration-status--pending, .lmv-reconciliation-declaration-status--form_pending { border-left-color: #aa7736; background: #fff8ef; }
+.lmv-reconciliation-declaration-status--inconsistent { border-left-color: #a44545; background: #fff0f0; }
+.lmv-reconciliation-declaration-table { width: 100%; max-width: 100%; overflow-x: auto; border: 1px solid #d7e4f1; border-radius: 7px; }
+.lmv-reconciliation-declaration-table table { width: 100%; min-width: 740px; border-collapse: collapse; font-size: 0.86rem; }
+.lmv-reconciliation-declaration-table th, .lmv-reconciliation-declaration-table td { text-align: left; border-bottom: 1px solid #e4edf5; padding: 10px; vertical-align: top; }
+.lmv-reconciliation-declaration-table th { background: #eaf3fb; color: #244461; }
+@media (max-width: 760px) {
+  .lmv-reconciliation-detail { padding: 10px; }
+  .lmv-reconciliation-detail-heading { flex-direction: column; }
+  .lmv-reconciliation-detail-grid { grid-template-columns: 1fr; }
+  .lmv-reconciliation-detail-button { max-width: 100%; }
+}

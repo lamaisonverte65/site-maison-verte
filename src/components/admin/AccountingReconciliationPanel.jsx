@@ -4,6 +4,8 @@ import {
   filterReconciliationRows,
   sortReconciliationRows,
   summarizeVisibleReconciliationRows,
+  reviewAnnualDeclaration,
+  explainReconciliationReasons,
 } from "../../utils/accountingReconciliationView";
 import "./accountingReconciliation.css";
 
@@ -38,7 +40,7 @@ function MoneyDisplay({ value }) {
   return <span className={Number.isSafeInteger(value) && value < 0 ? "lmv-reconciliation-negative" : undefined}>{cents(value)}</span>;
 }
 
-function CompactRow({ row }) {
+function CompactRow({ row, selected, onSelect }) {
   return <article className="lmv-reconciliation-mobile-card" key={row.id}>
     <div className="lmv-reconciliation-card-header"><div><strong>{readable(sourceText, row.source)} · {readable(typeText, row.type)}</strong><small>{row.date || "Date inconnue"}</small></div><State value={row.status} /></div>
     <div className="lmv-reconciliation-mobile-fields">
@@ -51,7 +53,94 @@ function CompactRow({ row }) {
       <span>Comptabilité</span><State value={row.accountingStatus} />
       <span>Fiscal</span><State value={row.fiscalStatus} />
     </div>
+    <button type="button" className="lmv-reconciliation-detail-button" aria-expanded={selected}
+      aria-controls="lmv-reconciliation-selected-detail" onClick={() => onSelect(row.id)}>
+      {selected ? "Masquer le détail" : "Voir le détail"}
+    </button>
   </article>;
+}
+
+const declarationStatusText = {
+  inconsistent: "Données fiscales incohérentes — ne pas reporter",
+  pending: "Opérations à vérifier avant déclaration",
+  form_pending: "Formulaire / cases non confirmés pour cet exercice",
+  empty: "Aucune recette fiscalement confirmée",
+  ready_for_review: "Sous-total rapproché — vérification finale nécessaire",
+};
+
+function LinkedIds({ title, ids }) {
+  return <div><dt>{title}</dt><dd>{Array.isArray(ids) && ids.length
+    ? <ul className="lmv-reconciliation-ids">{ids.map((id) => <li key={String(id)}>{String(id)}</li>)}</ul>
+    : "Aucun identifiant lié"}</dd></div>;
+}
+
+function OperationDetail({ row, onClose }) {
+  const reasons = explainReconciliationReasons(row.reasons);
+  return <section id="lmv-reconciliation-selected-detail" className="lmv-reconciliation-detail"
+    aria-label={`Détail de l'opération ${row.id}`}>
+    <div className="lmv-reconciliation-detail-heading">
+      <div><h4>Détail de l'opération</h4><p>{readable(sourceText, row.source)} · {readable(typeText, row.type)} · {row.date || "Date inconnue"}</p></div>
+      <button type="button" className="lmv-reconciliation-detail-button" onClick={onClose}>Fermer le détail</button>
+    </div>
+    <dl className="lmv-reconciliation-detail-grid">
+      <div><dt>Réservation (identifiant)</dt><dd>{row.bookingRequestId || "—"}</dd></div>
+      <div><dt>Référence externe</dt><dd>{row.externalReference || "—"}</dd></div>
+      <div><dt>Brut connu</dt><dd><MoneyDisplay value={row.grossKnownCents} /></dd></div>
+      <div><dt>Montant fiscal calculé sur cette ligne (non certifié isolément)</dt><dd><MoneyDisplay value={row.fiscalGrossAmountCents} /></dd></div>
+      <div><dt>Taxe de séjour identifiée</dt><dd><MoneyDisplay value={row.touristTaxCents} /></dd></div>
+      <div><dt>Classement fiscal retenu</dt><dd>{row.fiscalCategory ? readable(categoryText, row.fiscalCategory) : "Non déterminé"}</dd></div>
+      <div><dt>Financier</dt><dd><State value={row.financialStatus} /></dd></div>
+      <div><dt>Comptable</dt><dd><State value={row.accountingStatus} /></dd></div>
+      <div><dt>Documentaire</dt><dd><State value={row.documentStatus} /></dd></div>
+      <div><dt>Fiscal</dt><dd><State value={row.fiscalStatus} /></dd></div>
+      <div><dt>État global</dt><dd><State value={row.status} /></dd></div>
+      <div><dt>Regroupement fiscal</dt><dd>{row.fiscalAggregationKey
+        ? `${row.fiscalAggregationKey} · ${row.fiscalAnchor ? "ligne d'agrégation" : "autre paiement du groupe"}`
+        : "Aucun"}</dd></div>
+      <LinkedIds title="Écritures comptables liées" ids={row.accountingEntryIds} />
+      <LinkedIds title="Factures liées" ids={row.invoiceIds} />
+      <LinkedIds title="Avoirs liés" ids={row.creditNoteIds} />
+    </dl>
+    <h5>Motifs de contrôle</h5>
+    {reasons.length
+      ? <ul className="lmv-reconciliation-reasons">{reasons.map(({ code, label, description }, index) =>
+        <li key={`${code}-${index}`}><strong>{label}</strong><span>{description}</span><small>Code : {code}</small></li>)}</ul>
+      : <p className="lmv-reconciliation-note">Aucun motif détaillé fourni par le moteur. Vérifier les statuts ci-dessus ; l'absence de motif ne certifie pas l'opération.</p>}
+    <p className="lmv-reconciliation-note">Références et montants affichés en lecture seule. Une ligne d'un paiement échelonné ne suffit pas à établir la base fiscale de toute la réservation. Les identifiants ne sont pas des liens vers des documents.</p>
+  </section>;
+}
+
+function DeclarationPreparation({ year, reconciliation }) {
+  const review = reviewAnnualDeclaration(reconciliation, Number(year));
+  return <section className="lmv-reconciliation-declaration" aria-label={`Préparation de la déclaration ${year}`}>
+    <h4>Préparation de la déclaration — revenus {year}</h4>
+    <p className="lmv-reconciliation-note">Synthèse <strong>annuelle non filtrée</strong> produite par le serveur, distincte des totaux affichés après filtres. Les bases micro-BIC reposent sur les recettes brutes justifiées, sans déduction des commissions ni des frais de paiement. La taxe de séjour est retranchée uniquement lorsqu'elle est explicitement démontrée.</p>
+    <p className={`lmv-reconciliation-declaration-status lmv-reconciliation-declaration-status--${review.status}`} role="status">
+      {declarationStatusText[review.status]}
+    </p>
+    {review.integrityError && <p className="lmv-reconciliation-warning" role="alert">Incohérence entre le récapitulatif fiscal et les opérations : {review.integrityError} Aucun montant ci-dessous ne doit être recopié avant correction et nouvel audit.</p>}
+    <div className="lmv-reconciliation-stats">
+      <Stat label="Recettes fiscales rapprochées (sous-total)" value={cents(review.totalGrossAmountCents)} description="Ce n'est pas nécessairement le total annuel à déclarer" />
+      <Stat label="Opérations fiscales en attente" value={review.pendingRows ?? "—"} />
+      <Stat label="Brut connu en attente" value={cents(review.pendingKnownGrossAmountCents)} description="Hors sous-total rapproché · non ajoutable automatiquement" />
+      <Stat label="Déclarant" value={review.declarant === 1 || review.declarant === 2 ? `N° ${review.declarant}` : "À vérifier"} />
+    </div>
+    {review.categories.length ? <div className="lmv-reconciliation-declaration-table" role="region" aria-label="Répartition fiscale annuelle" tabIndex={0}>
+      <table><thead><tr><th>Catégorie</th><th>Recettes brutes rapprochées</th><th>Opérations</th><th>Régime (abattement indicatif)</th><th>Formulaire et case</th></tr></thead><tbody>
+        {review.categories.map((category) => <tr key={category.category}>
+          <td>{readable(categoryText, category.category)}</td>
+          <td><MoneyDisplay value={category.grossAmountCents} /></td>
+          <td>{category.rowCount ?? "—"}</td>
+          <td>{typeof category.abatementRate === "number" && category.abatementRate >= 0 && category.abatementRate <= 1
+            ? `${Math.round(category.abatementRate * 100)} % (règle de l'exercice)` : "À vérifier"}</td>
+          <td>{category.ruleStatus === "confirmed" && category.box
+            ? `${category.form || "Formulaire à vérifier"} · ${category.box}`
+            : `Case à confirmer pour la déclaration ${review.declarationYear}`}</td>
+        </tr>)}
+      </tbody></table>
+    </div> : <p className="lmv-reconciliation-note">Aucune catégorie n'a encore un montant fiscal rapproché pour cet exercice.</p>}
+    <p className="lmv-reconciliation-note"><strong>Avant déclaration :</strong> résoudre les opérations en attente, vérifier le régime micro-BIC et ses seuils applicables au foyer, contrôler les justificatifs et les classements datés. Les remboursements restent à examiner séparément. Ce tableau ne dépose aucune déclaration et ne calcule pas l'impôt.</p>
+  </section>;
 }
 
 export default function AccountingReconciliationPanel({ year, reconciliation }) {
@@ -59,6 +148,7 @@ export default function AccountingReconciliationPanel({ year, reconciliation }) 
   const annual = reconciliation?.accountingSummary || {};
   const [filters, setFilters] = useState(DEFAULT_RECONCILIATION_FILTERS);
   const [sort, setSort] = useState("priority_date");
+  const [detailSelection, setDetailSelection] = useState(null);
   const filtered = useMemo(() => filterReconciliationRows(rows, filters), [rows, filters]);
   const ordered = useMemo(() => sortReconciliationRows(filtered, sort), [filtered, sort]);
   const totals = useMemo(() => summarizeVisibleReconciliationRows(filtered, rows), [filtered, rows]);
@@ -67,6 +157,9 @@ export default function AccountingReconciliationPanel({ year, reconciliation }) 
   const uniqueTypes = useMemo(() => choices(rows, "type"), [rows]);
   const uniqueCategories = useMemo(() => choices(rows, "fiscalCategory"), [rows]);
   const hasUnknownCategory = rows.some((row) => !row.fiscalCategory);
+  const selectedRow = detailSelection?.year === year ? ordered.find((row) => row.id === detailSelection.id) : null;
+  const toggleDetail = (id) => setDetailSelection((previous) =>
+    previous?.year === year && previous?.id === id ? null : { year, id });
 
   return <section className="lmv-reconciliation" aria-label={`Rapprochement ${year}`}>
     <header className="lmv-reconciliation-header">
@@ -156,13 +249,15 @@ export default function AccountingReconciliationPanel({ year, reconciliation }) 
     {totals.fiscalIncompleteGroupCount > 0 &&
       <p className="lmv-reconciliation-warning">{totals.fiscalIncompleteGroupCount} réservation(s) payée(s) en plusieurs fois ne sont que partiellement visibles : leur montant fiscal n'est pas inclus dans le total démontré.</p>}
 
-    {ordered.length === 0 ? <p className="lmv-reconciliation-empty">Aucune opération ne correspond aux filtres.</p> : <>
+    {ordered.length === 0 ? <p className="lmv-reconciliation-empty">{rows.length === 0
+      ? "Aucune opération enregistrée pour cet exercice. La préparation fiscale affiche un sous-total nul."
+      : "Aucune opération ne correspond aux filtres."}</p> : <>
       <div className="lmv-reconciliation-table" role="region" aria-label="Tableau des opérations rapprochées" tabIndex={0}>
         <table><thead><tr>
           <th>Date</th><th>Source</th><th>Type</th><th>Réservation / référence</th>
           <th className="lmv-reconciliation-number">Brut connu</th><th className="lmv-reconciliation-number">Taxe séjour</th>
           <th className="lmv-reconciliation-number">Commissions</th><th className="lmv-reconciliation-number">Frais paiement</th><th className="lmv-reconciliation-number">Net connu</th>
-          <th>Financier</th><th>Comptable</th><th>Documentaire</th><th>Fiscal</th><th>État global</th>
+          <th>Financier</th><th>Comptable</th><th>Documentaire</th><th>Fiscal</th><th>État global</th><th>Détail</th>
         </tr></thead><tbody>
           {ordered.map((row) => <tr key={row.id}>
             <td>{row.date || "—"}</td>
@@ -179,10 +274,17 @@ export default function AccountingReconciliationPanel({ year, reconciliation }) 
             <td><State value={row.documentStatus} /></td>
             <td><State value={row.fiscalStatus} /></td>
             <td><State value={row.status} /></td>
+            <td><button type="button" className="lmv-reconciliation-detail-button"
+              aria-expanded={selectedRow?.id === row.id} aria-controls="lmv-reconciliation-selected-detail"
+              onClick={() => toggleDetail(row.id)}>
+              {selectedRow?.id === row.id ? "Masquer" : "Détail"}
+            </button></td>
           </tr>)}
         </tbody></table>
       </div>
-      <div className="lmv-reconciliation-mobile-list" aria-label="Opérations rapprochées format mobile">{ordered.map((row) => <CompactRow key={row.id} row={row} />)}</div>
+      <div className="lmv-reconciliation-mobile-list" aria-label="Opérations rapprochées format mobile">{ordered.map((row) => <CompactRow key={row.id} row={row} selected={selectedRow?.id === row.id} onSelect={toggleDetail} />)}</div>
     </>}
+    {selectedRow && <OperationDetail row={selectedRow} onClose={() => setDetailSelection(null)} />}
+    <DeclarationPreparation year={year} reconciliation={reconciliation} />
   </section>;
 }

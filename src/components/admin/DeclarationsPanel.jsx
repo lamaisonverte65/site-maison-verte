@@ -181,7 +181,7 @@ function TouristTaxDeclarationPanel({ year }) {
 function AccountingReconciliationPanel({ year, reconciliation, loading, error }) {
   if (loading) return <p style={styles.info}>Chargement du rapprochement…</p>;
   if (error) return <p style={styles.error}>{error}</p>;
-  if (!reconciliation || !Array.isArray(reconciliation.rows) || !reconciliation.rows.length) {
+  if (!reconciliation || !Array.isArray(reconciliation.rows)) {
     return <p style={styles.empty}>Aucune opération à rapprocher pour cet exercice.</p>;
   }
   return <ReconciliationTableView year={year} reconciliation={reconciliation} />;

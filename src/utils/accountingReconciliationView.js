@@ -121,3 +121,127 @@ export function summarizeVisibleReconciliationRows(visibleRows = [], allRows = v
   }
   return total;
 }
+
+// Read-only annual projection: never replace or repair values returned by the endpoint.
+// Recompute eligible category subtotals only to detect disagreements with the server.
+function expectedFiscalCategories(rows) {
+  const sums = new Map();
+  const groups = groupRows(rows);
+  const add = (row) => sums.set(row.fiscalCategory, (sums.get(row.fiscalCategory) || 0) + row.fiscalGrossAmountCents);
+  for (const row of rows) {
+    if (row.fiscalAggregationKey || !rowReady(row)) continue;
+    add(row);
+  }
+  for (const members of groups.values()) {
+    const first = members[0];
+    if (members.filter((row) => row.fiscalAnchor).length !== 1
+      || !members.every((row) => rowReady(row) && row.fiscalCategory === first.fiscalCategory)) continue;
+    for (const row of members) add(row);
+  }
+  return sums;
+}
+
+export function reviewAnnualDeclaration(reconciliation = {}, selectedYear) {
+  const rows = Array.isArray(reconciliation?.rows) ? reconciliation.rows : [];
+  const summary = reconciliation?.taxSummary;
+  const year = Number(selectedYear);
+  const categories = Array.isArray(summary?.categories) ? summary.categories : [];
+  const expected = expectedFiscalCategories(rows);
+  let integrityError = null;
+  if (!summary || !Array.isArray(summary.categories) || summary.incomeYear !== year) {
+    integrityError = 'Récapitulatif fiscal absent ou rattaché à un autre exercice.';
+  } else if (summary.declarant !== 1 && summary.declarant !== 2) {
+    integrityError = 'Déclarant fiscal inconnu.';
+  } else if (!Number.isSafeInteger(summary.pendingRows) || summary.pendingRows < 0
+    || !hasCents(summary.pendingKnownGrossAmountCents) || summary.pendingKnownGrossAmountCents < 0
+    || !hasCents(summary.totalGrossAmountCents) || summary.totalGrossAmountCents < 0) {
+    integrityError = 'Totaux ou nombre d’opérations en attente invalides.';
+  } else if (categories.some((category) => !category
+    || !hasCents(category.grossAmountCents) || category.grossAmountCents < 0
+    || !Number.isSafeInteger(category.rowCount) || category.rowCount < 0
+    || category.incomeYear !== year
+    || !['tourist_furnished_unclassified', 'tourist_furnished_classified'].includes(category.category))) {
+    integrityError = 'Catégorie fiscale ou montant annuel invalide.';
+  } else {
+    const categoriesSeen = new Set();
+    let total = 0;
+    for (const category of categories) {
+      if (categoriesSeen.has(category.category)) {
+        integrityError = 'Catégorie fiscale présente plusieurs fois.';
+        break;
+      }
+      categoriesSeen.add(category.category);
+      total += category.grossAmountCents;
+      if (!Number.isSafeInteger(total) || expected.get(category.category) !== category.grossAmountCents) {
+        integrityError = 'Le montant fiscal du serveur ne correspond pas aux opérations éligibles.';
+        break;
+      }
+    }
+    if (!integrityError && (categoriesSeen.size !== expected.size || total !== summary.totalGrossAmountCents)) {
+      integrityError = 'Les totaux fiscaux annuels ne concordent pas avec les lignes.';
+    }
+  }
+
+  const pendingRows = Number.isSafeInteger(summary?.pendingRows) && summary.pendingRows >= 0 ? summary.pendingRows : null;
+  const pendingKnownGrossAmountCents = hasCents(summary?.pendingKnownGrossAmountCents)
+    && summary.pendingKnownGrossAmountCents >= 0 ? summary.pendingKnownGrossAmountCents : null;
+  const totalGrossAmountCents = hasCents(summary?.totalGrossAmountCents)
+    && summary.totalGrossAmountCents >= 0 ? summary.totalGrossAmountCents : null;
+  const completeForms = categories.every((item) => item.ruleStatus === 'confirmed' && Boolean(item.box) && Boolean(item.form));
+  const status = integrityError ? 'inconsistent'
+    : pendingRows > 0 ? 'pending'
+      : categories.length === 0 ? 'empty'
+        : !completeForms ? 'form_pending' : 'ready_for_review';
+  return {
+    incomeYear: year, declarationYear: year + 1, declarant: summary?.declarant ?? null,
+    categories, totalGrossAmountCents, pendingRows, pendingKnownGrossAmountCents,
+    integrityError, status, formReady: status === 'ready_for_review',
+  };
+}
+
+const RECONCILIATION_REASONS = Object.freeze({
+  accounting_amount_invalid: ['Montant comptable invalide', 'Le montant de l’écriture ne peut pas être utilisé tel quel.'],
+  accounting_amount_mismatch: ['Écart de montant comptable', 'Comparer le montant exact en centimes avec celui de l’encaissement.'],
+  accounting_entry_missing: ['Écriture comptable manquante', 'Aucune écriture correspondante n’a été trouvée avec une preuve de liaison suffisante.'],
+  accounting_entry_year_mismatch: ['Exercice comptable différent', 'L’écriture est datée dans un autre exercice que l’encaissement.'],
+  accounting_match_ambiguous: ['Plusieurs écritures candidates', 'Vérifier la référence source avant de retenir une correspondance.'],
+  accounting_match_amount_date_booking_only: ['Correspondance non démontrée', 'Date, montant et réservation concordent, mais aucun lien explicite ne prouve l’écriture.'],
+  stripe_amount_mismatch: ['Écart de montant Stripe', 'Le montant Stripe et celui du paiement ne concordent pas au centime.'],
+  stripe_balance_transaction_ambiguous: ['Plusieurs opérations Stripe candidates', 'Vérifier les identifiants de paiement et les mouvements Stripe.'],
+  stripe_balance_transaction_missing: ['Opération Stripe manquante', 'Le justificatif de transaction Stripe n’a pas été rapproché.'],
+  tourist_tax_cross_year_allocation_unknown: ['Taxe de séjour à ventiler entre exercices', 'Plusieurs années d’encaissement sont concernées : ne pas répartir la taxe sans justificatif.'],
+  tourist_tax_snapshot_missing: ['Snapshot de taxe de séjour absent', 'La taxe historique enregistrée avec la réservation doit être contrôlée.'],
+  refund_fiscal_effect_requires_versioned_rule: ['Traitement fiscal du remboursement à vérifier', 'Le remboursement ne doit pas être déduit automatiquement des recettes déclarables.'],
+  credit_note_missing_for_issued_stay_invoice: ['Avoir manquant', 'Une facture de séjour émise existe, mais aucun avoir correspondant au remboursement n’est lié.'],
+  credit_note_amount_mismatch: ['Écart de montant de l’avoir', 'Le montant de l’avoir et celui du remboursement ne concordent pas.'],
+  refund_document_link_ambiguous: ['Justificatifs de remboursement ambigus', 'Plusieurs factures ou avoirs pourraient correspondre au remboursement.'],
+  invoice_amount_mismatch: ['Écart avec la facture', 'Le montant de la facture ne concorde pas avec celui de l’opération.'],
+  issued_invoice_amount_mismatch: ['Écart avec la facture émise', 'Comparer le montant émis à la source financière plateforme.'],
+  issued_invoice_ambiguous: ['Plusieurs factures émises', 'Contrôler l’association de la réservation à ses factures.'],
+  referenced_invoice_missing: ['Facture référencée introuvable', 'Une pièce est indiquée mais ne figure pas parmi les justificatifs chargés.'],
+  platform_financial_identity_incomplete: ['Identité financière plateforme incomplète', 'Référence de réservation ou date d’encaissement non démontrée.'],
+  platform_fiscal_breakdown_incomplete: ['Ventilation fiscale plateforme incomplète', 'Hébergement, ménage, taxe et total voyageur ne sont pas tous connus.'],
+  platform_fiscal_breakdown_mismatch: ['Ventilation plateforme incohérente', 'La somme des postes ne correspond pas exactement au total du voyageur.'],
+  fiscal_classification_missing: ['Classement fiscal non établi', 'Le classement applicable à la date du séjour doit être démontré.'],
+  classification_transition: ['Changement de classement à contrôler', 'Vérifier la date d’effet du classement, sans appliquer rétroactivement le nouveau régime.'],
+  accounting_platform_components_not_demonstrated: ['Postes comptables non démontrés', 'Les éléments de l’import ne permettent pas de confirmer les montants correspondants.'],
+});
+
+export function explainReconciliationReasons(reasons = []) {
+  return (Array.isArray(reasons) ? reasons : []).map((code) => {
+    let pair = RECONCILIATION_REASONS[code];
+    if (!pair) {
+      const kind = /^accounting_(income|commission|payment_fee)_(missing|ambiguous|amount_mismatch)$/.exec(String(code));
+      if (kind) {
+        const source = { income: 'recette', commission: 'commission', payment_fee: 'frais de paiement' }[kind[1]];
+        pair = kind[2] === 'missing'
+          ? [`Écriture de ${source} manquante`, 'Aucune écriture liée ne permet de confirmer ce poste.']
+          : kind[2] === 'ambiguous'
+            ? [`Écritures de ${source} ambiguës`, 'Plusieurs écritures peuvent correspondre à ce poste.']
+            : [`Écart de montant (${source})`, 'Le montant ne concorde pas exactement au centime.'];
+      }
+    }
+    return { code: String(code), label: pair?.[0] || `Motif non traduit : ${code}`,
+      description: pair?.[1] || 'Code transmis par le moteur : vérification manuelle nécessaire.' };
+  });
+}
