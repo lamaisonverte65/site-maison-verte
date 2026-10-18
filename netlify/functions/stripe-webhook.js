@@ -6,6 +6,7 @@ import { listAllBalanceTransactions } from "./_lib/stripe-balance-transactions.j
 import { contractualDeposit, contractualTotal, remainingContractualDue } from "./_lib/booking-financial-authority.js";
 import { resendEmail } from "./_lib/resend-email.js";
 import { syncAutoDirectStripeAccounting } from "./_lib/auto-direct-stripe-accounting.js";
+import { syncConfirmedRefundAccounting } from "./_lib/auto-direct-stripe-refund-accounting.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -569,6 +570,22 @@ export async function handler(event) {
         } catch (error) {
           console.error("Comptabilité Stripe automatique : rattrapage admin requis", error);
         }
+      }
+    }
+
+    // Les remboursements créés depuis le dashboard Stripe sans allocation locale
+    // restent hors du journal automatique : aucun rapprochement inventé.
+    if (["refund.created", "refund.updated"].includes(stripeEvent.type)
+      && stripeEvent.data.object?.status === "succeeded") {
+      try {
+        const accounting = await syncConfirmedRefundAccounting(supabase, stripe, {
+          stripeRefundId: stripeEvent.data.object.id,
+        });
+        if (["needs_review", "not_found", "concurrent_write"].includes(accounting.outcome)) {
+          console.warn("Remboursement Stripe à contrôler :", stripeEvent.data.object.id, accounting.reason || accounting.outcome);
+        }
+      } catch (error) {
+        console.error("Comptabilité remboursement Stripe : rattrapage requis", error);
       }
     }
 

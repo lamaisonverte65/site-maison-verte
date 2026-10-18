@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { authorizeAdminRequest, authorizationResponse } from "./_lib/admin-auth.js";
 import { buildAccountingReconciliation } from "./_lib/accounting-reconciliation.js";
+import { stripeRefundParisDate } from "./_lib/auto-direct-stripe-refund-accounting.js";
 
 const supabase = createClient(
   process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
@@ -11,6 +12,29 @@ const PAID_PAYMENT_STATUSES = ["paid", "partially_refunded", "refunded"];
 
 const PAYMENT_FIELDS = "id,booking_request_id,payment_type,manual_reason,amount,currency,status,stripe_checkout_session_id,stripe_payment_intent_id,paid_at,created_at";
 const REFUND_FIELDS = "id,booking_request_id,status,refunded_amount_cents,created_at,updated_at,completed_at";
+const ALLOCATION_FIELDS = "id,operation_id,booking_request_id,payment_id,amount,amount_cents,currency,status,operation_status,stripe_refund_id,stripe_payment_intent_id,metadata,created_at,updated_at";
+
+// L'année d'une allocation est portée par la création Stripe conservée dans metadata,
+// et non par la finalisation (potentiellement ultérieure) de refund_operations.
+function allocationPage(start, pageSize) {
+  return supabase.from('refunds').select(ALLOCATION_FIELDS)
+    .eq('status', 'succeeded').not('operation_id', 'is', null)
+    .order('id', {ascending: true}).range(start, start + pageSize - 1);
+}
+function refundOperationsByIds(ids) {
+  return supabase.from('refund_operations').select(REFUND_FIELDS).in('id', ids);
+}
+async function readSucceededRefundAllocations() {
+  const rows = [];
+  const pageSize = 500;
+  for (let start = 0; start < 20000; start += pageSize) {
+    const response = await allocationPage(start, pageSize);
+    const page = checked(response, 'Allocations de remboursements');
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
+  throw new Error('Allocations Stripe trop nombreuses : extraction annuelle incomplète');
+}
 const EXTERNAL_FIELDS = "id,source,external_reference,booking_request_id,accommodation_amount,cleaning_fee,tourist_tax_amount,traveler_total,commission_amount,payment_fee_amount,net_payout,payment_date,provenance,raw_snapshot";
 const ACCOUNTING_FIELDS = "id,entry_date,entry_kind,amount_ttc,source,source_record_key,external_reference,booking_request_id,metadata,category_id,accounting_categories(code,name,entry_kind)";
 const BOOKING_FIELDS = "id,tourist_tax_amount,tourist_tax_snapshot";
@@ -68,7 +92,7 @@ function checked(result, label) {
   return result?.data || [];
 }
 
-function accountingKeysForMovements(payments, refunds) {
+function accountingKeysForMovements(payments, refunds, allocations = []) {
   const keys = [];
   const references = [];
   for (const payment of payments) {
@@ -83,6 +107,11 @@ function accountingKeysForMovements(payments, refunds) {
     const id = String(refund.id);
     keys.push(id, `direct:refund:${id}`);
     references.push(id);
+  }
+  for (const allocation of allocations) {
+    if (!allocation?.id) continue;
+    keys.push(`direct:refund:${allocation.id}`);
+    if (allocation.stripe_refund_id) references.push(String(allocation.stripe_refund_id));
   }
   return { keys: unique(keys), references: unique(references) };
 }
@@ -135,6 +164,7 @@ export async function handler(event) {
     const bookingIds = unique([
       ...paymentsYear.map((row) => row.booking_request_id),
       ...refundsYear.map((row) => row.booking_request_id),
+      ...allocationsYear.map((row) => row.booking_request_id),
       ...externalFinancials.map((row) => row.booking_request_id),
       ...accountingYear.map((row) => row.booking_request_id),
     ]);
@@ -168,6 +198,15 @@ export async function handler(event) {
     const bookings = checked(bookingsResult, "Réservations liées");
     const payments = mergeById(paymentsYear, checked(linkedPaymentsResult, "Paiements liés"));
     const refundOperations = mergeById(refundsYear, checked(linkedRefundsResult, "Remboursements liés"));
+    const refundAllocations = allocationsAll.filter(row => bookingIds.includes(String(row.booking_request_id)));
+    // Les allocations dans l'exercice mais rattachées à une opération d'une autre année
+    // doivent aussi retrouver leur opération (pour vérifier la pièce et éviter le double compte).
+    const missingOperationIds = unique(refundAllocations.map(row => row.operation_id))
+      .filter(id => !refundOperations.some(op => String(op.id) === id));
+    for (let i = 0; i < missingOperationIds.length; i += 100) {
+      const response = await refundOperationsByIds(missingOperationIds.slice(i, i + 100));
+      refundOperations.push(...checked(response, 'Opérations des allocations'));
+    }
     const accountingEntries = mergeById(
       accountingYear,
       checked(accountingByBookingResult, "Journal lié aux réservations"),
@@ -183,7 +222,7 @@ export async function handler(event) {
     const paymentIds = unique(payments.map((row) => row.id));
     const paymentIntentIds = unique(payments.map((row) => row.stripe_payment_intent_id));
     const refundIds = unique(refundOperations.map((row) => row.id));
-    const accountingMovementKeys = accountingKeysForMovements(paymentsYear, refundsYear);
+    const accountingMovementKeys = accountingKeysForMovements(paymentsYear, refundsYear, refundAllocations);
 
     // Phase 3 — liens techniques qui ne portent pas eux-mêmes l'exercice fiscal.
     const [
@@ -219,6 +258,7 @@ export async function handler(event) {
       bookings,
       payments,
       refundOperations,
+      refundAllocations,
       stripeBalanceTransactions,
       externalFinancials,
       accountingEntries: accountingContext,

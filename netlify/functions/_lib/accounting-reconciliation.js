@@ -1,3 +1,4 @@
+import { stripeRefundParisDate } from './auto-direct-stripe-refund-accounting.js';
 import { buildFiscalSummary, classifyFiscalOperation } from './accounting-fiscal-rules.js';
 
 const OK = 'coherent';
@@ -167,7 +168,7 @@ function fiscalContextFromClassification(classification) {
   return classifyFiscalOperation({}, { classification });
 }
 
-function directMovementYears(bookingId, payments, refundOperations, cleaningIssues = [], additionalCharges = []) {
+function directMovementYears(bookingId, payments, refundOperations, cleaningIssues = [], additionalCharges = [], refundAllocations = []) {
   const years = [];
   for (const payment of payments) {
     if (payment.booking_request_id !== bookingId || !PAID_PAYMENT_STATUSES.has(String(payment.status || ''))) continue;
@@ -181,10 +182,15 @@ function directMovementYears(bookingId, payments, refundOperations, cleaningIssu
       if (year) years.push(year);
     }
   }
+  for (const allocation of refundAllocations) {
+    if (allocation.booking_request_id !== bookingId || allocation.status !== 'succeeded') continue;
+    const date = stripeRefundParisDate(Number(allocation.metadata?.created));
+    if (date) years.push(Number(date.slice(0, 4)));
+  }
   return unique(years);
 }
 
-function directSameYearFiscalGroups({ year, bookingsById, payments, refundOperations, cleaningIssues, additionalCharges }) {
+function directSameYearFiscalGroups({ year, bookingsById, payments, refundOperations, refundAllocations = [], cleaningIssues, additionalCharges }) {
   const byPaymentId = new Map();
   const grouped = new Map();
   for (const payment of payments) {
@@ -199,8 +205,9 @@ function directSameYearFiscalGroups({ year, bookingsById, payments, refundOperat
   for (const [bookingId, allPayments] of grouped.entries()) {
     const booking = bookingsById.get(bookingId);
     if (!booking) continue;
-    const years = directMovementYears(bookingId, payments, refundOperations, cleaningIssues, additionalCharges);
-    const hasRefund = refundOperations.some((refund) => refund.booking_request_id === bookingId && financialRefundOperation(refund));
+    const years = directMovementYears(bookingId, payments, refundOperations, cleaningIssues, additionalCharges, refundAllocations);
+    const hasRefund = refundOperations.some((refund) => refund.booking_request_id === bookingId && financialRefundOperation(refund))
+      || refundAllocations.some((allocation) => allocation.booking_request_id === bookingId && allocation.status === 'succeeded');
     const inYear = allPayments.filter((payment) => yearOf(payment.paid_at || payment.created_at) === year);
     if (years.length !== 1 || years[0] !== year || hasRefund || inYear.length === 0) continue;
 
@@ -481,9 +488,25 @@ function buildDirectPaymentRow(context, payment, fiscalGroup) {
   };
 }
 
-function buildRefundRow(context, refund) {
+function buildRefundRow(context, refund, allocation = null) {
   const reasons = [];
-  const amountCents = Number.isInteger(refund.refunded_amount_cents) ? refund.refunded_amount_cents : nonnegativeCents(refund.refunded_amount);
+  const amountCents = allocation
+    ? (Number.isSafeInteger(Number(allocation.amount_cents)) && Number(allocation.amount_cents) > 0 ? Number(allocation.amount_cents) : null)
+    : (Number.isInteger(refund.refunded_amount_cents) ? refund.refunded_amount_cents : nonnegativeCents(refund.refunded_amount));
+  const recordId = allocation?.id || refund.id;
+  const stripeDate = allocation ? stripeRefundParisDate(Number(allocation.metadata?.created)) : null;
+  const movementDate = allocation ? stripeDate || isoDate(refund.completed_at || refund.updated_at || refund.created_at)
+    : isoDate(refund.completed_at || refund.updated_at || refund.created_at);
+  const stripeVerified = !allocation || (stripeDate != null && allocation.stripe_refund_id
+    && allocation.metadata?.id === allocation.stripe_refund_id
+    && allocation.metadata?.status === 'succeeded'
+    && allocation.metadata?.amount === amountCents
+    && allocation.metadata?.payment_intent === allocation.stripe_payment_intent_id
+    && String(allocation.metadata?.currency).toLowerCase() === 'eur'
+    && String(allocation.currency).toLowerCase() === 'eur'
+    && String(allocation.metadata?.metadata?.refund_allocation_id) === String(allocation.id)
+    && String(allocation.metadata?.metadata?.refund_operation_id) === String(allocation.operation_id)
+    && String(allocation.metadata?.metadata?.payment_id) === String(allocation.payment_id));
   const issuedStayInvoices = context.invoices.filter((invoice) => invoice.booking_request_id === refund.booking_request_id && invoice.status === 'issued' && (invoice.invoice_kind || 'stay') === 'stay');
   const notes = context.creditNotes.filter((note) => note.refund_operation_id === refund.id);
   let documentStatus = OK;
@@ -495,7 +518,8 @@ function buildRefundRow(context, refund) {
     addReason(reasons, 'refund_document_link_ambiguous');
   } else if (notes.length === 1 && amountCents !== null) {
     const noteTotal = nonnegativeCents(notes[0].total_amount);
-    if (noteTotal !== null && Math.abs(noteTotal - amountCents) > ACCOUNTING_TOLERANCE_CENTS) {
+    const noteExpected = allocation ? Number(refund.refunded_amount_cents) : amountCents;
+    if (noteTotal !== null && Math.abs(noteTotal - noteExpected) > ACCOUNTING_TOLERANCE_CENTS) {
       documentStatus = REVIEW;
       addReason(reasons, 'credit_note_amount_mismatch');
     }
@@ -504,7 +528,9 @@ function buildRefundRow(context, refund) {
   const explicitAccounting = context.accountingEntries.filter((entry) => {
     const key = String(entry.source_record_key || '');
     const external = String(entry.external_reference || '');
-    return key === `direct:refund:${refund.id}` || key === String(refund.id) || external === String(refund.id);
+    return allocation
+      ? key === `direct:refund:${allocation.id}` || external === String(allocation.stripe_refund_id)
+      : key === `direct:refund:${refund.id}` || key === String(refund.id) || external === String(refund.id);
   });
   let accountingStatus = OK;
   if (explicitAccounting.length === 0) {
@@ -523,7 +549,14 @@ function buildRefundRow(context, refund) {
       accountingStatus = REVIEW;
       addReason(reasons, 'refund_accounting_source_invalid');
     }
-    if (yearOf(entry.entry_date) !== yearOf(refund.completed_at || refund.updated_at || refund.created_at)) {
+    if (allocation && (entry.source_record_key !== `direct:refund:${allocation.id}`
+      || String(entry.external_reference) !== String(allocation.stripe_refund_id)
+      || String(entry.booking_request_id) !== String(allocation.booking_request_id)
+      || accountingCategory(entry) !== 'direct_stripe_refund')) {
+      accountingStatus = REVIEW;
+      addReason(reasons, 'refund_accounting_identity_mismatch');
+    }
+    if (isoDate(entry.entry_date) !== movementDate) {
       accountingStatus = REVIEW;
       addReason(reasons, 'accounting_entry_year_mismatch');
     }
@@ -534,14 +567,15 @@ function buildRefundRow(context, refund) {
     }
   }
 
+  if (!stripeVerified) addReason(reasons, 'refund_stripe_evidence_unverified');
   addReason(reasons, 'refund_fiscal_effect_requires_versioned_rule');
   return {
-    id: `direct-refund:${refund.id}`,
-    date: isoDate(refund.completed_at || refund.updated_at || refund.created_at),
+    id: `direct-refund:${recordId}`,
+    date: movementDate,
     source: 'direct',
     type: 'refund',
     bookingRequestId: refund.booking_request_id || null,
-    externalReference: refund.id || null,
+    externalReference: allocation?.stripe_refund_id || refund.id || null,
     grossKnownCents: amountCents,
     signedAmountCents: amountCents === null ? null : -amountCents,
     touristTaxCents: null,
@@ -552,7 +586,7 @@ function buildRefundRow(context, refund) {
     invoiceIds: issuedStayInvoices.map((invoice) => invoice.id),
     creditNoteIds: notes.map((note) => note.id),
     accountingCategory: null,
-    financialStatus: amountCents === null ? REVIEW : OK,
+    financialStatus: amountCents === null || !stripeVerified ? REVIEW : OK,
     accountingStatus,
     documentStatus,
     fiscalStatus: REVIEW,
@@ -714,6 +748,7 @@ export function buildAccountingReconciliation(input = {}) {
   const bookings = input.bookings || [];
   const payments = input.payments || [];
   const refundOperations = input.refundOperations || [];
+  const refundAllocations = input.refundAllocations || [];
   const stripeBalanceTransactions = input.stripeBalanceTransactions || [];
   const externalFinancials = input.externalFinancials || [];
   const accountingEntries = input.accountingEntries || [];
@@ -723,15 +758,19 @@ export function buildAccountingReconciliation(input = {}) {
   const additionalCharges = input.additionalCharges || [];
 
   const bookingsById = new Map(bookings.map((booking) => [booking.id, booking]));
-  const bookingRefundIds = new Set(refundOperations.filter(financialRefundOperation).map((refund) => refund.booking_request_id));
-  const directFiscalGroups = directSameYearFiscalGroups({ year, bookingsById, payments, refundOperations, cleaningIssues, additionalCharges });
+  const allocatedOperationIds = new Set(refundAllocations.filter(a => a.operation_id).map(a => String(a.operation_id)));
+  const bookingRefundIds = new Set([
+    ...refundOperations.filter(financialRefundOperation).map((refund) => refund.booking_request_id),
+    ...refundAllocations.filter(a => a.status === 'succeeded').map(a => a.booking_request_id),
+  ]);
+  const directFiscalGroups = directSameYearFiscalGroups({ year, bookingsById, payments, refundOperations, refundAllocations, cleaningIssues, additionalCharges });
   const rows = [];
   const consumedAccounting = new Set();
 
   for (const payment of payments) {
     if (!PAID_PAYMENT_STATUSES.has(String(payment.status || ''))) continue;
     if (yearOf(payment.paid_at || payment.created_at) !== year) continue;
-    const movementYears = directMovementYears(payment.booking_request_id, payments, refundOperations, cleaningIssues, additionalCharges);
+    const movementYears = directMovementYears(payment.booking_request_id, payments, refundOperations, cleaningIssues, additionalCharges, refundAllocations);
     const row = buildDirectPaymentRow({
       year, bookingsById, accountingEntries, stripeBalanceTransactions, invoices, creditNotes,
       cleaningIssues, additionalCharges, refundOperations, bookingRefundIds, movementYears,
@@ -740,8 +779,34 @@ export function buildAccountingReconciliation(input = {}) {
     row.accountingEntryIds.forEach((id) => consumedAccounting.add(id));
   }
 
+  const operationsById = new Map(refundOperations.map(op => [String(op.id), op]));
+  for (const allocation of refundAllocations) {
+    if (allocation.status !== 'succeeded') continue;
+    const refundOperation = operationsById.get(String(allocation.operation_id));
+    if (!refundOperation || !financialRefundOperation(refundOperation)) continue;
+    const refundDate = stripeRefundParisDate(Number(allocation.metadata?.created));
+    // Date inconnue : visible sur l'exercice de finalisation comme anomalie, jamais comptabilisée automatiquement.
+    const yearToShow = refundDate ? Number(refundDate.slice(0, 4))
+      : yearOf(refundOperation.completed_at || refundOperation.updated_at || refundOperation.created_at);
+    if (yearToShow !== year) continue;
+    const row = buildRefundRow({bookingsById, accountingEntries, invoices, creditNotes}, refundOperation, allocation);
+    const legacy = accountingEntries.filter(e => e.entry_kind === 'refund'
+      && (String(e.source_record_key || '') === `direct:refund:${refundOperation.id}`
+        || String(e.external_reference || '') === String(refundOperation.id)));
+    if (legacy.length) {
+      addReason(row.reasons, 'refund_legacy_operation_entry_to_review');
+      row.accountingStatus = REVIEW;
+      row.status = statusFromDimensions(row.financialStatus, row.accountingStatus, row.documentStatus, row.fiscalStatus);
+      // Une ancienne écriture de niveau opération n'est affichée qu'une fois.
+      if (!rows.some(r => r.id.startsWith('direct-refund:') && r.accountingEntryIds?.includes(legacy[0].id))) {
+        row.accountingEntryIds = unique([...row.accountingEntryIds, ...legacy.map(e => e.id)]);
+      }
+    }
+    rows.push(row);
+    row.accountingEntryIds.forEach(id => consumedAccounting.add(id));
+  }
   for (const refund of refundOperations) {
-    if (!financialRefundOperation(refund)) continue;
+    if (!financialRefundOperation(refund) || allocatedOperationIds.has(String(refund.id))) continue;
     if (yearOf(refund.completed_at || refund.updated_at || refund.created_at) !== year) continue;
     const row = buildRefundRow({ bookingsById, accountingEntries, invoices, creditNotes }, refund);
     rows.push(row);

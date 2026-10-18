@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
 import { resendEmail } from "./_lib/resend-email.js";
+import { syncRefundOperationAccounting } from "./_lib/auto-direct-stripe-refund-accounting.js";
 import {
   normalizeRefundRequest,
   processRefundOperation,
@@ -259,6 +260,18 @@ export async function handler(event) {
   try {
     const request = normalizeRefundRequest(JSON.parse(event.body || "{}"));
     const result = await processRefundOperation({ request, dependencies: dependenciesForRefund() });
+    // Comptabilisation best-effort après le moteur de remboursement : une panne
+    // du journal ne déclenche ni second refund, ni nouveau mail, ni statut 500.
+    try {
+      const accounting = await syncRefundOperationAccounting(supabase, stripe, request.operationId);
+      for (const item of accounting.results || []) {
+        if (["needs_review", "concurrent_write"].includes(item.outcome)) {
+          console.warn("Remboursement comptable à vérifier :", item.allocationId, item.reason || item.outcome);
+        }
+      }
+    } catch (error) {
+      console.error("Comptabilisation remboursement : rattrapage requis :", error);
+    }
     const complete = ["succeeded", "already_succeeded"].includes(result.outcome);
 
     return {
