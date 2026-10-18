@@ -270,6 +270,11 @@ function expectedPlatformAccounting(external, entries, reasons) {
     status = related.length ? REVIEW : MISSING;
     addReason(reasons, related.length ? 'accounting_platform_components_not_demonstrated' : 'accounting_entry_missing');
   }
+  // Expenses alone cannot prove that a platform income agrees with the source gross.
+  if (incomeExpected === null) {
+    status = REVIEW;
+    addReason(reasons, 'accounting_income_amount_not_demonstrated');
+  }
   return { status, entries: unique(matched.map((entry) => entry.id)).map((id) => matched.find((entry) => entry.id === id)) };
 }
 
@@ -285,6 +290,11 @@ function platformFiscal(external, booking, reasons) {
   if (Math.abs((accommodation + cleaning + tax) - traveler) > ACCOUNTING_TOLERANCE_CENTS) {
     addReason(reasons, 'platform_fiscal_breakdown_mismatch');
     return { fiscalStatus: REVIEW, fiscalCategory: null, fiscalGrossAmountCents: null, touristTaxCents: tax };
+  }
+  // A subtraction remainder is not an independently justified tourist tax amount.
+  if (String(external.provenance?.tourist_tax_amount || '').startsWith('derived:')) {
+    addReason(reasons, 'platform_tourist_tax_derived_not_demonstrated');
+    return { fiscalStatus: REVIEW, fiscalCategory: null, fiscalGrossAmountCents: null, touristTaxCents: null };
   }
   const classification = external.fiscal_classification || external.provenance?.fiscal_classification || bookingClassification(booking);
   const classified = fiscalContextFromClassification(classification);
@@ -518,6 +528,8 @@ function buildAccountingOnlyRow(entry) {
   const isExpense = entry.entry_kind === 'expense';
   const reasons = [];
   if (amountCents === null) addReason(reasons, 'accounting_amount_invalid');
+  // A standalone income entry has no demonstrated counterpart in the payment sources.
+  if (!isExpense) addReason(reasons, 'accounting_income_unlinked');
   return {
     id: `accounting-entry:${entry.id}`,
     date: isoDate(entry.entry_date),
@@ -543,7 +555,7 @@ function buildAccountingOnlyRow(entry) {
     fiscalGrossAmountCents: null,
     fiscalRelevant: !isExpense,
     reasons,
-    status: amountCents === null ? REVIEW : OK,
+    status: amountCents === null || !isExpense ? REVIEW : OK,
   };
 }
 

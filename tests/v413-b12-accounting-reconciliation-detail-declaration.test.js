@@ -138,3 +138,15 @@ test('Task 9: detail and declaration UI are accessible, read-only, and visible o
   assert.doesNotMatch(parent, /!reconciliation\.rows\.length/);
   assert.doesNotMatch(panel, /\.from\(|\.insert\(|\.update\(|\.delete\(|\.rpc\(/);
 });
+
+test('Audit B1: the three new reconciliation blockers have a clear French explanation', async () => {
+  const { explainReconciliationReasons } = await view();
+  const labels = explainReconciliationReasons([
+    'accounting_income_unlinked',
+    'accounting_income_amount_not_demonstrated',
+    'platform_tourist_tax_derived_not_demonstrated',
+  ]);
+  assert.equal(labels.length, 3);
+  assert.ok(labels.every((item) => !item.label.startsWith('Motif non traduit')));
+  assert.match(labels[2].description, /diff[ée]rence arithm[ée]tique/i);
+});

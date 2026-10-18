@@ -253,3 +253,48 @@ test('an explicit accounting identifier cannot hide an entry posted in the wrong
   assert.equal(row.accountingStatus, 'a_verifier');
   assert.ok(row.reasons.includes('accounting_entry_year_mismatch'));
 });
+
+test('Audit B1: income journal entry without source proof is not globally coherent', () => {
+  const result = buildAccountingReconciliation(baseInput({
+    accountingEntries: [{ id: 'orphan-income', entry_date: '2026-04-01', entry_kind: 'income', source: 'manual', amount_ttc: 123 }],
+  }));
+  assert.equal(result.rows[0].fiscalStatus, 'a_verifier');
+  assert.equal(result.rows[0].status, 'a_verifier');
+  assert.ok(result.rows[0].reasons.includes('accounting_income_unlinked'));
+});
+
+test('Audit B1: platform tax derived by subtraction cannot certify fiscal income', () => {
+  const result = buildAccountingReconciliation(baseInput({
+    bookings: [{ id: 'b-derived', tourist_tax_snapshot: { classification: 'unclassified' } }],
+    externalFinancials: [{ id: 'external-derived', source: 'booking', external_reference: 'REF-1', booking_request_id: 'b-derived',
+      payment_date: '2026-04-01', traveler_total: 200, accommodation_amount: 170,
+      cleaning_fee: 0, tourist_tax_amount: 30,
+      provenance: { tourist_tax_amount: 'derived:traveler_total_minus_accommodation_minus_cleaning' },
+    }],
+    accountingEntries: [{ id: 'booking-income', entry_date: '2026-04-01', entry_kind: 'income',
+      source: 'booking', external_reference: 'REF-1', amount_ttc: 200, source_record_key: 'statement:reservation:REF-1:paid:gross' }],
+  }));
+  const row = result.rows[0];
+  assert.equal(row.fiscalStatus, 'a_verifier');
+  assert.equal(row.fiscalGrossAmountCents, null);
+  assert.equal(row.touristTaxCents, null); // An arithmetic remainder must not appear as identified tax.
+  assert.equal(row.status, 'a_verifier');
+  assert.ok(row.reasons.includes('platform_tourist_tax_derived_not_demonstrated'));
+  assert.equal(result.taxSummary.totalGrossAmountCents, 0);
+});
+
+test('Audit B1: income platform accounting is not coherent when source gross is unknown', () => {
+  const result = buildAccountingReconciliation(baseInput({
+    externalFinancials: [{ id: 'airbnb-fin', source: 'airbnb', external_reference: 'HM001',
+      payment_date: '2026-06-01', traveler_total: null, commission_amount: 10, payment_fee_amount: 0 }],
+    accountingEntries: [
+      { id: 'airbnb-gross', entry_date: '2026-06-01', entry_kind: 'income', source: 'airbnb',
+        external_reference: 'HM001', amount_ttc: 120, source_record_key: 'airbnb:reservation:HM001:gross' },
+      { id: 'airbnb-commission', entry_date: '2026-06-01', entry_kind: 'expense', source: 'airbnb',
+        external_reference: 'HM001', amount_ttc: 10, source_record_key: 'airbnb:reservation:HM001:service_fee' },
+    ],
+  }));
+  const row = result.rows.find((candidate) => candidate.source === 'airbnb' && candidate.type === 'receipt');
+  assert.equal(row.accountingStatus, 'a_verifier');
+  assert.ok(row.reasons.includes('accounting_income_amount_not_demonstrated'));
+});
