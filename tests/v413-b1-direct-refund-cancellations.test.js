@@ -35,7 +35,7 @@ test('two succeeded cancellation-only operations without payment do not become f
 
 test('zero-euro cancellation after a paid receipt is not a fake refund nor a fiscal block', () => {
   const booking = {
-    id: 'paid-booking', tourist_tax_snapshot: { classification: 'unclassified', totalTaxCents: 800 },
+    id: 'paid-booking', contract_total: 238, tourist_tax_snapshot: { classification: 'unclassified', totalTaxCents: 800 },
   };
   const payment = {
     id: 'payment', booking_request_id: booking.id, status: 'paid',
@@ -97,7 +97,7 @@ test('six real paid Direct receipts without linked journal entries are all Manqu
   const amounts = [96, 195, 144, 336, 238.28, 224];
   const bookings = amounts.map((amount, i) => ({
     id: `direct-${i}`,
-    ...(amount === 238.28 ? { tourist_tax_snapshot: { classification: 'unclassified', totalTaxCents: 828 } } : {}),
+    ...(amount === 238.28 ? { contract_total: amount, tourist_tax_snapshot: { classification: 'unclassified', totalTaxCents: 828 } } : {}),
   }));
   const payments = amounts.map((amount, i) => ({
     id: `paid-${i}`, booking_request_id: bookings[i].id, status: 'paid',
@@ -128,7 +128,7 @@ test('missing fiscal evidence alone does not turn a genuinely linked and fully a
 });
 
 test('zero financial refund operations do not create false cross-year tax allocation', () => {
-  const booking = { id: 'cross-year-phantom', tourist_tax_snapshot: { classification: 'unclassified', totalTaxCents: 1000 } };
+  const booking = { id: 'cross-year-phantom', contract_total: 100, tourist_tax_snapshot: { classification: 'unclassified', totalTaxCents: 1000 } };
   const result = buildAccountingReconciliation(base({
     bookings: [booking],
     payments: [{id: 'p', booking_request_id: booking.id, status: 'paid', amount: 100,

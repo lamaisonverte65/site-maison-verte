@@ -225,6 +225,10 @@ function directSameYearFiscalGroups({ year, bookingsById, payments, refundOperat
       .sort((a, b) => String(a.paid_at || a.created_at || '').localeCompare(String(b.paid_at || b.created_at || '')))
       .at(-1);
     const totalPaidCents = inYear.reduce((sum, payment) => sum + (nonnegativeCents(payment.amount) || 0), 0);
+    // La taxe du séjour ne peut être déduite qu'une fois, lorsque les paiements
+    // encaissés couvrent exactement le total contractuel de cette réservation.
+    // Un acompte seul ne prouve jamais que la taxe entière a été collectée.
+    const contractTotalCents = nonnegativeCents(booking.contract_total);
     const taxCents = Number.isInteger(booking?.tourist_tax_snapshot?.totalTaxCents)
       ? booking.tourist_tax_snapshot.totalTaxCents
       : nonnegativeCents(booking?.tourist_tax_amount);
@@ -236,6 +240,7 @@ function directSameYearFiscalGroups({ year, bookingsById, payments, refundOperat
         anchorId: String(anchor.id),
         isAnchor: String(payment.id) === String(anchor.id),
         totalPaidCents,
+        contractTotalCents,
         taxCents,
       });
     }
@@ -457,6 +462,12 @@ function buildDirectPaymentRow(context, payment, fiscalGroup) {
     addReason(reasons, fiscalClassification.reason);
   } else if (!fiscalGroup || fiscalGroup.taxCents === null) {
     addReason(reasons, 'tourist_tax_snapshot_missing');
+  } else if (fiscalGroup.contractTotalCents === null) {
+    addReason(reasons, 'direct_contract_total_missing_for_fiscal_allocation');
+  } else if (fiscalGroup.totalPaidCents !== fiscalGroup.contractTotalCents) {
+    addReason(reasons, 'direct_payments_do_not_cover_contract_total');
+  } else if (fiscalGroup.taxCents > fiscalGroup.totalPaidCents) {
+    addReason(reasons, 'tourist_tax_exceeds_collected_total');
   } else {
     fiscalStatus = OK;
     fiscalCategory = fiscalClassification.fiscalCategory;

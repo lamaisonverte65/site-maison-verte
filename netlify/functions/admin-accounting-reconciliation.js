@@ -37,7 +37,7 @@ async function readSucceededRefundAllocations(supabase) {
 }
 const EXTERNAL_FIELDS = "id,source,external_reference,booking_request_id,accommodation_amount,cleaning_fee,tourist_tax_amount,traveler_total,commission_amount,payment_fee_amount,net_payout,payment_date,provenance,raw_snapshot";
 const ACCOUNTING_FIELDS = "id,entry_date,entry_kind,amount_ttc,source,source_record_key,external_reference,booking_request_id,metadata,category_id,accounting_categories(code,name,entry_kind)";
-const BOOKING_FIELDS = "id,tourist_tax_amount,tourist_tax_snapshot";
+const BOOKING_FIELDS = "id,contract_total,tourist_tax_amount,tourist_tax_snapshot";
 const STRIPE_FIELDS = "id,booking_request_id,payment_id,payment_intent_id,type,amount,fee,net,created_at_stripe";
 const INVOICE_FIELDS = "id,source,booking_request_id,external_reference,invoice_kind,status,total_amount,cleaning_issue_id,additional_charge_id";
 const CREDIT_NOTE_FIELDS = "id,invoice_id,booking_request_id,refund_operation_id,status,total_amount";
