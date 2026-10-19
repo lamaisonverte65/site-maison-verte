@@ -8,6 +8,7 @@ import { resendEmail } from "./_lib/resend-email.js";
 import { syncAutoDirectStripeAccounting } from "./_lib/auto-direct-stripe-accounting.js";
 import { syncConfirmedRefundAccounting } from "./_lib/auto-direct-stripe-refund-accounting.js";
 import { reconcileDelayedStripeRefund } from "./_lib/reconcile-delayed-stripe-refund.js";
+import { finalizeDelayedStripeRefund } from "./_lib/finalize-delayed-stripe-refund.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -583,7 +584,10 @@ export async function handler(event) {
           stripeRefundId: stripeEvent.data.object.id,
         });
         if (recovered.outcome === 'recovered_requires_finalization') {
-          console.warn('Remboursement confirmé localement, finalisation métier/admin nécessaire :', recovered.operationId);
+          const finalized = await finalizeDelayedStripeRefund(supabase, stripe, recovered.operationId);
+          if (finalized.outcome === 'needs_review' || finalized.notification === 'needs_review') {
+            console.warn('Finalisation remboursement différé à vérifier :', recovered.operationId, finalized.reason || finalized.notificationReason);
+          }
         } else if (recovered.outcome === 'needs_review') {
           console.warn('Remboursement à vérifier avant comptabilisation :', stripeEvent.data.object.id, recovered.reason);
         }

@@ -5,6 +5,7 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { syncConfirmedRefundAccounting } from './_lib/auto-direct-stripe-refund-accounting.js';
 import { reconcilePendingStripeRefunds } from './_lib/reconcile-delayed-stripe-refund.js';
+import { finalizePendingStripeRefundOperations, dispatchPendingRefundNotifications } from './_lib/finalize-delayed-stripe-refund.js';
 
 export async function reconcileSavedStripeRefunds(supabase, stripe, {pageSize = 100, maxRows = 5000} = {}) {
   const outcomes = {created: 0, already_recorded: 0, needs_review: 0, concurrent_write: 0, failed: 0, other: 0};
@@ -83,10 +84,21 @@ export const handler = schedule('37 4 * * *', async () => {
     console.warn('Remboursements confirmés tardivement : finalisation métier/admin requise :',
       pending.outcomes.recovered_requires_finalization);
   }
+  // La récupération R1 fait disparaître l'allocation du scanner pending ;
+  // R2 finalise donc les opérations stripe_succeeded indépendamment.
+  const finalizations = await finalizePendingStripeRefundOperations(supabase, stripe);
+  const pendingNotifications = await dispatchPendingRefundNotifications(supabase, {stripe});
+  // Les états d'envoi incertain sont contrôlables, mais jamais rejoués seuls.
+  const notificationReviewResponse = await supabase.from('refund_notification_outbox')
+    .select('refund_operation_id,status').in('status',['sending','needs_review']).limit(101);
+  if (notificationReviewResponse.error) throw new Error(`Contrôle notifications : ${notificationReviewResponse.error.message}`);
+  const notificationReview = notificationReviewResponse.data || [];
+  if (notificationReview.length) console.warn('Notifications de remboursement à contrôler manuellement :',
+    notificationReview.length > 100 ? 'plus de 100' : notificationReview.length);
   const result = await reconcileSavedStripeRefunds(supabase, stripe);
   console.log('Rattrapage journal des remboursements Stripe :', result);
   const external = await auditUnlinkedStripeRefunds(supabase, stripe);
   if (external.unlinkedIds.length) console.warn('Remboursements Stripe non reliés à vérifier :', external.unlinkedIds);
-  if (pending.truncated || result.truncated || external.truncated) throw new Error('Contrôle Stripe incomplet : plafond atteint');
-  return {statusCode: 200, body: JSON.stringify({pending, result, externalUnlinkedCount: external.unlinkedIds.length})};
+  if (pending.truncated || finalizations.truncated || pendingNotifications.truncated || notificationReview.length > 100 || result.truncated || external.truncated) throw new Error('Contrôle Stripe incomplet : plafond atteint');
+  return {statusCode: 200, body: JSON.stringify({pending,finalizations,pendingNotifications,notificationReviewCount:notificationReview.length, result, externalUnlinkedCount: external.unlinkedIds.length})};
 });

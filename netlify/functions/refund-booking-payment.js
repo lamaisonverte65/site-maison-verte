@@ -6,6 +6,7 @@ import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
 import { resendEmail } from "./_lib/resend-email.js";
 import { syncRefundOperationAccounting } from "./_lib/auto-direct-stripe-refund-accounting.js";
+import { dispatchRefundNotification } from "./_lib/refund-notification-outbox.js";
 import {
   normalizeRefundRequest,
   processRefundOperation,
@@ -223,27 +224,31 @@ function dependenciesForRefund() {
     },
 
     async finalizeOperation(operationId) {
-      const result = await rpc("finalize_stripe_refund_operation", { p_operation_id: operationId });
+      const result = await rpc("finalize_stripe_refund_operation_with_notification", { p_operation_id: operationId });
       if (result?.booking?.status === "cancelled") {
-        await expireBookingOpenCheckoutSessions(stripe, result.booking);
+        // L'opération SQL est déjà finalisée : un échec Stripe Checkout ne doit
+        // pas annoncer un remboursement échoué ni déclencher un nouvel appel refund.
+        // L'outbox vérifiera aussi cette expiration avant l'email d'annulation.
+        try {
+          await expireBookingOpenCheckoutSessions(stripe, result.booking);
+        } catch (error) {
+          console.error("Expiration Checkout après finalisation à contrôler :", operationId, error);
+        }
       }
       return result;
     },
 
     async notify({ request, result }) {
-      const booking = result.booking;
-      const refundedAmount = Number(result.refunded_amount_cents || 0) / 100;
-      const policyLabel = result.policy_label || "Remboursement";
-      if (request.refundOnly) {
-        await sendRefundOnlyEmail({ booking, refundedAmount, message: request.message, policyLabel });
-      } else {
-        await sendCancellationEmail({
-          booking,
-          cancellationType: request.cancellationType,
-          refundedAmount,
-          message: request.message,
-          policyLabel,
-        });
+      // La finalisation SQL a déjà déclenché un intent de notification UNIQUE.
+      // Une erreur de transport/log ne peut provoquer un 500 après remboursement.
+      try {
+        const delivery = await dispatchRefundNotification(supabase, request.operationId, {stripe});
+        if (delivery.outcome === 'needs_review' || delivery.outcome === 'sending'
+          || delivery.outcome === 'not_found') {
+          console.warn('Notification remboursement à contrôler :', request.operationId, delivery.reason || delivery.outcome);
+        }
+      } catch(error) {
+        console.error('Notification remboursement à reprendre :',request.operationId,error);
       }
     },
   };
