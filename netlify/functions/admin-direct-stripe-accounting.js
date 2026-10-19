@@ -15,8 +15,9 @@ const checked = (r, label) => {
   return r?.data || [];
 };
 async function getPlan(year, ids) {
-  const start = `${year}-01-01T00:00:00Z`;
-  const end = `${year + 1}-01-01T00:00:00Z`;
+  // Le 1er janvier à 00 h en France correspond au 31 décembre 23 h UTC (CET).
+  const start = `${year - 1}-12-31T23:00:00Z`;
+  const end = `${year}-12-31T23:00:00Z`;
   const [paymentsResponse, categoryResponse] = await Promise.all([
     supabase.from('payments')
       .select('id,booking_request_id,payment_type,amount,currency,status,stripe_payment_intent_id,paid_at')

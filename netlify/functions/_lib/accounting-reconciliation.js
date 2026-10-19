@@ -1,5 +1,6 @@
 import { stripeRefundParisDate } from './auto-direct-stripe-refund-accounting.js';
 import { buildFiscalSummary, classifyFiscalOperation } from './accounting-fiscal-rules.js';
+import { accountingParisDate } from './accounting-paris-date.js';
 
 const OK = 'coherent';
 const MISSING = 'manquant';
@@ -27,7 +28,7 @@ function isoDate(value) {
 }
 
 function yearOf(value) {
-  const date = isoDate(value);
+  const date = accountingParisDate(value);
   return date ? Number(date.slice(0, 4)) : null;
 }
 
@@ -88,7 +89,7 @@ function explicitDirectAccountingMatches(payment, entries) {
 
 function fallbackDirectAccountingMatches(payment, entries) {
   const amountCents = nonnegativeCents(payment.amount);
-  const paidDate = isoDate(payment.paid_at || payment.created_at);
+  const paidDate = accountingParisDate(payment.paid_at || payment.created_at);
   return entries.filter((entry) => {
     if (entry.entry_kind !== 'income') return false;
     if (!payment.booking_request_id || entry.booking_request_id !== payment.booking_request_id) return false;
@@ -422,7 +423,7 @@ function buildDirectPaymentRow(context, payment, fiscalGroup) {
   } else if (feeEntries.length === 1) {
     const entry = feeEntries[0];
     if (feeCents === null || nonnegativeCents(entry.amount_ttc) !== feeCents
-      || isoDate(entry.entry_date) !== isoDate(payment.paid_at || payment.created_at)
+      || isoDate(entry.entry_date) !== accountingParisDate(payment.paid_at || payment.created_at)
       || entry.booking_request_id !== effectiveBookingId) {
       feeAccountingStatus = REVIEW;
       addReason(reasons, 'direct_stripe_fee_mismatch');
@@ -513,7 +514,7 @@ function buildDirectPaymentRow(context, payment, fiscalGroup) {
 
   return {
     id: `direct-payment:${payment.id}`,
-    date: isoDate(payment.paid_at || payment.created_at),
+    date: accountingParisDate(payment.paid_at || payment.created_at),
     source: 'direct',
     type: postStay.type,
     bookingRequestId: effectiveBookingId || null,
@@ -549,8 +550,8 @@ function buildRefundRow(context, refund, allocation = null) {
     : (Number.isInteger(refund.refunded_amount_cents) ? refund.refunded_amount_cents : nonnegativeCents(refund.refunded_amount));
   const recordId = allocation?.id || refund.id;
   const stripeDate = allocation ? stripeRefundParisDate(Number(allocation.metadata?.created)) : null;
-  const movementDate = allocation ? stripeDate || isoDate(refund.completed_at || refund.updated_at || refund.created_at)
-    : isoDate(refund.completed_at || refund.updated_at || refund.created_at);
+  const movementDate = allocation ? stripeDate || accountingParisDate(refund.completed_at || refund.updated_at || refund.created_at)
+    : accountingParisDate(refund.completed_at || refund.updated_at || refund.created_at);
   const stripeVerified = !allocation || (stripeDate != null && allocation.stripe_refund_id
     && allocation.metadata?.id === allocation.stripe_refund_id
     && allocation.metadata?.status === 'succeeded'

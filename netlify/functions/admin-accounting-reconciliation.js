@@ -129,8 +129,9 @@ export async function runAnnualReconciliation(event, { client = supabase, author
 
   const yearStart = `${year}-01-01`;
   const nextYearStart = `${year + 1}-01-01`;
-  const yearStartIso = `${yearStart}T00:00:00Z`;
-  const nextYearStartIso = `${nextYearStart}T00:00:00Z`;
+  // Frontières civiles en France (CET le 1er janvier) : le jour UTC seul est insuffisant.
+  const yearStartIso = `${year - 1}-12-31T23:00:00Z`;
+  const nextYearStartIso = `${year}-12-31T23:00:00Z`;
 
   try {
     // La date comptable d'une allocation est celle de Stripe, pas celle de

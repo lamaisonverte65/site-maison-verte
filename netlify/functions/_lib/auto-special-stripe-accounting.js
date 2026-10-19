@@ -1,5 +1,7 @@
 // V4.13 F1.2 — Comptabilisation distincte des paiements hors contrat.
 // Une preuve de dossier payé est obligatoire : jamais de recours à contract_total.
+import { accountingParisDate } from './accounting-paris-date.js';
+
 const SETTLED = new Set(['paid', 'partially_refunded', 'refunded']);
 const INCOME_CODES = Object.freeze({
   post_stay_cleaning: 'post_stay_cleaning',
@@ -46,7 +48,7 @@ export function planSpecialStripeAccounting({ payment, context, transactions = [
     return review('Identifiants métier du paiement incomplets ou discordants');
   if (!payment.stripe_payment_intent_id) return review('PaymentIntent absent');
   if (String(payment.currency || '').toLowerCase() !== 'eur') return review('Devise de paiement non prise en charge');
-  const day = dayOf(payment.paid_at);
+  const day = accountingParisDate(payment.paid_at);
   if (!day) return review('Date de paiement absente');
   const amount = toCents(payment.amount);
   const expected = toCents(context.type === 'post_stay_cleaning' ? context.item.amount_due : context.item.amount);
@@ -144,7 +146,7 @@ export async function syncAutoSpecialStripeAccounting(supabase, { paymentId = nu
   if (!record) return { outcome: 'needs_review', reason: 'Dossier métier non trouvé' };
   const context = { type: isCleaning ? 'post_stay_cleaning' : 'additional_charge', id: record.id,
     bookingRequestId: record.booking_request_id, item: record };
-  const day = dayOf(payment.paid_at);
+  const day = accountingParisDate(payment.paid_at);
   if (!day) return { outcome: 'needs_review', reason: 'Date de paiement absente' };
   const year = day.slice(0,4);
   const bookingEntriesResult = await supabase.from('accounting_entries').select(ENTRY_FIELDS)

@@ -2,6 +2,7 @@
 // ou les emails. Même projection et mêmes clés idempotentes que le rattrapage admin.
 // Les cas incomplets restent à contrôler dans Déclarations > Imports.
 import { planDirectStripeAccounting } from './direct-stripe-accounting-import.js';
+import { accountingParisDate } from './accounting-paris-date.js';
 
 const PAYMENT_FIELDS = 'id,booking_request_id,payment_type,amount,currency,status,stripe_payment_intent_id,stripe_checkout_session_id,paid_at';
 const CHARGE_FIELDS = 'id,payment_id,payment_intent_id,type,amount,fee,net,currency';
@@ -15,7 +16,7 @@ function checked(result, name) {
 
 export async function applyAutoDirectStripeAccounting({ payment, transactions, entries, categories, insertEntries }) {
   if (!payment?.id || !SETTLED_PAYMENT_STATUSES.has(payment.status)) return { outcome: 'not_eligible' };
-  const year = Number(String(payment.paid_at || '').slice(0, 4));
+  const year = Number(String(accountingParisDate(payment.paid_at) || '').slice(0, 4));
   if (!Number.isInteger(year) || year < 2024 || year > 2100) return { outcome: 'needs_review', reason: 'Date de paiement manquante ou invalide' };
   // La projection est FAIL-CLOSED : aucune somme réservataire cumulée, aucun montant inféré.
   const plan = planDirectStripeAccounting({ year, payments: [payment], transactions, entries, categories, selectedIds: [String(payment.id)] });

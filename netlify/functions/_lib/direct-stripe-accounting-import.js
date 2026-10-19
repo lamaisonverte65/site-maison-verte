@@ -4,6 +4,8 @@
 // Ces statuts prouvent un encaissement historique : un remboursement ultérieur
 // ne supprime pas l'obligation de comptabiliser la recette et les frais initiaux.
 // La restitution reste comptabilisée séparément par l'outbox des remboursements.
+import { accountingParisDate } from './accounting-paris-date.js';
+
 const PAID = new Set(['paid', 'partially_refunded', 'refunded']);
 const TYPES = new Set(['full', 'deposit', 'balance']);
 
@@ -63,7 +65,7 @@ export function planDirectStripeAccounting({ year, payments = [], transactions =
   }
   for (const payment of payments) {
     if (!payment.id || (wanted && !wanted.has(String(payment.id)))) continue;
-    const day = iso(payment.paid_at);
+    const day = accountingParisDate(payment.paid_at);
     if (String(day || '').slice(0, 4) !== String(year)) {
       if (wanted) rows.push({ id: String(payment.id), status: 'blocked', reason: 'Paiement hors exercice ou date paid_at absente' });
       continue;
