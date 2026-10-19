@@ -157,11 +157,21 @@ function stripeForPayment(payment, balanceTransactions, reasons) {
 }
 
 function findPostStayContext(payment, cleaningIssues, additionalCharges) {
-  const additional = additionalCharges.find((item) => String(item.payment_id || '') === String(payment.id || '')) || null;
-  if (additional || payment.manual_reason === 'additional_charge') return { type: 'additional_charge', item: additional };
-  const cleaning = cleaningIssues.find((item) => String(item.payment_id || '') === String(payment.id || '')) || null;
-  if (cleaning || payment.manual_reason === 'post_stay_cleaning' || payment.manual_reason === 'cleaning') return { type: 'post_stay_cleaning', item: cleaning };
-  return { type: 'receipt', item: null };
+  const id = String(payment.id || '');
+  const additional = additionalCharges.find((item) => item.payment_id != null && String(item.payment_id) === id) || null;
+  const cleaning = cleaningIssues.find((item) => item.payment_id != null && String(item.payment_id) === id) || null;
+  const declared = payment.manual_reason === 'additional_charge' ? 'additional_charge'
+    : ['post_stay_cleaning','cleaning'].includes(payment.manual_reason) ? 'post_stay_cleaning' : null;
+  if (declared || additional || cleaning) {
+    const type = declared || (additional ? 'additional_charge' : 'post_stay_cleaning');
+    const item = type === 'additional_charge' ? additional : cleaning;
+    const ref = type === 'additional_charge' ? 'additional_charge_id' : 'cleaning_issue_id';
+    const valid = payment.payment_type === 'manual' && !payment.booking_request_id
+      && item?.status === 'paid' && String(payment.metadata?.[ref] || '') === String(item?.id || '')
+      && String(payment.metadata?.booking_id || '') === String(item?.booking_request_id || '');
+    return { type, item, valid: Boolean(valid) };
+  }
+  return { type: 'receipt', item: null, valid: true };
 }
 
 function fiscalContextFromClassification(classification) {
@@ -372,11 +382,21 @@ function documentForPlatform(external, invoices, reasons) {
 function buildDirectPaymentRow(context, payment, fiscalGroup) {
   const { bookingsById, accountingEntries, stripeBalanceTransactions, invoices, cleaningIssues, additionalCharges, movementYears } = context;
   const reasons = [];
-  const booking = bookingsById.get(payment.booking_request_id) || null;
+  const postStay = findPostStayContext(payment, cleaningIssues, additionalCharges);
+  const effectiveBookingId = postStay.type !== 'receipt' ? postStay.item?.booking_request_id : payment.booking_request_id;
+  const booking = bookingsById.get(effectiveBookingId) || null;
   const accounting = reconcileDirectAccounting(payment, accountingEntries, reasons);
+  if (postStay.type !== 'receipt' && postStay.valid && accounting.status === OK &&
+    accounting.entries.some(entry => entry.booking_request_id !== effectiveBookingId ||
+      (entry.source === 'stripe' && entry.source_record_key === `direct:payment:${payment.id}` &&
+       String(entry.metadata?.[postStay.type === 'additional_charge' ? 'additional_charge_id' : 'cleaning_issue_id'] || '')
+        !== String(postStay.item?.id || '')))) {
+    accounting.status = REVIEW;
+    addReason(reasons, 'special_payment_accounting_link_mismatch');
+  }
   const stripe = stripeForPayment(payment, stripeBalanceTransactions, reasons);
   const financialStatus = statusFromDimensions(OK, stripe.status);
-  const postStay = findPostStayContext(payment, cleaningIssues, additionalCharges);
+  if (postStay.type !== 'receipt' && !postStay.valid) addReason(reasons, 'special_payment_business_link_unverified');
   const grossKnownCents = nonnegativeCents(payment.amount);
   const feeCents = stripe.match ? nonnegativeCents(stripe.match.fee) : null;
   const netCents = stripe.match && nonnegativeCents(stripe.match.net) !== null
@@ -398,7 +418,7 @@ function buildDirectPaymentRow(context, payment, fiscalGroup) {
     const entry = feeEntries[0];
     if (feeCents === null || nonnegativeCents(entry.amount_ttc) !== feeCents
       || isoDate(entry.entry_date) !== isoDate(payment.paid_at || payment.created_at)
-      || entry.booking_request_id !== payment.booking_request_id) {
+      || entry.booking_request_id !== effectiveBookingId) {
       feeAccountingStatus = REVIEW;
       addReason(reasons, 'direct_stripe_fee_mismatch');
     }
@@ -406,7 +426,8 @@ function buildDirectPaymentRow(context, payment, fiscalGroup) {
     feeAccountingStatus = MISSING;
     addReason(reasons, 'direct_stripe_fee_entry_missing');
   }
-  const accountingStatus = statusFromDimensions(accounting.status, feeAccountingStatus);
+  const accountingStatus = statusFromDimensions(accounting.status, feeAccountingStatus,
+    postStay.type !== 'receipt' && !postStay.valid ? REVIEW : NA);
   const accountingEntryIds = unique([...accounting.entries.map((entry) => entry.id), ...feeEntries.map((entry) => entry.id)]);
   let fiscalStatus = REVIEW;
   let fiscalCategory = null;
@@ -415,7 +436,12 @@ function buildDirectPaymentRow(context, payment, fiscalGroup) {
 
   const fiscalClassification = fiscalContextFromClassification(bookingClassification(booking));
   if (postStay.type !== 'receipt') {
-    if (fiscalClassification.fiscalStatus === OK && grossKnownCents !== null) {
+    const nature = postStay.type === 'post_stay_cleaning' ? 'cleaning' : postStay.item?.category;
+    if (!postStay.valid) {
+      addReason(reasons, 'special_payment_business_link_unverified');
+    } else if (!['cleaning', 'extra_bed'].includes(nature)) {
+      addReason(reasons, 'special_payment_fiscal_nature_requires_review');
+    } else if (fiscalClassification.fiscalStatus === OK && grossKnownCents !== null) {
       fiscalStatus = OK;
       fiscalCategory = fiscalClassification.fiscalCategory;
       fiscalGrossAmountCents = grossKnownCents;
@@ -448,6 +474,14 @@ function buildDirectPaymentRow(context, payment, fiscalGroup) {
       addReason(reasons, 'referenced_invoice_missing');
     } else {
       documentIds.push(invoice.id);
+      const expectedKind = postStay.type === 'post_stay_cleaning' ? 'post_stay_cleaning' : 'additional_charge';
+      const invoiceLinkKey = postStay.type === 'post_stay_cleaning' ? 'cleaning_issue_id' : 'additional_charge_id';
+      if (postStay.type !== 'receipt' && (invoice.invoice_kind !== expectedKind ||
+        String(invoice[invoiceLinkKey] || '') !== String(postStayItem.id) ||
+        invoice.booking_request_id !== effectiveBookingId)) {
+        documentStatus = REVIEW;
+        addReason(reasons, 'special_payment_invoice_link_mismatch');
+      }
       const expected = grossKnownCents;
       const actual = nonnegativeCents(invoice.total_amount);
       if (expected !== null && actual !== null && Math.abs(expected - actual) > ACCOUNTING_TOLERANCE_CENTS) {
@@ -462,7 +496,7 @@ function buildDirectPaymentRow(context, payment, fiscalGroup) {
     date: isoDate(payment.paid_at || payment.created_at),
     source: 'direct',
     type: postStay.type,
-    bookingRequestId: payment.booking_request_id || null,
+    bookingRequestId: effectiveBookingId || null,
     externalReference: payment.stripe_payment_intent_id || payment.stripe_checkout_session_id || null,
     grossKnownCents,
     signedAmountCents: grossKnownCents,

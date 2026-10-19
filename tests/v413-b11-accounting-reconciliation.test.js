@@ -172,13 +172,17 @@ test('paid post-stay additional charge is a separate receipt and never alters or
   const booking = { ...directBooking, contract_total: 1000 };
   const result = buildAccountingReconciliation(baseInput({
     bookings: [booking],
-    payments: [directPayment({ id: 'p-extra', payment_type: 'manual', manual_reason: 'additional_charge', amount: 50 })],
-    additionalCharges: [{ id: 'c1', booking_request_id: 'b1', payment_id: 'p-extra', amount: 50, status: 'paid' }],
+    payments: [directPayment({ id: 'p-extra', booking_request_id: null, payment_type: 'manual',
+      manual_reason: 'additional_charge', amount: 50,
+      metadata: { booking_id: 'b1', additional_charge_id: 'c1' } })],
+    additionalCharges: [{ id: 'c1', booking_request_id: 'b1', payment_id: 'p-extra',
+      amount: 50, category: 'extra_bed', status: 'paid' }],
     accountingEntries: [{ id: 'e-extra', entry_date: '2026-06-01', entry_kind: 'income', amount_ttc: 50, source_record_key: 'direct:payment:p-extra', booking_request_id: 'b1' }],
   }));
   const row = result.rows.find((item) => item.id === 'direct-payment:p-extra');
   assert.equal(row.type, 'additional_charge');
   assert.equal(row.grossKnownCents, 5000);
+  assert.equal(row.bookingRequestId, 'b1');
   assert.equal(row.fiscalGrossAmountCents, 5000);
   assert.equal(booking.contract_total, 1000);
 });

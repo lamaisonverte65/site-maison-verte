@@ -2,7 +2,7 @@ import { schedule } from "@netlify/functions";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { listAllBalanceTransactions } from "./_lib/stripe-balance-transactions.js";
-import { syncAutoDirectStripeAccounting } from "./_lib/auto-direct-stripe-accounting.js";
+import { syncStripePaymentAccounting } from "./_lib/sync-stripe-payment-accounting.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(
@@ -32,13 +32,18 @@ async function findBookingAndPaymentByPaymentIntent(paymentIntentId) {
     .eq("stripe_payment_intent_id", paymentIntentId)
     .maybeSingle();
 
-  if (payment?.booking_request_id) {
-    const { data: booking } = await supabase
-      .from("booking_requests")
-      .select("*")
-      .eq("id", payment.booking_request_id)
-      .maybeSingle();
-    return { booking, payment };
+  if (payment) {
+    if (payment.booking_request_id) {
+      const { data: booking } = await supabase
+        .from("booking_requests")
+        .select("*")
+        .eq("id", payment.booking_request_id)
+        .maybeSingle();
+      return { booking, payment };
+    }
+    // Un paiement post-séjour conserve son booking_request_id NULL par conception.
+    // Ne jamais perdre son payment_id lors d'un rapprochement payout ultérieur.
+    return { booking: null, payment };
   }
 
   const { data: booking } = await supabase
@@ -97,7 +102,19 @@ async function upsertStripeBalanceTransaction(transaction, payout = null) {
     paymentIntentId = sourceObject.payment_intent || null;
   }
 
-  const { booking, payment } = await findBookingAndPaymentByPaymentIntent(paymentIntentId);
+  let { booking, payment } = await findBookingAndPaymentByPaymentIntent(paymentIntentId);
+  // Une transaction Stripe peut arriver lors d'un payout avec une source non
+  // développée (ch_... seulement). Ne pas écraser une liaison déjà justifiée
+  // par un précédent webhook si la source Stripe est la même charge.
+  let previousLink = null;
+  if (!paymentIntentId && typeof sourceObject === 'string' && transaction.type === 'charge') {
+    const existing = await supabase.from('stripe_balance_transactions')
+      .select('id,charge_id,booking_request_id,payment_id,payment_type,payment_intent_id')
+      .eq('id',transaction.id).maybeSingle();
+    if (existing.error) throw existing.error;
+    if (existing.data?.charge_id === sourceObject && existing.data.payment_id
+      && existing.data.payment_intent_id) previousLink = existing.data;
+  }
   const payoutStatus = payout?.status || (transaction.payout ? "paid" : null);
   const reconciliationStatus = transaction.payout
     ? (payoutStatus === "paid" ? "viré" : "payout_en_cours")
@@ -105,11 +122,11 @@ async function upsertStripeBalanceTransaction(transaction, payout = null) {
 
   const payload = {
     id: transaction.id,
-    booking_request_id: booking?.id || payment?.booking_request_id || null,
-    payment_id: payment?.id || null,
-    payment_type: payment?.payment_type || null,
-    payment_intent_id: paymentIntentId,
-    charge_id: chargeId,
+    booking_request_id: booking?.id || payment?.booking_request_id || previousLink?.booking_request_id || null,
+    payment_id: payment?.id || previousLink?.payment_id || null,
+    payment_type: payment?.payment_type || previousLink?.payment_type || null,
+    payment_intent_id: paymentIntentId || previousLink?.payment_intent_id || null,
+    charge_id: chargeId || previousLink?.charge_id || null,
     payout_id: payout?.id || (typeof transaction.payout === "string" ? transaction.payout : transaction.payout?.id || null),
     type: transaction.type || null,
     reporting_category: transaction.reporting_category || null,
@@ -191,7 +208,7 @@ async function syncPaymentIntentsWithoutPayout() {
       const row = await upsertStripeBalanceTransaction(balanceTransaction, payout);
       await recomputeBookingFinancialAggregates(row?.booking_request_id);
       if (row?.payment_id) {
-        try { await syncAutoDirectStripeAccounting(supabase, { paymentId: row.payment_id }); }
+        try { await syncStripePaymentAccounting(supabase, { paymentId: row.payment_id }); }
         catch (error) { console.error("Synchronisation comptable Stripe :", row.payment_id, error); }
       }
       results.push({ id: booking.id, status: "synced", balanceTransaction: row?.id, payout: row?.payout_id || null });
@@ -222,7 +239,7 @@ async function syncRecentPayouts() {
       const row = await upsertStripeBalanceTransaction(transaction, payout);
       if (row?.booking_request_id) affectedBookingIds.add(row.booking_request_id);
       if (row?.payment_id) {
-        try { await syncAutoDirectStripeAccounting(supabase, { paymentId: row.payment_id }); }
+        try { await syncStripePaymentAccounting(supabase, { paymentId: row.payment_id }); }
         catch (error) { console.error("Synchronisation comptable Stripe :", row.payment_id, error); }
       }
       transactionResults.push({ id: transaction.id, bookingRequestId: row?.booking_request_id || null, net: row?.net || 0, status: row?.reconciliation_status });

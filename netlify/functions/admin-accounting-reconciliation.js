@@ -10,7 +10,7 @@ const supabase = createClient(
 
 const PAID_PAYMENT_STATUSES = ["paid", "partially_refunded", "refunded"];
 
-const PAYMENT_FIELDS = "id,booking_request_id,payment_type,manual_reason,amount,currency,status,stripe_checkout_session_id,stripe_payment_intent_id,paid_at,created_at";
+const PAYMENT_FIELDS = "id,booking_request_id,payment_type,manual_reason,amount,currency,status,stripe_checkout_session_id,stripe_payment_intent_id,paid_at,created_at,metadata";
 const REFUND_FIELDS = "id,booking_request_id,status,refunded_amount_cents,created_at,updated_at,completed_at";
 const ALLOCATION_FIELDS = "id,operation_id,booking_request_id,payment_id,amount,amount_cents,currency,status,operation_status,stripe_refund_id,stripe_payment_intent_id,metadata,created_at,updated_at";
 
@@ -41,8 +41,8 @@ const BOOKING_FIELDS = "id,tourist_tax_amount,tourist_tax_snapshot";
 const STRIPE_FIELDS = "id,booking_request_id,payment_id,payment_intent_id,type,amount,fee,net,created_at_stripe";
 const INVOICE_FIELDS = "id,source,booking_request_id,external_reference,invoice_kind,status,total_amount,cleaning_issue_id,additional_charge_id";
 const CREDIT_NOTE_FIELDS = "id,invoice_id,booking_request_id,refund_operation_id,status,total_amount";
-const CLEANING_FIELDS = "id,booking_request_id,payment_id,invoice_id,confirmed_at,cancelled_at";
-const ADDITIONAL_FIELDS = "id,booking_request_id,payment_id,invoice_id,status,amount,paid_at";
+const CLEANING_FIELDS = "id,booking_request_id,payment_id,invoice_id,status,amount_due,confirmed_at,cancelled_at";
+const ADDITIONAL_FIELDS = "id,booking_request_id,payment_id,invoice_id,status,amount,paid_at,category";
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -170,7 +170,9 @@ export async function runAnnualReconciliation(event, { client = supabase, author
     const accountingYear = checked(accountingYearResult, "Journal de l'exercice");
 
     const bookingIds = unique([
-      ...paymentsYear.map((row) => row.booking_request_id),
+      ...paymentsYear.map((row) => row.booking_request_id ||
+        ((row.payment_type === 'manual' && ['cleaning','post_stay_cleaning','additional_charge'].includes(row.manual_reason))
+          ? row.metadata?.booking_id : null)),
       ...refundsYear.map((row) => row.booking_request_id),
       ...allocationsYear.map((row) => row.booking_request_id),
       ...externalFinancials.map((row) => row.booking_request_id),

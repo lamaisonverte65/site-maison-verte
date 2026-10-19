@@ -5,7 +5,7 @@ import { processCheckoutSessionCompleted } from "./_lib/stripe-checkout-complete
 import { listAllBalanceTransactions } from "./_lib/stripe-balance-transactions.js";
 import { contractualDeposit, contractualTotal, remainingContractualDue } from "./_lib/booking-financial-authority.js";
 import { resendEmail } from "./_lib/resend-email.js";
-import { syncAutoDirectStripeAccounting } from "./_lib/auto-direct-stripe-accounting.js";
+import { syncStripePaymentAccounting } from "./_lib/sync-stripe-payment-accounting.js";
 import { syncConfirmedRefundAccounting } from "./_lib/auto-direct-stripe-refund-accounting.js";
 import { reconcileDelayedStripeRefund } from "./_lib/reconcile-delayed-stripe-refund.js";
 import { finalizeDelayedStripeRefund } from "./_lib/finalize-delayed-stripe-refund.js";
@@ -182,7 +182,19 @@ async function upsertStripeBalanceTransaction(transaction, payout = null) {
     paymentIntentId = sourceObject.payment_intent || null;
   }
 
-  const { booking, payment } = await findBookingAndPaymentByPaymentIntent(paymentIntentId);
+  let { booking, payment } = await findBookingAndPaymentByPaymentIntent(paymentIntentId);
+  // Une transaction Stripe peut arriver lors d'un payout avec une source non
+  // développée (ch_... seulement). Ne pas écraser une liaison déjà justifiée
+  // par un précédent webhook si la source Stripe est la même charge.
+  let previousLink = null;
+  if (!paymentIntentId && typeof sourceObject === 'string' && transaction.type === 'charge') {
+    const existing = await supabase.from('stripe_balance_transactions')
+      .select('id,charge_id,booking_request_id,payment_id,payment_type,payment_intent_id')
+      .eq('id',transaction.id).maybeSingle();
+    if (existing.error) throw existing.error;
+    if (existing.data?.charge_id === sourceObject && existing.data.payment_id
+      && existing.data.payment_intent_id) previousLink = existing.data;
+  }
   const payoutId = payout?.id || (typeof transaction.payout === "string" ? transaction.payout : transaction.payout?.id || null);
   const payoutStatus = payout?.status || (payoutId ? "paid" : null);
   const reconciliationStatus = payoutId
@@ -191,11 +203,11 @@ async function upsertStripeBalanceTransaction(transaction, payout = null) {
 
   const payload = {
     id: transaction.id,
-    booking_request_id: booking?.id || payment?.booking_request_id || null,
-    payment_id: payment?.id || null,
-    payment_type: payment?.payment_type || null,
-    payment_intent_id: paymentIntentId,
-    charge_id: chargeId,
+    booking_request_id: booking?.id || payment?.booking_request_id || previousLink?.booking_request_id || null,
+    payment_id: payment?.id || previousLink?.payment_id || null,
+    payment_type: payment?.payment_type || previousLink?.payment_type || null,
+    payment_intent_id: paymentIntentId || previousLink?.payment_intent_id || null,
+    charge_id: chargeId || previousLink?.charge_id || null,
     payout_id: payoutId,
     type: transaction.type || null,
     reporting_category: transaction.reporting_category || null,
@@ -259,7 +271,7 @@ async function reconcilePayout(payout) {
         // Les frais Stripe peuvent devenir disponibles seulement au versement.
         if (row?.payment_id) {
           try {
-            const accounting = await syncAutoDirectStripeAccounting(supabase, { paymentId: row.payment_id });
+            const accounting = await syncStripePaymentAccounting(supabase, { paymentId: row.payment_id });
             if (accounting.outcome === "needs_review") console.warn("Payout : comptabilité à vérifier", row.payment_id, accounting.reason);
           } catch (error) {
             console.error("Payout : rattrapage comptable requis", row.payment_id, error);
@@ -563,7 +575,7 @@ export async function handler(event) {
       // Une panne comptable NE DOIT PAS rejouer la confirmation de réservation ni l'email.
       if (result.outcome === "applied" || result.outcome === "already_applied") {
         try {
-          const accounting = await syncAutoDirectStripeAccounting(supabase, {
+          const accounting = await syncStripePaymentAccounting(supabase, {
             checkoutSessionId: stripeEvent.data.object.id,
           });
           if (accounting.outcome === "needs_review" || accounting.outcome === "concurrent_write") {

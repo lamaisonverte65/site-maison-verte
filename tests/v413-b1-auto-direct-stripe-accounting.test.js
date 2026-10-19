@@ -185,6 +185,6 @@ test('le webhook comptabilise après application, jamais avant, et sans bloquer 
 
 test('la synchronisation programmée peut rattraper des frais apparus après le checkout', () => {
   const scheduled = fs.readFileSync(new URL('../netlify/functions/sync-stripe-finance.js', import.meta.url), 'utf8');
-  assert.match(scheduled, /syncAutoDirectStripeAccounting/);
+  assert.match(scheduled, /syncStripePaymentAccounting/);
   assert.match(scheduled, /schedule\("15 7 \* \* \*"/);
 });
