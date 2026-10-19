@@ -47,12 +47,18 @@ export function detectAccountingImportFormat(text) {
 export function parseAirbnbStatement(text) {
   const rows=parseCsvRows(text); if (rows.length<2) throw new Error("Le relevé Airbnb est vide.");
   const headers=rows[0].map(norm); const data=rows.slice(1).map(r=>mapRow(headers,r));
-  const reservations=data.filter(r=>norm(r.type)==="reservation");
-  const payouts=data.filter(r=>norm(r.type)==="payout");
-  const items=reservations.map((r,i)=>{
+  const tagged = data.map((row, index) => ({ ...row, csvLine: index + 2 }));
+  const reservations=tagged.filter(r=>norm(r.type)==="reservation");
+  const payouts=tagged.filter(r=>norm(r.type)==="payout");
+  // Un ajustement financier inconnu ne doit pas disparaître au prétraitement.
+  const unclassifiedMovements=tagged.filter((r) => !["reservation", "payout"].includes(norm(r.type))
+    && ["montant", "verse", "revenus bruts", "frais de service", "frais de versement sur carte bancaire", "frais de menage", "taxes reversees par airbnb"]
+      .some((field) => Number(optionalAmount(r[field]) || 0) !== 0))
+    .map((r) => ({ line: r.csvLine, type: r.type || "inconnu" }));
+  const items=reservations.map((r)=>{
     const paymentFee = optionalAmount(r["frais de versement sur carte bancaire"]);
     return {
-      line:i+2, type:"Réservation", reservationNumber:r["code de confirmation"], paymentId:r["code de reference"] || null, confirmationCode:r["code de confirmation"], guestName:r.voyageur,
+      line:r.csvLine, type:"Réservation", reservationNumber:r["code de confirmation"], paymentId:r["code de reference"] || null, confirmationCode:r["code de confirmation"], guestName:r.voyageur,
       bookedOn:isoMdy(r["date de reservation"]), arrivalDate:isoMdy(r["date de debut"]), checkoutDate:isoMdy(r["date de fin"]), nights:integer(r.nuits), paymentDate:isoMdy(r.date),
       gross:amount(r["revenus bruts"]), serviceFee:amount(r["frais de service"]), net:amount(r.montant),
       cleaningFee:optionalAmount(r["frais de menage"]), taxRemitted:optionalAmount(r["taxes reversees par airbnb"]),
@@ -72,7 +78,7 @@ export function parseAirbnbStatement(text) {
     taxRemitted:a.taxRemitted+Number(x.taxRemitted||0),
   }),{gross:0,serviceFee:0,paymentFee:0,net:0,taxRemitted:0});
   Object.keys(totals).forEach(k=>totals[k]=Math.round(totals[k]*100)/100);
-  return { source:"airbnb", items, payments:payouts.map(r=>({paymentDate:isoMdy(r.date),reference:r["code de reference"],amount:amount(r.verse)})), payouts:payouts.map(r=>({paymentDate:isoMdy(r.date),reference:r["code de reference"],amount:amount(r.verse)})), totals };
+  return { source:"airbnb", items, unclassifiedMovements, payments:payouts.map(r=>({paymentDate:isoMdy(r.date),reference:r["code de reference"],amount:amount(r.verse)})), payouts:payouts.map(r=>({paymentDate:isoMdy(r.date),reference:r["code de reference"],amount:amount(r.verse)})), totals };
 }
 
 export function parseAirbnbReservations(text) {
@@ -112,6 +118,25 @@ export function parseAirbnbReservations(text) {
 }
 
 export function airbnbStatementToEntries(statement,categories){
+  if (statement.unclassifiedMovements?.length) {
+    const item = statement.unclassifiedMovements[0];
+    throw new Error(`Mouvement Airbnb non classé ligne ${item.line} (${item.type}) : vérifier sa nature comptable avant import.`);
+  }
+  // Une clé par réservation était historiquement utilisée : plusieurs mouvements sur
+  // la même référence ne peuvent pas être importés sans identification transactionnelle.
+  const seen = new Set();
+  for (const x of statement.items || []) {
+    if (!x.confirmationCode || seen.has(x.confirmationCode)) {
+      throw new Error(`Airbnb : doublon ou identifiant de réservation absent (${x.confirmationCode || "inconnu"}), ligne ${x.line || "?"}. Import interrompu.`);
+    }
+    seen.add(x.confirmationCode);
+    if ([x.gross, x.serviceFee, x.paymentFee, x.net].some((value) => Number(value || 0) < 0)) {
+      throw new Error(`Airbnb : montant négatif ou frais inversés, ligne ${x.line || "?"} (${x.confirmationCode}) ; nature comptable à vérifier.`);
+    }
+    if (!Number(x.gross || 0) && [x.net, x.serviceFee, x.paymentFee].some((value) => Number(value || 0) !== 0)) {
+      throw new Error(`Airbnb : revenu brut non démontré, ligne ${x.line || "?"} (${x.confirmationCode}) ; vérifier avant import.`);
+    }
+  }
   const byCode=new Map((categories||[]).map(c=>[c.code,c.id])); const out=[];
   for(const x of statement.items){
     const common={entry_date:x.paymentDate,source:"airbnb",operation_group_key:`airbnb:payout:${x.paymentDate}`,external_reference:x.confirmationCode||null,counterparty:"Airbnb",payment_method:"Virement Airbnb",treatment:"current",metadata:{confirmation_code:x.confirmationCode,arrival_date:x.arrivalDate,checkout_date:x.checkoutDate,guest_name:x.guestName,cleaning_fee:x.cleaningFee,tax_remitted_by_airbnb:x.taxRemitted,payment_fee:x.paymentFee,currency:x.currency}};

@@ -192,8 +192,29 @@ export function matchBookingStatementReservations(statement, externalReservation
   };
 }
 export function bookingStatementToEntries(statement, categories) {
+  // Un mouvement non qualifié ne doit pas devenir une recette ou une charge par défaut.
+  // Conserver les clés historiques pour les réservations standard (réimports idempotents).
+  const keysInFile = new Set();
+  for (const item of statement.items || []) {
+    const monetaryMovement = [item.gross, item.commission, item.paymentFee, item.net]
+      .some((value) => Number(value || 0) !== 0);
+    if (item.kind !== "reservation" && monetaryMovement) {
+      throw new Error(`Ajustement Booking ligne ${item.line || "?"} (${item.type || "type inconnu"}) : nature comptable non classée. Import interrompu ; vérifier ce mouvement avant toute écriture.`);
+    }
+    if (item.kind === "reservation" && (Number(item.gross || 0) < 0 || Number(item.commission || 0) > 0 || Number(item.paymentFee || 0) > 0)) {
+      throw new Error(`Réservation Booking ligne ${item.line || "?"} : montant négatif ou frais inversés, à vérifier avant import.`);
+    }
+    for (const key of item.sourceRecordKeys || rowKeys(item)) {
+      if (keysInFile.has(key)) {
+        throw new Error(`Doublon de clé comptable Booking (${key}) dans le même CSV : import interrompu.`);
+      }
+      keysInFile.add(key);
+    }
+  }
   const categoryByCode = new Map((categories || []).map((category) => [category.code, category.id]));
   const entries = [];
+  // Les ajustements financiers sont arrêtés avant cette boucle : seuls les
+  // séjours confirmés génèrent automatiquement les recettes et leurs frais.
   for (const item of statement.items.filter((row) => !row.duplicate)) {
     const group = `booking:payout:${item.paymentId || item.paymentDate}`;
     const common = {
@@ -224,9 +245,6 @@ export function bookingStatementToEntries(statement, categories) {
       if (item.gross) entries.push({ ...common, entry_kind: "income", category_id: categoryByCode.get("rental_booking") || null, label: `Location Booking ${item.reservationNumber}`, amount_ttc: Math.abs(item.gross), source_record_key: `${root}:gross` });
       if (item.commission) entries.push({ ...common, entry_kind: "expense", category_id: categoryByCode.get("platform_fees") || null, label: `Commission Booking ${item.reservationNumber}`, amount_ttc: Math.abs(item.commission), source_record_key: `${root}:commission` });
       if (item.paymentFee) entries.push({ ...common, entry_kind: "expense", category_id: categoryByCode.get("payment_fees") || null, label: `Frais de paiement Booking ${item.reservationNumber}`, amount_ttc: Math.abs(item.paymentFee), source_record_key: `${root}:payment_fee` });
-    } else if (item.net) {
-      const key = item.sourceRecordKeys[0];
-      entries.push({ ...common, entry_kind: item.net > 0 ? "income" : "expense", category_id: categoryByCode.get(item.net > 0 ? "other_income" : "platform_fees") || null, label: `${item.type || "Ajustement Booking"}${item.reservationNumber ? ` ${item.reservationNumber}` : ""}`, amount_ttc: Math.abs(item.net), source_record_key: key, metadata: { ...common.metadata, adjustment: true } });
     }
   }
   return entries;

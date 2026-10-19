@@ -20,11 +20,11 @@ test("B4.3.1C Booking import creates gross income and fee entries", () => {
   assert.match(util, /booking:payout:/);
 });
 
-test("B4.3.1C Booking import is idempotent and handles adjustments", () => {
+test("B4.3.1C Booking import is idempotent and blocks unclassified adjustments", () => {
   const util = read("src/utils/bookingStatementImport.js");
   assert.match(util, /sourceRecordKeys/);
   assert.match(util, /duplicate/);
-  assert.match(util, /adjustment: true/);
+  assert.match(util, /Ajustement Booking ligne/);
   const migration = read("supabase/migrations/202609290003_v410_accounting_foundation.sql");
   assert.match(migration, /accounting_entries_source_record_unique_idx/);
 });
