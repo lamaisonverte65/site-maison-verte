@@ -454,6 +454,15 @@ function buildDirectPaymentRow(context, payment, fiscalGroup) {
     } else {
       addReason(reasons, fiscalClassification.reason || 'fiscal_classification_missing');
     }
+  } else if (booking?.status === 'cancelled') {
+    // Une réservation annulée n'atteste pas la perception de la taxe de séjour.
+    // Même si la totalité du contrat a été encaissée et conservée, sa nature
+    // fiscale reste à qualifier : ne pas déduire la taxe du séjour non prouvé.
+    addReason(reasons, 'direct_cancelled_booking_fiscal_qualification_required');
+    if (movementYears.length > 1) addReason(reasons, 'tourist_tax_cross_year_allocation_unknown');
+    if (context.bookingRefundIds.has(payment.booking_request_id)) {
+      addReason(reasons, 'refund_fiscal_effect_requires_versioned_rule');
+    }
   } else if (movementYears.length > 1) {
     addReason(reasons, 'tourist_tax_cross_year_allocation_unknown');
   } else if (context.bookingRefundIds.has(payment.booking_request_id)) {

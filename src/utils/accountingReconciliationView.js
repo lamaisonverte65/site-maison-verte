@@ -212,6 +212,7 @@ const RECONCILIATION_REASONS = Object.freeze({
   stripe_amount_mismatch: ['Écart de montant Stripe', 'Le montant Stripe et celui du paiement ne concordent pas au centime.'],
   stripe_balance_transaction_ambiguous: ['Plusieurs opérations Stripe candidates', 'Vérifier les identifiants de paiement et les mouvements Stripe.'],
   stripe_balance_transaction_missing: ['Opération Stripe manquante', 'Le justificatif de transaction Stripe n’a pas été rapproché.'],
+  direct_cancelled_booking_fiscal_qualification_required: ['Réservation annulée : traitement fiscal à vérifier', 'Le statut annulé ne démontre pas la réalisation du séjour : la taxe de séjour initialement prévue ne peut pas être déduite automatiquement. Vérifier la nature des sommes conservées et les justificatifs.'],
   tourist_tax_cross_year_allocation_unknown: ['Taxe de séjour à ventiler entre exercices', 'Plusieurs années d’encaissement sont concernées : ne pas répartir la taxe sans justificatif.'],
   tourist_tax_snapshot_missing: ['Snapshot de taxe de séjour absent', 'La taxe historique enregistrée avec la réservation doit être contrôlée.'],
   refund_fiscal_effect_requires_versioned_rule: ['Traitement fiscal du remboursement à vérifier', 'Le remboursement ne doit pas être déduit automatiquement des recettes déclarables.'],
