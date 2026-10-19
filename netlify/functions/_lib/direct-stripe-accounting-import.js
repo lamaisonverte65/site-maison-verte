@@ -1,7 +1,10 @@
 // B1 — Projection déterministe et sans écriture des mouvements Direct Stripe.
 // Tous les montants sont contrôlés au centime. Aucune somme au niveau réservation
 // ne remplace un mouvement individuel de paiement ou une balance transaction.
-const PAID = new Set(['paid']); // Remboursements partiels/totaux : parcours distinct, revue manuelle.
+// Ces statuts prouvent un encaissement historique : un remboursement ultérieur
+// ne supprime pas l'obligation de comptabiliser la recette et les frais initiaux.
+// La restitution reste comptabilisée séparément par l'outbox des remboursements.
+const PAID = new Set(['paid', 'partially_refunded', 'refunded']);
 const TYPES = new Set(['full', 'deposit', 'balance']);
 
 function cents(value) {
@@ -69,7 +72,7 @@ export function planDirectStripeAccounting({ year, payments = [], transactions =
     const charges = transactions.filter(t => linkedStripe(payment, t));
     let reason = '';
     if (!payment.booking_request_id) reason = 'Réservation liée absente';
-    else if (!PAID.has(payment.status)) reason = 'Paiement non définitivement payé ou remboursé : contrôle requis';
+    else if (!PAID.has(payment.status)) reason = 'Paiement initial non confirmé';
     else if (!TYPES.has(payment.payment_type)) reason = 'Type de paiement à qualifier (ménage, supplément ou manuel)';
     else if (!payment.stripe_payment_intent_id) reason = 'Identifiant Stripe PaymentIntent absent';
     else if (String(payment.currency || '').toLowerCase() !== 'eur') reason = 'Devise du paiement non confirmée en EUR';

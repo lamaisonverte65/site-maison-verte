@@ -102,15 +102,19 @@ test('a paid payment without paid_at is never assigned to an accounting year', (
   assert.equal(result.inserts.length, 0);
 });
 
-test('refunds, cancelled, post-stay and non-euro payments cannot be imported automatically', () => {
+test('paiements remboursés restent des recettes historiques, statuts invalides et paiements spéciaux sont bloqués', () => {
   const x = fixture();
   x.payments[0].status = 'refunded';
   x.payments[1].status = 'cancelled';
   x.payments[2].payment_type = 'manual';
   x.payments[3].currency = 'usd';
+  x.payments[4].status = 'partially_refunded';
   const r = build(x);
-  assert.equal(r.blockedCount, 4);
-  assert.equal(r.readyCount, 2);
+  assert.equal(r.blockedCount, 3);
+  assert.equal(r.readyCount, 3);
+  assert.deepEqual(r.rows.filter(row => row.status === 'ready').map(row => row.id), ['p1', 'p5', 'p6']);
+  assert.equal(r.inserts.some(e => e.source_record_key === 'direct:payment:p1'), true);
+  assert.equal(r.inserts.some(e => e.source_record_key === 'direct:payment:p5'), true);
 });
 
 test('an existing complete receipt with missing fee only creates fee, not income again', () => {

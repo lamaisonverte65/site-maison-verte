@@ -6,6 +6,7 @@ import { planDirectStripeAccounting } from './direct-stripe-accounting-import.js
 const PAYMENT_FIELDS = 'id,booking_request_id,payment_type,amount,currency,status,stripe_payment_intent_id,stripe_checkout_session_id,paid_at';
 const CHARGE_FIELDS = 'id,payment_id,payment_intent_id,type,amount,fee,net,currency';
 const ENTRY_FIELDS = 'id,entry_date,entry_kind,amount_ttc,source,source_record_key,external_reference,booking_request_id';
+const SETTLED_PAYMENT_STATUSES = new Set(['paid', 'partially_refunded', 'refunded']);
 
 function checked(result, name) {
   if (result?.error) throw new Error(`${name}: ${result.error.message || 'erreur de lecture'}`);
@@ -13,7 +14,7 @@ function checked(result, name) {
 }
 
 export async function applyAutoDirectStripeAccounting({ payment, transactions, entries, categories, insertEntries }) {
-  if (!payment?.id || payment.status !== 'paid') return { outcome: 'not_eligible' };
+  if (!payment?.id || !SETTLED_PAYMENT_STATUSES.has(payment.status)) return { outcome: 'not_eligible' };
   const year = Number(String(payment.paid_at || '').slice(0, 4));
   if (!Number.isInteger(year) || year < 2024 || year > 2100) return { outcome: 'needs_review', reason: 'Date de paiement manquante ou invalide' };
   // La projection est FAIL-CLOSED : aucune somme réservataire cumulée, aucun montant inféré.
@@ -49,8 +50,9 @@ async function getSinglePayment(supabase, { paymentId, checkoutSessionId }) {
 export async function syncAutoDirectStripeAccounting(supabase, { paymentId = null, checkoutSessionId = null } = {}) {
   const payment = await getSinglePayment(supabase, { paymentId, checkoutSessionId });
   if (!payment) return { outcome: 'not_found' };
-  // Les paiements spéciaux et les remboursements attendent une qualification comptable.
-  if (payment.status !== 'paid' || !['full', 'deposit', 'balance'].includes(payment.payment_type)) {
+  // Les paiements spéciaux attendent une qualification comptable. Le paiement
+  // initial reste une recette distincte même s'il a été remboursé depuis.
+  if (!SETTLED_PAYMENT_STATUSES.has(payment.status) || !['full', 'deposit', 'balance'].includes(payment.payment_type)) {
     return { outcome: 'not_eligible' };
   }
   if (!payment.booking_request_id || !payment.stripe_payment_intent_id) {

@@ -62,12 +62,29 @@ test('un centime discordant bloque toute écriture', async () => {
   assert.equal(t.inserted.length, 0);
 });
 
-test('une réservation annulée et un paiement remboursé ne déclenchent pas un nouvel encaissement', async () => {
-  for (const status of ['cancelled', 'refunded', 'partially_refunded', 'requires_review']) {
+test('une recette historique remboursée est comptabilisée une seule fois à sa date paid_at', async () => {
+  for (const status of ['refunded', 'partially_refunded']) {
+    const t = setup({ payment: { ...payment, status } });
+    assert.deepEqual(await t.go(), { outcome: 'created', created: 2 });
+    assert.deepEqual(t.inserted.map(e => e.entry_kind), ['income', 'expense']);
+    assert.ok(t.inserted.every(e => e.entry_date === '2026-09-08'));
+    assert.deepEqual(await t.go(), { outcome: 'already_recorded', created: 0 });
+    assert.equal(t.state.entries.length, 2);
+  }
+});
+
+test('un paiement non confirmé ne crée aucune recette comptable', async () => {
+  for (const status of ['cancelled', 'requires_review', 'pending', 'failed']) {
     const t = setup({ payment: { ...payment, status } });
     assert.equal((await t.go()).outcome, 'not_eligible');
     assert.equal(t.inserted.length, 0);
   }
+});
+
+test('un paiement remboursé sans preuve du montant Stripe demeure à vérifier', async () => {
+  const t = setup({ payment: { ...payment, status: 'refunded' }, charge: { ...charge, fee: null } });
+  assert.equal((await t.go()).outcome, 'needs_review');
+  assert.equal(t.inserted.length, 0);
 });
 
 test('un ménage ou paiement complémentaire reste à qualifier séparément', async () => {
@@ -132,6 +149,13 @@ test('le service serveur peut relire les transactions et devenir idempotent apr�
   const state = { payment, transactions: [charge], entries: [] };
   const db = fakeDb(state);
   assert.deepEqual(await syncAutoDirectStripeAccounting(db, { checkoutSessionId: 'cs_1' }), { outcome: 'created', created: 2 });
+  assert.deepEqual(await syncAutoDirectStripeAccounting(db, { paymentId: 'p-1' }), { outcome: 'already_recorded', created: 0 });
+});
+
+test('le service peut rattraper une recette anciennement payée puis remboursée', async () => {
+  const state = { payment: { ...payment, status: 'refunded' }, transactions: [charge], entries: [] };
+  const db = fakeDb(state);
+  assert.deepEqual(await syncAutoDirectStripeAccounting(db, { paymentId: 'p-1' }), { outcome: 'created', created: 2 });
   assert.deepEqual(await syncAutoDirectStripeAccounting(db, { paymentId: 'p-1' }), { outcome: 'already_recorded', created: 0 });
 });
 
