@@ -67,22 +67,22 @@ test("A-5.1b exposes an incomplete stored snapshot instead of inventing a tax", 
   assert.equal(rows[0].status, "missing_snapshot_data");
 });
 
-test("A-5.1b endpoint is owner-only and read-only without historical recalculation catalog", () => {
+test("A-5.1b endpoint is owner-only and reads the regulatory catalog without writing to historical bookings", () => {
   const endpoint = read("netlify/functions/admin-tourist-tax-declaration.js");
   assert.match(endpoint, /ownerOnly: true/);
-  assert.doesNotMatch(endpoint, /tourist_tax_classification_history/);
-  assert.doesNotMatch(endpoint, /tourist_tax_rules/);
+  assert.match(endpoint, /tourist_tax_classification_history/);
+  assert.match(endpoint, /tourist_tax_rules/);
   assert.doesNotMatch(endpoint, /\.insert\(/);
   assert.doesNotMatch(endpoint, /\.update\(/);
   assert.doesNotMatch(endpoint, /\.delete\(/);
   assert.doesNotMatch(endpoint, /\.rpc\(/);
 });
 
-test("A-5.1b UI labels the register as historical snapshot data", () => {
+test("A-5.1b UI distinguishes historical snapshot and current regulatory calculation", () => {
   const panel = read("src/components/admin/DeclarationsPanel.jsx");
-  assert.match(panel, /Taxe de séjour — registre historique/);
+  assert.match(panel, /Taxe de séjour — Aure Louron/);
   assert.match(panel, /Taxe enregistrée/);
-  assert.doesNotMatch(panel, /Dû Aure-Louron/);
+  assert.match(panel, /Taxe indicative à déclarer/);
   assert.match(panel, /Plateformes — contrôle uniquement/);
   assert.match(panel, /Aucune nuitée directe LMV à déclarer pour ce mois\. Registre à 0\./);
 });

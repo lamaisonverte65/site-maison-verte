@@ -20,7 +20,12 @@ import {
 import { airbnbStatementToEntries, detectAccountingImportFormat, importExerciseYear, parseAirbnbReservations, parseAirbnbStatement } from "../../utils/accountingImport";
 import { matchBookingOverviewReservations, parseBookingOverview } from "../../utils/bookingOverviewImport";
 import { airbnbReservationsToFinancialRows, airbnbStatementToFinancialRows, bookingOverviewToFinancialRows, bookingStatementToFinancialRows } from "../../utils/externalReservationFinancialImport";
-import { fetchTouristTaxDeclaration } from "../../services/touristTaxDeclarationService";
+import {
+  fetchTouristTaxDeclaration,
+  fetchTouristTaxRemittances,
+  saveTouristTaxRemittance,
+  voidTouristTaxRemittance,
+} from "../../services/touristTaxDeclarationService";
 import { fetchAccountingReconciliation } from "../../services/accountingReconciliationService";
 import { fetchPlatformFinancialRegistry } from "../../services/accountingImportHistoryService.js";
 import AccountingImportHistory from "./AccountingImportHistory";
@@ -130,6 +135,14 @@ function TouristTaxDeclarationPanel({ year }) {
   const [registry, setRegistry] = useState(null);
   const [loadingRegistry, setLoadingRegistry] = useState(false);
   const [registryError, setRegistryError] = useState("");
+  const [remittances, setRemittances] = useState([]);
+  const [remittancesError, setRemittancesError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [paymentDate, setPaymentDate] = useState(new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Paris" }));
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [reference, setReference] = useState("");
+  const [notes, setNotes] = useState("");
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     setMonth(String(Number(year) === now.getFullYear() ? now.getMonth() + 1 : 1));
@@ -138,48 +151,114 @@ function TouristTaxDeclarationPanel({ year }) {
   useEffect(() => {
     let cancelled = false;
     setLoadingRegistry(true);
+    setRegistry(null);
+    setRemittances([]);
     setRegistryError("");
+    setRemittancesError("");
     fetchTouristTaxDeclaration(Number(year), Number(month))
       .then((result) => { if (!cancelled) setRegistry(result); })
-      .catch((error) => { if (!cancelled) { setRegistry(null); setRegistryError(error.message); } })
+      .catch((error) => { if (!cancelled) setRegistryError(error.message); })
       .finally(() => { if (!cancelled) setLoadingRegistry(false); });
+    if (Number(year) >= 2026) {
+      fetchTouristTaxRemittances(Number(year), Number(month))
+        .then((result) => { if (!cancelled) setRemittances(result.entries || []); })
+        .catch((error) => { if (!cancelled) setRemittancesError(error.message); });
+    }
     return () => { cancelled = true; };
-  }, [year, month]);
+  }, [year, month, version]);
 
-  const totals = registry?.totals || {};
+  async function registerPayment(event) {
+    event.preventDefault();
+    if (busy) return;
+    const normalized = paymentAmount.trim().replace(",", ".");
+    if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(normalized)) { alert("Indique un montant positif en euros, avec au maximum deux décimales."); return; }
+    const [whole, decimal = ""] = normalized.split(".");
+    const amountCents = Number(whole) * 100 + Number(decimal.padEnd(2, "0"));
+    if (!Number.isSafeInteger(amountCents) || amountCents <= 0) { alert("Montant invalide."); return; }
+    if (!confirm(`Enregistrer le prélèvement bancaire réel de ${centsMoney(amountCents)} pour ${String(month).padStart(2, "0")}/${year} ?`)) return;
+    setBusy(true);
+    try {
+      await saveTouristTaxRemittance({ year: Number(year), month: Number(month), paymentDate, amountCents, reference, notes });
+      setPaymentAmount(""); setReference(""); setNotes(""); setVersion((v) => v + 1);
+    } catch (error) { alert(`Prélèvement non enregistré : ${error.message}`); }
+    finally { setBusy(false); }
+  }
+
+  async function voidPayment(entry) {
+    if (busy || !confirm(`Annuler la saisie du prélèvement du ${entry.payment_date} (${centsMoney(entry.amount_cents)}) ? L'historique sera conservé.`)) return;
+    setBusy(true);
+    try { await voidTouristTaxRemittance(entry.id); setVersion((v) => v + 1); }
+    catch (error) { alert(`Annulation impossible : ${error.message}`); }
+    finally { setBusy(false); }
+  }
+
   const centsMoney = (value) => money((Number(value) || 0) / 100);
+  const totals = registry?.totals || {};
+  const activeRemittances = remittances.filter((entry) => !entry.voided_at);
+  const paidCents = activeRemittances.reduce((sum, entry) => sum + Number(entry.amount_cents || 0), 0);
+  const dueCents = Number(totals.dueTaxCents || 0);
+  const difference = Number(totals.differenceDueBilledCents || 0);
   return <>
     <div style={styles.panelHeader}>
-      <div><h3>Taxe de séjour — registre historique</h3><p style={styles.muted}>Registre en lecture seule, ventilé par nuit. Les montants proviennent du snapshot enregistré avec chaque réservation et ne sont jamais recalculés avec une règle saisie ultérieurement.</p></div>
+      <div><h3>Taxe de séjour — Aure Louron</h3><p style={styles.muted}>Réservations directes uniquement pour la déclaration. Taxe réglementaire indicative selon chaque nuit, distincte de la taxe facturée et des mouvements bancaires.</p></div>
       <label style={styles.accountingYear}>Mois <select style={styles.select} value={month} onChange={(event) => setMonth(event.target.value)}>
         {Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{new Intl.DateTimeFormat("fr-FR", { month: "long" }).format(new Date(2026, index, 1))}</option>)}
       </select></label>
     </div>
-    {loadingRegistry && <p style={styles.info}>Calcul du registre réglementaire…</p>}
+    {loadingRegistry && <p style={styles.info}>Calcul des nuitées…</p>}
     {registryError && <p style={styles.error}>{registryError}</p>}
     {!loadingRegistry && registry && <>
       <div style={styles.homeFinanceGrid}>
-        <div style={styles.accountingStat}><span>Taxe enregistrée</span><strong>{centsMoney(totals.snapshotTaxCents)}</strong></div>
-        <div style={styles.accountingStat}><span>Encaissé</span><strong>{centsMoney(totals.collectedCents)}</strong></div>
-        <div style={styles.accountingStat}><span>Remboursé</span><strong>{centsMoney(totals.refundedCents)}</strong></div>
-        <div style={styles.accountingStat}><span>Encaissé net</span><strong>{centsMoney(totals.netCollectedCents)}</strong></div>
+        <div style={styles.accountingStat}><span>Taxe indicative à déclarer</span><strong>{centsMoney(dueCents)}</strong></div>
+        <div style={styles.accountingStat}><span>Taxe facturée — nuits présumées</span><strong>{centsMoney(totals.billedForDueCents)}</strong></div>
+        <div style={styles.accountingStat}><span>Écart dû − facturé</span><strong>{centsMoney(difference)}</strong></div>
+        <div style={styles.accountingStat}><span>Prélèvements bancaires saisis</span><strong>{centsMoney(paidCents)}</strong></div>
       </div>
-      <p style={styles.muted}>Encaissé : {centsMoney(totals.collectedCents)} · Remboursé : {centsMoney(totals.refundedCents)} · Nuitées LMV : {totals.nights || 0} · Nuitées plateforme en contrôle : {totals.platformNights || 0}</p>
-      {totals.missingSnapshotNights > 0 && <p style={styles.error}>{totals.missingSnapshotNights} nuitée(s) avec un snapshot historique incomplet : elles ne sont pas incluses dans le total « Taxe enregistrée ».</p>}
-      <div style={styles.tableWrapper}><table style={{ ...styles.table, minWidth: 1180 }}><thead><tr>
+      <p style={styles.muted}>Taxe enregistrée au contrat : {centsMoney(totals.snapshotTaxCents)} · Encaissement client enregistré : {centsMoney(totals.collectedCents)} · Remboursé : {centsMoney(totals.refundedCents)} · Encaissé net enregistré : {centsMoney(totals.netCollectedCents)}. Ces données historiques ne sont pas modifiées.</p>
+      <p style={styles.muted}>Nuitées directes présumées réalisées : {totals.presumedPerformedNights || 0} · Annulées : {totals.cancelledNights || 0} · Futures : {totals.upcomingNights || 0} · À vérifier : {totals.needsReviewNights || 0} · Plateformes en contrôle : {totals.platformNights || 0}.</p>
+      <p style={styles.info}>Avant la déclaration, confirme les nuitées effectivement réalisées (départs anticipés et absences non détectés automatiquement). Le montant bancaire réellement prélevé reste indépendant du calcul. Un encaissement client enregistré à 0 € peut nécessiter un rapprochement avec Stripe : ne pas l'interpréter comme une preuve de non-paiement.</p>
+      {totals.cancelledTaxStillCollectedCents > 0 && <p style={styles.error}>Taxe encore enregistrée comme collectée sur des nuitées annulées : {centsMoney(totals.cancelledTaxStillCollectedCents)}. Vérifier la restitution au voyageur ; ne pas déclarer ces nuits à Aure Louron.</p>}
+      {(totals.needsReviewNights > 0 || totals.missingSnapshotNights > 0) && <p style={styles.error}>Attention : {totals.needsReviewNights || 0} nuitée(s) réglementaires non calculables et {totals.missingSnapshotNights || 0} snapshot(s) contractuels incomplets. Total indicatif partiel : ne pas déclarer sans correction.</p>}
+      <div style={styles.tableWrapper}><table style={{ ...styles.table, minWidth: 1350 }}><thead><tr>
         <th style={styles.th}>Nuit</th><th style={styles.th}>Voyageur</th><th style={styles.th}>Occupants</th><th style={styles.th}>Taxables</th>
-        <th style={styles.th}>Classement enregistré</th><th style={styles.th}>Taxe enregistrée</th><th style={styles.th}>Encaissé</th><th style={styles.th}>Remboursé</th>
-        <th style={styles.th}>Net</th><th style={styles.th}>Règle enregistrée</th>
+        <th style={styles.th}>Classement contrat</th><th style={styles.th}>Taxe facturée</th><th style={styles.th}>Classement nuitée</th><th style={styles.th}>Taxe indicative</th><th style={styles.th}>Écart</th><th style={styles.th}>Statut</th>
       </tr></thead><tbody>
         {(registry.directRows || []).map((row) => <tr key={`${row.bookingId}-${row.nightDate}`}>
           <td style={styles.td}>{row.nightDate}</td><td style={styles.td}>{row.guestName}</td><td style={styles.td}>{row.occupants}</td><td style={styles.td}>{row.taxablePeople}</td>
-          <td style={styles.td}>{row.snapshotClassification || "—"}</td><td style={styles.td}>{row.snapshotTaxCents === null ? "—" : centsMoney(row.snapshotTaxCents)}</td><td style={styles.td}>{centsMoney(row.collectedCents)}</td><td style={styles.td}>{centsMoney(row.refundedCents)}</td>
-          <td style={styles.td}>{centsMoney(row.netCollectedCents)}</td><td style={styles.td}>{row.snapshotRuleId || "—"}</td>
+          <td style={styles.td}>{row.snapshotClassification || "—"}</td><td style={styles.td}>{row.snapshotTaxCents === null ? "—" : centsMoney(row.snapshotTaxCents)}</td>
+          <td style={styles.td}>{row.dueClassification || "—"}</td><td style={styles.td}>{row.dueTaxCents === null ? "—" : centsMoney(row.dueTaxCents)}</td>
+          <td style={styles.td}>{row.dueDifferenceCents === null ? "—" : centsMoney(row.dueDifferenceCents)}</td>
+          <td style={styles.td}>{({ presumed_performed: "Présumée effectuée", cancelled: "Annulée : 0 € dû", upcoming: "À venir", to_review: "À vérifier", not_calculated: "Non calculé" })[row.dueStatus] || "À vérifier"}{row.issue ? ` — ${row.issue}` : ""}</td>
         </tr>)}
         {!(registry.directRows || []).length && <tr><td style={styles.td} colSpan="10">Aucune nuitée directe LMV à déclarer pour ce mois. Registre à 0.</td></tr>}
       </tbody></table></div>
-      {(registry.platformRows || []).length > 0 && <><h4>Plateformes — contrôle uniquement</h4><p style={styles.muted}>Ces nuitées sont isolées du montant LMV à reverser. Leur collecte doit rester justifiée par les données de la plateforme.</p></>}
+      {(registry.platformRows || []).length > 0 && <><h4>Plateformes — contrôle uniquement</h4><p style={styles.muted}>Ces nuitées sont isolées des sommes LMV à déclarer à Aure Louron. Les reversements des plateformes ne bloquent pas ce registre.</p></>}
     </>}
+    {Number(year) >= 2026 && <div style={{ ...styles.accountingAssetBox, marginTop: 18 }}>
+      <h3 style={{ marginTop: 0 }}>Prélèvements bancaires Aure Louron — {String(month).padStart(2, "0")}/{year}</h3>
+      <p style={styles.muted}>Saisis uniquement un débit effectivement constaté sur ton compte bancaire. Cette écriture est distincte des charges d'exploitation et n'est jamais créée automatiquement à partir de la taxe calculée.</p>
+      {remittancesError && <p style={styles.error}>{remittancesError} — Vérifier que la migration de création du registre des prélèvements a été appliquée.</p>}
+      <form onSubmit={registerPayment}>
+        <div style={styles.accountingFormGrid}>
+          <label style={styles.label}>Date réelle du débit bancaire<input style={styles.input} type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} required /></label>
+          <label style={styles.label}>Montant réellement prélevé (€)<input style={styles.input} type="text" inputMode="decimal" placeholder="0,00" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} required /></label>
+          <label style={styles.label}>Référence bancaire (facultatif)<input style={styles.input} value={reference} maxLength={200} onChange={(event) => setReference(event.target.value)} /></label>
+          <label style={styles.label}>Note (facultatif)<input style={styles.input} value={notes} maxLength={500} onChange={(event) => setNotes(event.target.value)} /></label>
+        </div>
+        <div style={styles.modalActions}><button style={styles.addButton} type="submit" disabled={busy || !!remittancesError}>{busy ? "Enregistrement…" : "Enregistrer le prélèvement"}</button></div>
+      </form>
+      <p style={styles.muted}>Total des prélèvements saisis pour ce mois déclaré : <strong>{centsMoney(paidCents)}</strong>. Différence indicative calcul − payé : {centsMoney(dueCents - paidCents)} (ce n'est pas une dette certifiée).</p>
+      <div style={styles.tableWrapper}><table style={styles.table}><thead><tr>
+        <th style={styles.th}>Date du débit</th><th style={styles.th}>Montant</th><th style={styles.th}>Référence</th><th style={styles.th}>État</th><th style={styles.th}>Action</th>
+      </tr></thead><tbody>
+        {remittances.map((entry) => <tr key={entry.id}>
+          <td style={styles.td}>{entry.payment_date}</td><td style={styles.td}>{centsMoney(entry.amount_cents)}</td><td style={styles.td}>{entry.bank_reference || "—"}</td>
+          <td style={styles.td}>{entry.voided_at ? "Saisie annulée (historique conservé)" : "Prélèvement enregistré"}</td>
+          <td style={styles.td}>{!entry.voided_at && <button style={styles.smallButton} disabled={busy} onClick={() => voidPayment(entry)} type="button">Annuler la saisie</button>}</td>
+        </tr>)}
+        {!remittances.length && <tr><td style={styles.td} colSpan="5">Aucun prélèvement saisi pour ce mois.</td></tr>}
+      </tbody></table></div>
+    </div>}
   </>;
 }
 

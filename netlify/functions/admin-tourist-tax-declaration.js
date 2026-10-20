@@ -27,7 +27,7 @@ export async function handler(event) {
 
   try {
     const bookingsResult = await supabase.from("booking_requests")
-      .select("id,start_date,end_date,guest_first_name,guest_last_name,tourist_tax_amount,tourist_tax_collected,tourist_tax_refunded,tourist_tax_collector,tourist_tax_snapshot")
+      .select("id,status,start_date,end_date,guest_first_name,guest_last_name,tourist_tax_amount,tourist_tax_collected,tourist_tax_refunded,tourist_tax_collector,tourist_tax_snapshot")
       .lt("start_date", nextMonth)
       .gt("end_date", firstNight)
       .not("tourist_tax_snapshot", "is", null)
@@ -35,12 +35,33 @@ export async function handler(event) {
       .order("start_date", { ascending: true });
     if (bookingsResult.error) throw bookingsResult.error;
 
-    const rows = buildTouristTaxDeclarationRows({ bookings: bookingsResult.data || [] });
+    // Regulatory lookup is for the declaration ONLY; the commercial snapshot
+    // remains the authority for the contractual amount and is never altered.
+    const [historyResult, rulesResult] = await Promise.all([
+      supabase.from("tourist_tax_classification_history")
+        .select("classification,effective_from,effective_to")
+        .lte("effective_from", nextMonth).order("effective_from", { ascending: true }),
+      supabase.from("tourist_tax_rules")
+        .select("id,classification,effective_from,effective_to,calculation_type,base_rate_basis_points,department_additional_basis_points,regional_additional_basis_points,base_cap_cents,fixed_rate_cents,is_active")
+        .eq("is_active", true).lte("effective_from", nextMonth),
+    ]);
+    if (historyResult.error) throw historyResult.error;
+    if (rulesResult.error) throw rulesResult.error;
+    // Local civil date in Aure-Louron. A booked future night is not yet due.
+    const todayDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date());
+    const rows = buildTouristTaxDeclarationRows({
+      bookings: bookingsResult.data || [],
+      classificationHistory: historyResult.data || [],
+      rules: rulesResult.data || [],
+      todayDate,
+    });
     const summary = summarizeTouristTaxDeclaration(rows, { year, month });
     return json(200, {
       ...summary,
       generatedAt: new Date().toISOString(),
-      note: "Registre historique en lecture seule. Les montants proviennent des snapshots enregistrés avec les réservations et ne sont pas recalculés avec des règles saisies ultérieurement.",
+      note: "Les montants contractuels restent issus des snapshots. La taxe indicative Aure Louron est recalculée séparément selon le classement et le barème à chaque nuit. Confirmer les nuitées réellement effectuées avant déclaration.",
     });
   } catch (error) {
     console.error("Erreur registre taxe de séjour :", error);

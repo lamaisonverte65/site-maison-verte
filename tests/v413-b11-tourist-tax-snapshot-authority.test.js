@@ -58,12 +58,12 @@ test("B1.1 a retrodated current rule cannot replace the historical snapshot", ()
   assert.notEqual(rows[0].snapshotTaxCents, 360);
 });
 
-test("B1.1 register endpoint no longer reloads regulatory history to recalculate old bookings", () => {
+test("B1.1 register keeps historical snapshots and reads rules only for a separate declaration amount", () => {
   const endpoint = read("netlify/functions/admin-tourist-tax-declaration.js");
-  assert.doesNotMatch(endpoint, /tourist_tax_classification_history/);
-  assert.doesNotMatch(endpoint, /tourist_tax_rules/);
-  assert.doesNotMatch(endpoint, /classificationHistory/);
-  assert.doesNotMatch(endpoint, /rules:/);
+  assert.match(endpoint, /tourist_tax_classification_history/);
+  assert.match(endpoint, /tourist_tax_rules/);
+  assert.match(endpoint, /classificationHistory/);
+  assert.match(endpoint, /rules:/);
   assert.doesNotMatch(endpoint, /\.insert\(/);
   assert.doesNotMatch(endpoint, /\.update\(/);
   assert.doesNotMatch(endpoint, /\.delete\(/);

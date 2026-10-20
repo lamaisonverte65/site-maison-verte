@@ -22,10 +22,15 @@ test("tourist tax supports classifications from unclassified through 5 stars in 
   }
 });
 
-test("historical tourist-tax declaration is snapshot-based and no longer resolves the live classification catalog", () => {
-  assert.match(declaration, /tourist_tax_snapshot|snapshotTaxCents|snapshotClassification/);
-  assert.doesNotMatch(declaration, /calculateTouristTaxNight/);
-  assert.doesNotMatch(declaration, /resolveRegulatoryClassification|resolveRegulatoryRule/);
+test("historical tourist-tax snapshots remain immutable while a separate nightly regulatory amount is calculated", () => {
+  // The booked/collected tax stays bound to the original snapshot.
+  assert.match(declaration, /const snapshotTaxCents = snapshotCents\(night\.totalTaxCents\)/);
+  assert.match(declaration, /commercialTaxCents: snapshotTaxCents/);
+  // F3.5 deliberately reads dated classification and rules to compute a *separate*
+  // indicative amount for the actual night's Aure-Louron declaration.
+  assert.match(declaration, /function regulatoryNight\(/);
+  assert.match(declaration, /calculateTouristTaxNight\(/);
+  assert.match(declaration, /dueTaxCents: legal\.dueCents/);
 });
 
 test("2026 4-star and 5-star Aure-Louron fixed rates are seeded", () => {
