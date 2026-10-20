@@ -102,8 +102,15 @@ test('zero-euro accounting refund is flagged, not a transaction', () => {
 test('refund panel is read only: separate tab, no manual refund creation and no refunds in expense tab', () => {
   const source = fs.readFileSync('src/components/admin/DeclarationsPanel.jsx', 'utf8');
   assert.match(source, /\["refund",\s*"Remboursements"\]/);
-  assert.match(source, /subtab === "refund"[\s\S]*?renderTable\(yearEntries\.filter\(\(entry\) => entry\.entry_kind === "refund"\)\)/);
-  assert.match(source, /\["income",\s*"expense"\]\.includes\(subtab\)/);
+  assert.match(source, /subtab === "refund"[\s\S]*?renderTable\(filteredJournalEntries/);
+  const filters = fs.readFileSync('src/utils/accountingJournalFilters.js', 'utf8');
+  assert.match(filters, /refund: \{ kind: "refund" \}/);
+  assert.match(filters, /if \(kind && entry\.entry_kind !== kind\) return false/);
+  // Depuis V4.14, Dépenses possède son propre écran d'analyse ;
+  // seuls les entry_kind=expense y sont sélectionnés.
+  assert.match(source, /subtab === "expense" && <ExpenseAnalysisPanel/);
+  const analysis = fs.readFileSync('src/utils/expenseAnalysis.js', 'utf8');
+  assert.match(analysis, /entry\.entry_kind !== "expense"/);
   assert.doesNotMatch(source, /openNew\("refund"\)|addDomain\("refund"\)/);
   assert.match(source, /entry\.source === "manual" && entry\.entry_kind !== "refund"/);
 });

@@ -7,15 +7,32 @@ function assertSupabase(result, fallback) {
   return result?.data;
 }
 
+// Supabase/PostgREST limite normalement une réponse à 1 000 lignes. Sans pagination,
+// les totaux du journal paraissaient complets même lorsque des écritures manquaient.
+export async function fetchAllAccountingEntries(supabase, pageSize = 500) {
+  const entries = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const result = await supabase.from("accounting_entries")
+      .select(ENTRY_FIELDS)
+      .order("entry_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+    const page = assertSupabase(result, "Impossible de charger le journal comptable.") || [];
+    entries.push(...page);
+    if (page.length < pageSize) return entries;
+  }
+}
+
 export async function fetchAccountingData(supabase) {
-  const [categoriesResult, entriesResult, importsResult] = await Promise.all([
+  const [categoriesResult, entries, importsResult] = await Promise.all([
     supabase.from("accounting_categories").select("*").order("entry_kind").order("sort_order").order("name"),
-    supabase.from("accounting_entries").select(ENTRY_FIELDS).order("entry_date", { ascending: false }).order("created_at", { ascending: false }),
+    fetchAllAccountingEntries(supabase),
     supabase.from("accounting_import_batches").select("*").order("created_at", { ascending: false }),
   ]);
   return {
     categories: assertSupabase(categoriesResult, "Impossible de charger les catégories comptables.") || [],
-    entries: assertSupabase(entriesResult, "Impossible de charger le journal comptable.") || [],
+    entries,
     importBatches: assertSupabase(importsResult, "Impossible de charger les imports comptables.") || [],
   };
 }
@@ -33,6 +50,21 @@ export async function createAccountingCategory(supabase, values) {
 }
 
 function entryPayload(values) {
+  // Lien documentaire volontairement local : seul le NOM du justificatif est conservé
+  // dans les métadonnées de la ligne comptable, aucun fichier dans Supabase Storage.
+  const metadata = values.metadata && typeof values.metadata === "object" && !Array.isArray(values.metadata)
+    ? { ...values.metadata } : {};
+  if (values.entry_kind === "expense") {
+    delete metadata.receipt_origin;
+    const reference = String(values.receipt_reference || "").trim();
+    if (reference) metadata.receipt_reference = reference;
+    else delete metadata.receipt_reference;
+  } else if (values.entry_kind === "income") {
+    delete metadata.receipt_reference;
+    const origin = String(values.receipt_origin || "").trim();
+    if (origin) metadata.receipt_origin = origin;
+    else delete metadata.receipt_origin;
+  }
   return {
     entry_date: values.entry_date,
     entry_kind: values.entry_kind,
@@ -44,7 +76,7 @@ function entryPayload(values) {
     source: "manual",
     payment_method: String(values.payment_method || "").trim() || null,
     notes: String(values.notes || "").trim() || null,
-    metadata: values.entry_kind === "income" && values.receipt_origin ? { receipt_origin: String(values.receipt_origin).trim() } : {},
+    metadata,
   };
 }
 

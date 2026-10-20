@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../supabaseClient";
 import { styles } from "./adminStyles";
 import {
@@ -32,35 +32,42 @@ import AccountingImportHistory from "./AccountingImportHistory";
 import AccountingImportGuide from "./AccountingImportGuide";
 import DirectStripeAccountingImport from "./DirectStripeAccountingImport.jsx";
 import ReconciliationTableView from "./AccountingReconciliationPanel";
+import ExpenseAnalysisPanel from "./ExpenseAnalysisPanel.jsx";
+import AccountingJournalFilters from "./AccountingJournalFilters.jsx";
+import { EMPTY_JOURNAL_FILTERS, JOURNAL_TAB_SCOPES, filterAccountingJournalEntries } from "../../utils/accountingJournalFilters.js";
+import "./declarationsV414Responsive.css";
+import { findPotentialDuplicateExpense } from "../../utils/expenseAnalysis.js";
 
 const SUBTABS = [
-  ["summary", "Synthèse"], ["income", "Recettes"], ["refund", "Remboursements"], ["expense", "Dépenses"],
+  ["summary", "Synthèse"], ["income", "Recettes"], ["refund", "Remboursements"], ["fees", "Frais"], ["expense", "Dépenses"],
   ["assets", "Immobilisations"], ["imports", "Imports"], ["reconciliation", "Rapprochement"], ["tax", "Taxe de séjour"],
 ];
 const money = (value) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(value || 0));
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const TREATMENT_LABELS = { current: "Courant", fixed_asset: "Immobilisation", to_review: "À revoir", non_deductible: "Non déductible" };
 const SOURCE_LABELS = { manual: "Manuel", booking: "Booking", airbnb: "Airbnb", stripe: "Stripe", other: "Autre" };
 const emptyForm = (kind = "expense") => ({
-  id: null, entry_date: today(), entry_kind: kind, category_id: "", label: "", counterparty: "",
+  id: null, entry_date: today(), entry_kind: kind, category_id: "", label: "", counterparty: "", receipt_reference: "",
   amount_ttc: "", treatment: "current", payment_method: "", notes: "", asset_category: "",
   in_service_date: today(), acquisition_value: "", depreciation_method: "", depreciation_duration_months: "",
   residual_value: "0", asset_notes: "", receipt_origin: "Direct",
 });
 
-function EntryModal({ form, categories, onChange, onClose, onSave }) {
+function EntryModal({ form, categories, onChange, onClose, onSave, inline = false, saving = false }) {
   const relevant = categories.filter((category) => category.entry_kind === form.entry_kind && category.is_active !== false);
-  return <div style={styles.modalOverlay}><form style={styles.modal} onSubmit={onSave}>
-    <div style={styles.modalHeader}><h2 style={{ margin: 0 }}>{form.id ? "Modifier l'écriture" : form.entry_kind === "income" ? "Ajouter une recette" : "Ajouter une dépense"}</h2><button type="button" style={styles.closeButton} onClick={onClose}>×</button></div>
-    <div style={styles.accountingFormGrid}>
-      <label style={styles.label}>Date<input style={styles.input} type="date" value={form.entry_date} onChange={(e) => onChange("entry_date", e.target.value)} required /></label>
-      <label style={styles.label}>Domaine<select style={styles.input} value={form.category_id} onChange={(e) => onChange("category_id", e.target.value)}><option value="">Sans domaine</option>{relevant.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-      <label style={styles.label}>Libellé<input style={styles.input} value={form.label} onChange={(e) => onChange("label", e.target.value)} required /></label>
-      <label style={styles.label}>{form.entry_kind === "income" ? "Client / origine" : "Fournisseur"}<input style={styles.input} value={form.counterparty} onChange={(e) => onChange("counterparty", e.target.value)} /></label>
-      <label style={styles.label}>Montant TTC (€)<input style={styles.input} type="number" min="0" step="0.01" value={form.amount_ttc} onChange={(e) => onChange("amount_ttc", e.target.value)} required /></label>
+  return <div style={inline ? { minWidth: 0 } : styles.modalOverlay}><form className={inline ? "lmv-fee-form" : undefined} style={inline ? { ...styles.modal, maxWidth: "100%", maxHeight: "none", overflow: "visible", boxShadow: "none", border: "1px solid #e5e7eb", borderRadius: 18 } : styles.modal} onSubmit={onSave}>
+    <div style={styles.modalHeader}><h2 style={{ margin: 0 }}>{inline ? "Enregistrer un frais payé" : form.id ? "Modifier l'écriture" : form.entry_kind === "income" ? "Ajouter une recette" : "Ajouter une dépense"}</h2>{!inline && <button type="button" style={styles.closeButton} onClick={onClose}>×</button>}</div>
+    {inline && <p style={styles.muted}>Uniquement les dépenses réellement réglées. Les factures et justificatifs restent classés sur ton PC, avec sauvegarde pCloud.</p>}
+    <div className={inline ? "lmv-fee-form-fields" : undefined} style={inline ? undefined : styles.accountingFormGrid}>
+      <label className={inline ? "lmv-fee-field lmv-fee-date" : undefined} style={styles.label}>{form.entry_kind === "expense" ? "Date réelle du paiement" : "Date"}<input style={styles.input} type="date" max={inline && form.entry_kind === "expense" ? today() : undefined} value={form.entry_date} onChange={(e) => onChange("entry_date", e.target.value)} required /></label>
+      <label className={inline ? "lmv-fee-field lmv-fee-domain" : undefined} style={styles.label}>Domaine<select style={styles.input} value={form.category_id} onChange={(e) => onChange("category_id", e.target.value)} required={inline}><option value="">Sans domaine</option>{relevant.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+      <label className={inline ? "lmv-fee-field lmv-fee-label" : undefined} style={styles.label}>Libellé<input style={styles.input} value={form.label} onChange={(e) => onChange("label", e.target.value)} required /></label>
+      <label className={inline ? "lmv-fee-field lmv-fee-supplier" : undefined} style={styles.label}>{form.entry_kind === "income" ? "Client / origine" : "Fournisseur"}<input style={styles.input} value={form.counterparty} onChange={(e) => onChange("counterparty", e.target.value)} /></label>
+      <label className={inline ? "lmv-fee-field lmv-fee-amount" : undefined} style={styles.label}>Montant TTC (€)<input style={styles.input} type="number" min="0" step="0.01" value={form.amount_ttc} onChange={(e) => onChange("amount_ttc", e.target.value)} required /></label>
       {form.entry_kind === "income" && <label style={styles.label}>Origine de l’encaissement<input style={styles.input} value={form.receipt_origin || ""} onChange={(e) => onChange("receipt_origin", e.target.value)} placeholder="Direct, Airbnb, Clévacances, Autre…" /></label>}
-      <label style={styles.label}>Mode de paiement<input style={styles.input} value={form.payment_method} onChange={(e) => onChange("payment_method", e.target.value)} placeholder="Carte, virement, espèces…" /></label>
-      <label style={styles.label}>Traitement<select style={styles.input} value={form.treatment} onChange={(e) => onChange("treatment", e.target.value)}><option value="current">{form.entry_kind === "income" ? "Recette courante" : "Charge courante"}</option>{form.entry_kind === "expense" && <option value="fixed_asset">Immobilisation</option>}<option value="to_review">À revoir</option><option value="non_deductible">Non déductible</option></select></label>
+      {form.entry_kind === "expense" && <label className={inline ? "lmv-fee-field lmv-fee-receipt" : undefined} style={styles.label}>Référence du justificatif (facultatif)<input style={styles.input} maxLength={250} value={form.receipt_reference || ""} onChange={(e) => onChange("receipt_reference", e.target.value)} placeholder="2026-10_EDF.pdf (sur le PC)" /></label>}
+      <label className={inline ? "lmv-fee-field lmv-fee-payment" : undefined} style={styles.label}>Mode de paiement<input style={styles.input} value={form.payment_method} onChange={(e) => onChange("payment_method", e.target.value)} placeholder="Carte, virement, espèces…" /></label>
+      <label className={inline ? "lmv-fee-field lmv-fee-treatment" : undefined} style={styles.label}>Traitement<select style={styles.input} value={form.treatment} onChange={(e) => onChange("treatment", e.target.value)}><option value="current">{form.entry_kind === "income" ? "Recette courante" : "Charge courante"}</option>{form.entry_kind === "expense" && <option value="fixed_asset">Immobilisation</option>}<option value="to_review">À revoir</option><option value="non_deductible">Non déductible</option></select></label>
     </div>
     {form.treatment === "fixed_asset" && <div style={styles.accountingAssetBox}>
       <h3 style={{ marginTop: 0 }}>Fiche immobilisation</h3><p style={styles.muted}>La méthode et la durée restent facultatives : aucun traitement fiscal n'est imposé à ce stade.</p>
@@ -73,8 +80,8 @@ function EntryModal({ form, categories, onChange, onClose, onSave }) {
         <label style={styles.label}>Valeur résiduelle (€)<input style={styles.input} type="number" min="0" step="0.01" value={form.residual_value} onChange={(e) => onChange("residual_value", e.target.value)} /></label>
       </div>
     </div>}
-    <label style={styles.label}>Notes<textarea style={{ ...styles.input, minHeight: 80 }} value={form.notes} onChange={(e) => onChange("notes", e.target.value)} /></label>
-    <div style={styles.modalActions}><button type="button" style={styles.smallButton} onClick={onClose}>Annuler</button><button type="submit" style={styles.addButton}>Enregistrer</button></div>
+    <label className={inline ? "lmv-fee-notes" : undefined} style={styles.label}>Notes<textarea style={{ ...styles.input, minHeight: 80 }} value={form.notes} onChange={(e) => onChange("notes", e.target.value)} /></label>
+    <div style={styles.modalActions}>{!inline && <button type="button" style={styles.smallButton} onClick={onClose} disabled={saving}>Annuler</button>}<button type="submit" className={inline ? "lmv-fee-save" : undefined} style={styles.addButton} disabled={saving}>{saving ? "Enregistrement…" : inline ? "Enregistrer le frais" : "Enregistrer"}</button></div>
   </form></div>;
 }
 
@@ -275,6 +282,10 @@ export default function DeclarationsPanel() {
   const [data, setData] = useState({ categories: [], entries: [], importBatches: [] });
   const [loading, setLoading] = useState(true); const [error, setError] = useState("");
   const [subtab, setSubtab] = useState("summary"); const [form, setForm] = useState(null);
+  const [journalFilters, setJournalFilters] = useState({});
+  const [expenseForm, setExpenseForm] = useState(() => emptyForm("expense"));
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [bookingPreview, setBookingPreview] = useState(null);
   const [bookingImporting, setBookingImporting] = useState(false);
@@ -324,13 +335,54 @@ export default function DeclarationsPanel() {
     const firstYear = Math.min(currentYear - 2, ...yearsFromDates, ...batchYears, currentYear);
     return Array.from({ length: currentYear - firstYear + 1 }, (_, index) => String(currentYear - index));
   }, [data.entries, data.importBatches, financialRegistry]);
-  const summary = accountingYearSummary(data.entries, year);
-  const yearEntries = data.entries.filter((entry) => String(entry.entry_date || "").startsWith(`${year}-`));
+  // Les filtres sont indépendants par onglet : ils n'altèrent jamais les écritures
+  // ni les calculs de Rapprochement / Taxe de séjour.
+  const currentJournalFilters = journalFilters[subtab] || EMPTY_JOURNAL_FILTERS;
+  const currentJournalScope = JOURNAL_TAB_SCOPES[subtab] || {};
+  const filteredJournalEntries = filterAccountingJournalEntries(data.entries, {
+    year, ...currentJournalScope, ...currentJournalFilters,
+  });
+  const summaryEntries = subtab === "summary" ? filteredJournalEntries : data.entries;
+  const summary = accountingYearSummary(summaryEntries, year);
   const categoryName = (entry) => entry.accounting_categories?.name || "Sans domaine";
+  const journalFilterBar = JOURNAL_TAB_SCOPES[subtab] && <AccountingJournalFilters
+    key={subtab} tab={subtab} year={year} entries={data.entries}
+    scope={currentJournalScope} filters={currentJournalFilters}
+    onChange={(filters) => setJournalFilters((previous) => ({ ...previous, [subtab]: filters }))}
+    count={filteredJournalEntries.length}
+  />;
 
   function openNew(kind) { setForm(emptyForm(kind)); }
-  function openEdit(entry) { const asset = Array.isArray(entry.accounting_fixed_assets) ? entry.accounting_fixed_assets[0] : entry.accounting_fixed_assets; setForm({ ...emptyForm(entry.entry_kind), ...entry, category_id: entry.category_id || "", ...(asset || {}) }); }
-  async function save(event) { event.preventDefault(); try { if (form.id) await updateManualAccountingEntry(supabase, form.id, form); else await createManualAccountingEntry(supabase, form); setForm(null); await reload(); } catch (e) { alert(`Erreur : ${e.message}`); } }
+  function openEdit(entry) {
+    const asset = Array.isArray(entry.accounting_fixed_assets) ? entry.accounting_fixed_assets[0] : entry.accounting_fixed_assets;
+    setForm({ ...emptyForm(entry.entry_kind), ...entry, category_id: entry.category_id || "", receipt_reference: entry.metadata?.receipt_reference || "", ...(asset || {}) });
+  }
+  async function persistManualEntry(values, onSuccess) {
+    if (savingRef.current) return;
+    if (values.entry_kind === "expense") {
+      const duplicate = findPotentialDuplicateExpense(data.entries, values);
+      if (duplicate && !confirm(`Une dépense similaire est déjà enregistrée le ${duplicate.entry_date} (${money(duplicate.amount_ttc)}, ${SOURCE_LABELS[duplicate.source] || duplicate.source}). Enregistrer malgré tout ?`)) return;
+    }
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      if (values.id) await updateManualAccountingEntry(supabase, values.id, values);
+      else await createManualAccountingEntry(supabase, values);
+      onSuccess();
+      await reload();
+    } catch (e) { alert(`Erreur : ${e.message}`); }
+    finally { savingRef.current = false; setSaving(false); }
+  }
+  async function save(event) { event.preventDefault(); if (form) await persistManualEntry(form, () => setForm(null)); }
+  async function saveExpense(event) {
+    event.preventDefault();
+    if (!expenseForm.category_id || !Number.isFinite(Number(expenseForm.amount_ttc)) || Number(expenseForm.amount_ttc) <= 0) { alert("Choisis une catégorie et un montant payé supérieur à zéro."); return; }
+    if (!expenseForm.entry_date || expenseForm.entry_date > today()) { alert("La date de paiement doit être réelle et ne peut pas être dans le futur."); return; }
+    await persistManualEntry(expenseForm, () => {
+      setYear(expenseForm.entry_date.slice(0, 4));
+      setExpenseForm(emptyForm("expense"));
+    });
+  }
   async function remove(entry) { if (entry.source !== "manual" || !confirm(`Supprimer « ${entry.label} » ?`)) return; try { await deleteManualAccountingEntry(supabase, entry.id); await reload(); } catch (e) { alert(`Erreur : ${e.message}`); } }
   async function previewBookingFile(file) {
     if (!file) return;
@@ -449,15 +501,32 @@ export default function DeclarationsPanel() {
   }
   async function addDomain(kind) { const name = prompt(`Nom du nouveau domaine ${kind === "income" ? "de recette" : "de dépense"} :`); if (!name?.trim()) return; const code = `custom_${name.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")}_${Date.now()}`; try { await createAccountingCategory(supabase, { entry_kind: kind, name, code }); await reload(); } catch (e) { alert(`Erreur : ${e.message}`); } }
 
-  const renderTable = (entries) => <div style={styles.tableWrapper}><table style={{ ...styles.table, minWidth: 900 }}><thead><tr><th style={styles.th}>Date</th><th style={styles.th}>Domaine</th><th style={styles.th}>Libellé</th><th style={styles.th}>Tiers</th><th style={styles.th}>Traitement</th><th style={styles.th}>Source</th><th style={styles.th}>Montant</th><th style={styles.th}>Actions</th></tr></thead><tbody>{entries.map((entry) => <tr key={entry.id}><td style={styles.td}>{entry.entry_date}</td><td style={styles.td}>{categoryName(entry)}</td><td style={styles.td}>{entry.label}</td><td style={styles.td}>{entry.counterparty || "—"}</td><td style={styles.td}>{entry.entry_kind === "refund" ? "Remboursement client" : entry.treatment === "current" ? (entry.entry_kind === "income" ? "Recette courante" : "Charge courante") : (TREATMENT_LABELS[entry.treatment] || entry.treatment)}</td><td style={styles.td}>{SOURCE_LABELS[entry.source] || entry.source}</td><td style={styles.td}><strong>{money(entry.amount_ttc)}</strong></td><td style={styles.td}>{entry.source === "manual" && entry.entry_kind !== "refund" ? <div style={styles.contactButtons}><button style={styles.smallButton} onClick={() => openEdit(entry)}>Modifier</button><button style={styles.deleteButton} onClick={() => remove(entry)}>Supprimer</button></div> : "Import"}</td></tr>)}{!entries.length && <tr><td style={styles.td} colSpan="8">Aucune écriture pour cet exercice.</td></tr>}</tbody></table></div>;
+  const renderTable = (entries, { showReceiptReference = false, responsiveCards = false } = {}) => <><div className={responsiveCards ? "lmv-journal-desktop" : undefined} style={styles.tableWrapper}><table style={{ ...styles.table, minWidth: 900 }}><thead><tr><th style={styles.th}>Date</th><th style={styles.th}>Domaine</th><th style={styles.th}>Libellé</th><th style={styles.th}>Tiers</th>{showReceiptReference && <th style={styles.th}>Justificatif local</th>}<th style={styles.th}>Traitement</th><th style={styles.th}>Source</th><th style={styles.th}>Montant</th><th style={styles.th}>Actions</th></tr></thead><tbody>{entries.map((entry) => <tr key={entry.id}><td style={styles.td}>{entry.entry_date}</td><td style={styles.td}>{categoryName(entry)}</td><td style={styles.td}>{entry.label}</td><td style={styles.td}>{entry.counterparty || "—"}</td>{showReceiptReference && <td style={styles.td}>{entry.metadata?.receipt_reference || "—"}</td>}<td style={styles.td}>{entry.entry_kind === "refund" ? "Remboursement client" : entry.treatment === "current" ? (entry.entry_kind === "income" ? "Recette courante" : "Charge courante") : (TREATMENT_LABELS[entry.treatment] || entry.treatment)}</td><td style={styles.td}>{SOURCE_LABELS[entry.source] || entry.source}</td><td style={styles.td}><strong>{money(entry.amount_ttc)}</strong></td><td style={styles.td}>{entry.source === "manual" && entry.entry_kind !== "refund" ? <div style={styles.contactButtons}><button type="button" style={styles.smallButton} onClick={() => openEdit(entry)}>Modifier</button><button type="button" style={styles.deleteButton} onClick={() => remove(entry)}>Supprimer</button></div> : "Import"}</td></tr>)}{!entries.length && <tr><td style={styles.td} colSpan={showReceiptReference ? 9 : 8}>Aucune écriture pour cette sélection.</td></tr>}</tbody></table></div>
+    {responsiveCards && <div className="lmv-journal-mobile" aria-label="Écritures comptables">
+      {entries.length ? entries.map((entry) => <article className="lmv-journal-card" key={entry.id}>
+        <div className="lmv-journal-card-top"><strong>{entry.label || "Sans libellé"}</strong><strong>{money(entry.amount_ttc)}</strong></div>
+        <div className="lmv-journal-card-meta"><span>{entry.entry_date}</span><span>{categoryName(entry)}</span></div>
+        {entry.counterparty && <p><b>{entry.entry_kind === "income" ? "Client / origine" : entry.entry_kind === "expense" ? "Fournisseur" : "Tiers"} :</b> {entry.counterparty}</p>}
+        <p><b>Source :</b> {SOURCE_LABELS[entry.source] || entry.source} · <b>Traitement :</b> {entry.entry_kind === "refund" ? "Remboursement client" : entry.treatment === "current" ? (entry.entry_kind === "income" ? "Recette courante" : "Charge courante") : (TREATMENT_LABELS[entry.treatment] || entry.treatment)}</p>
+        {showReceiptReference && entry.metadata?.receipt_reference && <p className="lmv-journal-receipt"><b>Justificatif local :</b> {entry.metadata.receipt_reference}</p>}
+        {entry.source === "manual" && entry.entry_kind !== "refund" && <div className="lmv-journal-card-actions"><button type="button" style={styles.smallButton} onClick={() => openEdit(entry)}>Modifier</button><button type="button" style={styles.deleteButton} onClick={() => remove(entry)}>Supprimer</button></div>}
+      </article>) : <p className="lmv-journal-empty">Aucune écriture pour cette sélection.</p>}
+    </div>}
+  </>;
 
   return <div style={{ ...styles.accountingPanel, minWidth: 0, maxWidth: "100%" }}>
-    <div style={styles.accountingToolbar}><div style={styles.tabs}>{SUBTABS.map(([key, label]) => <button key={key} style={subtab === key ? styles.activeTab : styles.tab} onClick={() => setSubtab(key)}>{label}</button>)}</div><label style={styles.accountingYear}>Exercice <select style={styles.select} value={year} onChange={(e) => setYear(e.target.value)}>{years.map((y) => <option key={y}>{y}</option>)}</select></label></div>
+    <div className="lmv-declarations-toolbar" style={styles.accountingToolbar}><div className="lmv-declarations-tabs" role="tablist" aria-label="Rubriques des déclarations" style={styles.tabs}>{SUBTABS.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={subtab === key} style={subtab === key ? styles.activeTab : styles.tab} onClick={() => setSubtab(key)}>{label}</button>)}</div><label className="lmv-declarations-year" style={styles.accountingYear}>Exercice <select style={styles.select} value={year} onChange={(e) => setYear(e.target.value)}>{years.map((y) => <option key={y}>{y}</option>)}</select></label></div>
     {subtab !== "reconciliation" && loading && <p style={styles.info}>Chargement de la comptabilité…</p>}{subtab !== "reconciliation" && error && <p style={styles.error}>{error}</p>}
-    {!loading && !error && subtab === "summary" && <><div style={styles.homeFinanceGrid}><div style={styles.accountingStat}><span>Recettes</span><strong>{money(summary.income)}</strong></div><div style={styles.accountingStat}><span>Dépenses</span><strong>{money(summary.expense)}</strong></div><div style={styles.accountingStat}><span>Remboursements</span><strong>{money(summary.refunds)}</strong></div><div style={styles.accountingStat}><span>Solde indicatif</span><strong>{money(summary.result)}</strong></div><div style={styles.accountingStat}><span>Écritures</span><strong>{summary.count}</strong></div></div><p style={styles.muted}>Synthèse comptable indicative. Le traitement fiscal de la déclaration sera défini séparément selon le régime applicable à l'exercice.</p>{renderTable(yearEntries)}</>}
-    {!loading && !error && ["income", "expense"].includes(subtab) && <><div style={styles.panelHeader}><h3>{subtab === "income" ? "Recettes" : "Dépenses"} {year}</h3><div style={styles.contactButtons}><button style={styles.smallButton} onClick={() => addDomain(subtab)}>+ Ajouter un domaine</button><button style={styles.addButton} onClick={() => openNew(subtab)}>+ Ajouter {subtab === "income" ? "une recette" : "une dépense"}</button></div></div>{renderTable(yearEntries.filter((entry) => entry.entry_kind === subtab))}</>}
-    {!loading && !error && subtab === "refund" && <><h3>Remboursements {year}</h3><p style={styles.muted}>Mouvements comptables enregistrés, en lecture seule. Les remboursements ne sont pas des charges d’exploitation. Les écritures Stripe doivent être rapprochées de chaque remboursement confirmé.</p>{renderTable(yearEntries.filter((entry) => entry.entry_kind === "refund"))}</>}
-    {!loading && !error && subtab === "assets" && <><h3>Immobilisations</h3><p style={styles.muted}>Inventaire des dépenses classées en immobilisation. Aucun amortissement fiscal n'est calculé automatiquement à ce stade.</p>{renderTable(yearEntries.filter((entry) => entry.treatment === "fixed_asset"))}</>}
+    {!loading && !error && subtab === "summary" && <>{journalFilterBar}<div style={styles.homeFinanceGrid}><div style={styles.accountingStat}><span>Recettes</span><strong>{money(summary.income)}</strong></div><div style={styles.accountingStat}><span>Dépenses</span><strong>{money(summary.expense)}</strong></div><div style={styles.accountingStat}><span>Remboursements</span><strong>{money(summary.refunds)}</strong></div><div style={styles.accountingStat}><span>Solde indicatif</span><strong>{money(summary.result)}</strong></div><div style={styles.accountingStat}><span>Écritures</span><strong>{summary.count}</strong></div></div><p style={styles.muted}>Les montants reflètent les filtres sélectionnés. Synthèse comptable indicative : le traitement fiscal de la déclaration sera défini séparément selon le régime applicable à l'exercice.</p>{renderTable(filteredJournalEntries, { responsiveCards: true })}</>}
+    {!loading && !error && subtab === "fees" && <section style={{ display: "grid", gap: 18, minWidth: 0 }}>
+      <div className="lmv-fees-header" style={styles.panelHeader}><div><h3 style={{ margin: 0 }}>Frais — dépenses payées</h3><p style={styles.muted}>Saisie manuelle dans le journal existant. Aucun PDF ou photo n'est envoyé à Supabase.</p></div><button type="button" style={styles.smallButton} onClick={() => addDomain("expense")}>+ Ajouter une catégorie</button></div>
+      <EntryModal inline form={expenseForm} categories={data.categories} onChange={(key, value) => setExpenseForm((current) => ({ ...current, [key]: value }))} onSave={saveExpense} saving={saving} />
+      <div>{journalFilterBar}<div className="lmv-fees-header" style={styles.panelHeader}><h4 style={{ margin: 0 }}>Frais manuels de {year}</h4><button type="button" style={styles.smallButton} onClick={() => setSubtab("expense")}>Voir toutes les dépenses et les synthèses</button></div>{renderTable(filteredJournalEntries, { showReceiptReference: true, responsiveCards: true })}</div>
+    </section>}
+    {!loading && !error && subtab === "expense" && <ExpenseAnalysisPanel entries={data.entries} categories={data.categories} year={year} renderTable={renderTable} onAddCategory={() => addDomain("expense")} onNewExpense={() => { setSubtab("fees"); }} />}
+    {!loading && !error && subtab === "income" && <><div style={styles.panelHeader}><h3>Recettes {year}</h3><div style={styles.contactButtons}><button style={styles.smallButton} onClick={() => addDomain("income")}>+ Ajouter un domaine</button><button style={styles.addButton} onClick={() => openNew("income")}>+ Ajouter une recette</button></div></div>{journalFilterBar}{renderTable(filteredJournalEntries, { responsiveCards: true })}</>}
+    {!loading && !error && subtab === "refund" && <><h3>Remboursements {year}</h3><p style={styles.muted}>Mouvements comptables enregistrés, en lecture seule. Les remboursements ne sont pas des charges d’exploitation. Les écritures Stripe doivent être rapprochées de chaque remboursement confirmé.</p>{journalFilterBar}{renderTable(filteredJournalEntries, { responsiveCards: true })}</>}
+    {!loading && !error && subtab === "assets" && <><h3>Immobilisations</h3><p style={styles.muted}>Inventaire des dépenses classées en immobilisation. Aucun amortissement fiscal n'est calculé automatiquement à ce stade.</p>{journalFilterBar}{renderTable(filteredJournalEntries, { responsiveCards: true })}</>}
     {subtab === "imports" && <>
       {!loading && !error && <BookingImportPanel data={data} year={year} preview={bookingPreview} importing={bookingImporting} onFile={previewBookingFile} onCancel={() => setBookingPreview(null)} onValidate={validateBookingImport} />}
       {!loading && !error && <DirectStripeAccountingImport year={Number(year)} onCreated={reload} />}
@@ -480,6 +549,6 @@ export default function DeclarationsPanel() {
       error={reconciliationRequestYear === Number(year) ? reconciliationError : ""}
     />}
     {!loading && !error && subtab === "tax" && <TouristTaxDeclarationPanel year={year} />}
-    {form && <EntryModal form={form} categories={data.categories} onChange={(key, value) => setForm((current) => ({ ...current, [key]: value }))} onClose={() => setForm(null)} onSave={save} />}
+    {form && <EntryModal form={form} categories={data.categories} onChange={(key, value) => setForm((current) => ({ ...current, [key]: value }))} onClose={() => { if (!saving) setForm(null); }} onSave={save} saving={saving} />}
   </div>;
 }

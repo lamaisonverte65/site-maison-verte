@@ -1,0 +1,147 @@
+/* V4.14 R2 — Styles isolés aux onglets Frais/Dépenses et à leur navigation.
+   Aucun impact sur les fonctions de réservation, de paiement ou de rapprochement. */
+.lmv-declarations-toolbar,
+.lmv-declarations-tabs,
+.lmv-fee-form,
+.lmv-fee-form-fields,
+.lmv-expenses-filters,
+.lmv-expense-breakdowns,
+.lmv-expense-journal { min-width: 0; max-width: 100%; box-sizing: border-box; }
+
+.lmv-declarations-tabs { flex: 1 1 580px; scrollbar-width: thin; }
+.lmv-declarations-tabs > button { flex: 0 0 auto; min-height: 42px; white-space: nowrap; }
+.lmv-declarations-year { flex: 0 0 auto; }
+
+.lmv-fee-form-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-areas:
+    "date domain supplier amount"
+    "label label payment payment"
+    "receipt receipt treatment treatment";
+  column-gap: 16px;
+  row-gap: 16px;
+  align-items: end;
+}
+.lmv-fee-form-fields .lmv-fee-field { min-width: 0; margin-top: 0 !important; }
+.lmv-fee-form-fields input,
+.lmv-fee-form-fields select,
+.lmv-fee-form textarea { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
+.lmv-fee-form-fields input,
+.lmv-fee-form-fields select { min-height: 44px; }
+.lmv-fee-form-fields .lmv-fee-date { grid-area: date; }
+.lmv-fee-form-fields .lmv-fee-domain { grid-area: domain; }
+.lmv-fee-form-fields .lmv-fee-supplier { grid-area: supplier; }
+.lmv-fee-form-fields .lmv-fee-amount { grid-area: amount; }
+.lmv-fee-form-fields .lmv-fee-label { grid-area: label; }
+.lmv-fee-form-fields .lmv-fee-payment { grid-area: payment; }
+.lmv-fee-form-fields .lmv-fee-receipt { grid-area: receipt; }
+.lmv-fee-form-fields .lmv-fee-treatment { grid-area: treatment; }
+.lmv-fee-notes { display: grid; min-width: 0; }
+.lmv-fee-save { min-height: 44px; }
+
+.lmv-expenses-header > div:first-child,
+.lmv-fees-header > div:first-child { min-width: 0; }
+.lmv-expenses-filters { min-width: 0; }
+.lmv-expense-filters-title { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.lmv-expense-search { display: grid; width: 100%; max-width: 480px; min-width: 0; }
+.lmv-expense-search input { box-sizing: border-box; }
+.lmv-expense-filter-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+.lmv-expense-filter-fields label { min-width: 0; margin-top: 0 !important; }
+.lmv-expense-filter-fields input,
+.lmv-expense-filter-fields select { box-sizing: border-box; max-width: 100%; min-height: 44px; }
+.lmv-expense-filters-toggle { display: none; padding: 10px 12px; min-height: 44px; border-radius: 12px; border: 1px solid #d1d5db; background: white; color: #2f4f35; cursor: pointer; font-weight: 700; }
+.lmv-expense-summary { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+.lmv-expense-summary > div { min-width: 0; overflow-wrap: anywhere; }
+
+.lmv-expense-breakdowns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.lmv-expense-breakdown { min-width: 0; }
+.lmv-expense-breakdown h4,
+.lmv-expense-journal h4 { margin: 0 0 10px; }
+.lmv-expense-breakdown-list { border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
+.lmv-expense-breakdown-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
+.lmv-expense-breakdown-row:last-child { border-bottom: none; }
+.lmv-expense-breakdown-row span { min-width: 0; overflow-wrap: anywhere; }
+.lmv-expense-breakdown-row strong { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lmv-expense-breakdown-empty { margin: 0; padding: 12px; color: #64748b; }
+
+.lmv-journal-mobile { display: none; }
+
+@media (max-width: 1020px) {
+  .lmv-fee-form-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "date domain"
+      "supplier amount"
+      "label label"
+      "payment receipt"
+      "treatment treatment";
+  }
+  .lmv-expense-filter-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .lmv-declarations-toolbar { display: flex; flex-direction: column; align-items: stretch !important; gap: 8px; width: 100%; }
+  .lmv-declarations-tabs { flex: 0 0 auto; width: 100%; overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: 10px !important; }
+  .lmv-declarations-year { align-self: flex-end; }
+  .lmv-expenses-header,
+  .lmv-fees-header { align-items: stretch !important; }
+  .lmv-expenses-actions { display: grid !important; grid-template-columns: minmax(0, 1fr); width: 100%; }
+  .lmv-expenses-actions > button,
+  .lmv-fees-header > button { width: 100%; min-width: 0; min-height: 44px; white-space: normal !important; }
+  .lmv-expense-filters-toggle { display: block; width: 100%; margin-top: 12px; }
+  .lmv-expense-search { max-width: none; }
+  .lmv-expense-filter-fields { display: none; }
+  .lmv-expense-filter-fields.is-expanded { display: grid; }
+  .lmv-expense-summary { grid-template-columns: minmax(0, 1fr) !important; }
+  .lmv-expense-breakdowns { grid-template-columns: minmax(0, 1fr); }
+  .lmv-journal-desktop { display: none; }
+  .lmv-journal-mobile { display: grid; gap: 12px; }
+  .lmv-journal-card { border: 1px solid #e5e7eb; border-radius: 14px; background: #fff; padding: 14px; min-width: 0; overflow-wrap: anywhere; }
+  .lmv-journal-card-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: start; }
+  .lmv-journal-card-top > strong:first-child { min-width: 0; flex: 1 1 140px; }
+  .lmv-journal-card-top > strong:last-child { white-space: nowrap; }
+  .lmv-journal-card-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; color: #475569; font-size: 13px; margin-top: 8px; }
+  .lmv-journal-card p { font-size: 13px; line-height: 1.45; margin: 8px 0 0; }
+  .lmv-journal-card-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+  .lmv-journal-card-actions button { white-space: normal; min-height: 44px; }
+  .lmv-journal-empty { color: #64748b; padding: 12px; border: 1px solid #e5e7eb; border-radius: 12px; }
+}
+
+@media (max-width: 600px) {
+  .lmv-fee-form { padding: 16px !important; }
+  .lmv-fee-form h2 { font-size: clamp(22px, 7vw, 30px); line-height: 1.1; }
+  .lmv-fee-form-fields {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "date" "domain" "label" "supplier" "amount" "payment" "receipt" "treatment";
+    row-gap: 12px;
+  }
+  .lmv-fee-form .lmv-fee-save { width: 100%; }
+  .lmv-expense-filter-fields.is-expanded { grid-template-columns: minmax(0, 1fr); }
+  .lmv-expenses-filters { padding: 12px !important; }
+}
+
+/* V4.14 — Filtres de consultation harmonisés (Synthèse, Recettes,
+   Remboursements, Frais et Immobilisations). */
+.lmv-accounting-journal-filters { min-width: 0; max-width: 100%; box-sizing: border-box; margin-bottom: 16px; }
+.lmv-accounting-filters-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.lmv-accounting-filter-search { display: grid; width: 100%; max-width: 480px; min-width: 0; margin-top: 12px; }
+.lmv-accounting-filter-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+.lmv-accounting-filter-fields label { min-width: 0; margin-top: 0 !important; }
+.lmv-accounting-filter-fields input,
+.lmv-accounting-filter-fields select { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; box-sizing: border-box; }
+.lmv-accounting-filters-toggle { display: none; width: 100%; min-height: 44px; padding: 10px 12px; border-radius: 12px; border: 1px solid #d1d5db; background: #fff; color: #2f4f35; cursor: pointer; font-weight: 700; }
+.lmv-accounting-filter-count { margin: 12px 0 0; color: #64748b; font-size: 13px; }
+@media (max-width: 1020px) {
+  .lmv-accounting-filter-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .lmv-accounting-journal-filters { padding: 12px !important; }
+  .lmv-accounting-filter-search { max-width: none; }
+  .lmv-accounting-filters-toggle { display: block; margin-top: 12px; }
+  .lmv-accounting-filter-fields { display: none; }
+  .lmv-accounting-filter-fields.is-expanded { display: grid; }
+}
+@media (max-width: 600px) {
+  .lmv-accounting-filter-fields.is-expanded { grid-template-columns: minmax(0, 1fr); }
+}
