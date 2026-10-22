@@ -1595,3 +1595,90 @@
 .livret-parking-notes p:last-child {
   margin-bottom: 0;
 }
+/* Livret FR / EN / ES — contrôles uniquement à l'écran */
+.livret-language-bar {
+  width: min(920px, calc(100% - 32px));
+  margin: 75px auto 18px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  border: 1px solid rgba(47, 79, 53, 0.25);
+  border-radius: 14px;
+  background: var(--livret-bg);
+  font-family: system-ui, sans-serif;
+  color: var(--livret-green);
+}
+.livret-language-bar label { font-weight: 700; }
+.livret-language-bar select,
+.livret-language-bar button {
+  font: inherit;
+  padding: 9px 13px;
+  color: var(--livret-green);
+  background: #fff;
+  border: 1px solid rgba(47, 79, 53, 0.4);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.livret-language-bar button { font-weight: 700; }
+.livret img[role="link"]:focus-visible {
+  outline: 3px solid #19583a;
+  outline-offset: 3px;
+}
+@media screen and (max-width: 600px) {
+  .livret-language-bar { justify-content: center; padding: 12px; }
+}
+@media print {
+  .livret-language-bar,
+  .livret img[role="link"]:focus-visible { display: none !important; }
+  .livret img[role="link"] { cursor: default !important; }
+}
+
+
+/* =========================================================
+   V4.15 — Ajustements limités aux pages 2 et 3 en espagnol.
+   Aucun changement FR/EN, départ (page 4) ou inventaires (10/11).
+   Les polices, corps et dimensions A4 restent inchangés.
+   ========================================================= */
+
+/* Page 2 : le sommaire espagnol est plus long que le sommaire français. */
+.livret[data-livret-lang="es"] .livret-welcome .livret-summary {
+  padding: 12px 18px 14px;
+  margin-top: 8px;
+}
+.livret[data-livret-lang="es"] .livret-welcome .livret-summary h2 {
+  margin-bottom: 12px;
+}
+.livret[data-livret-lang="es"] .livret-welcome .livret-summary-list {
+  gap: 5px !important;
+}
+.livret[data-livret-lang="es"] .livret-welcome .livret-summary-list a {
+  padding: 4px 0;
+  line-height: 1.5;
+  grid-template-columns: 96px minmax(0, 1fr) !important;
+}
+.livret[data-livret-lang="es"] .livret-welcome .livret-summary-list a span {
+  white-space: nowrap;
+}
+
+/* Page 3 exclusivement : gagner quelques millimètres sans réduire le texte. */
+.livret[data-livret-lang="es"] #fonctionnement-logement .livret-function-header .livret-ornament {
+  margin-bottom: 12px !important;
+}
+.livret[data-livret-lang="es"] #fonctionnement-logement .livret-function-grid {
+  gap: 10px !important;
+}
+.livret[data-livret-lang="es"] #fonctionnement-logement .livret-info-card {
+  padding: 10px 13px 9px !important;
+}
+.livret[data-livret-lang="es"] #fonctionnement-logement .livret-info-card p {
+  margin-bottom: 4px !important;
+}
+.livret[data-livret-lang="es"] #fonctionnement-logement .livret-info-card li {
+  margin-bottom: 1px !important;
+}
+.livret[data-livret-lang="es"] #fonctionnement-logement .livret-eco-card {
+  margin-top: 9px !important;
+}

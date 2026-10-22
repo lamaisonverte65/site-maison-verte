@@ -1,5 +1,7 @@
-export function BookletInventory() {
-  return (
+import { localizeBookletTree } from "../../booklet/localizeBooklet";
+
+export function BookletInventory({ language = "fr" } = {}) {
+  return localizeBookletTree((
 <section
           id="inventaire"
           className="livret-page livret-inventory-page"
@@ -147,11 +149,11 @@ export function BookletInventory() {
             </footer>
           </div>
         </section>
-  );
+  ), language);
 }
 
-export function BookletInventoryDetails() {
-  return (
+export function BookletInventoryDetails({ language = "fr" } = {}) {
+  return localizeBookletTree((
 <section
           id="inventaire-etages"
           className="livret-page livret-inventory-page"
@@ -291,5 +293,5 @@ export function BookletInventoryDetails() {
             </footer>
           </div>
         </section>
-  );
+  ), language);
 }

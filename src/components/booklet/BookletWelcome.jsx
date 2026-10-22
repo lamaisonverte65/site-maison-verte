@@ -1,5 +1,7 @@
-export function BookletWelcome() {
-  return (
+import { localizeBookletTree } from "../../booklet/localizeBooklet";
+
+export function BookletWelcome({ language = "fr" } = {}) {
+  return localizeBookletTree((
 <section className="livret-page livret-cover" aria-label="Couverture du livret d'accueil">
           <div className="livret-cover-photo">
             <div className="livret-cover-title-wrap">
@@ -18,11 +20,11 @@ export function BookletWelcome() {
             />
           </div>
         </section>
-  );
+  ), language);
 }
 
-export function BookletWelcomeDetails() {
-  return (
+export function BookletWelcomeDetails({ language = "fr" } = {}) {
+  return localizeBookletTree((
 <section className="livret-page livret-welcome" aria-label="Bienvenue à La Maison Verte">
           <div className="livret-page-inner">
             <header className="livret-page-header">
@@ -168,5 +170,5 @@ export function BookletWelcomeDetails() {
             </footer>
           </div>
         </section>
-  );
+  ), language);
 }

@@ -1,5 +1,7 @@
-export function BookletPractical() {
-  return (
+import { localizeBookletTree } from "../../booklet/localizeBooklet";
+
+export function BookletPractical({ language = "fr" } = {}) {
+  return localizeBookletTree((
 <section
           id="informations-pratiques"
           className="livret-page"
@@ -155,11 +157,11 @@ export function BookletPractical() {
 
           </div>
         </section>
-  );
+  ), language);
 }
 
-export function BookletPracticalDetails() {
-  return (
+export function BookletPracticalDetails({ language = "fr" } = {}) {
+  return localizeBookletTree((
 <section
           id="plan-acces-stationnement"
           className="livret-page livret-parking-page"
@@ -234,5 +236,5 @@ export function BookletPracticalDetails() {
 
           </div>
         </section>
-  );
+  ), language);
 }

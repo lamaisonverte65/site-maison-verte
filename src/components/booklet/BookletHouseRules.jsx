@@ -1,5 +1,7 @@
-export function BookletHouseRules() {
-  return (
+import { localizeBookletTree } from "../../booklet/localizeBooklet";
+
+export function BookletHouseRules({ language = "fr" } = {}) {
+  return localizeBookletTree((
 <section
           id="fonctionnement-logement"
           className="livret-page livret-function-page"
@@ -101,11 +103,11 @@ export function BookletHouseRules() {
             </footer>
           </div>
         </section>
-  );
+  ), language);
 }
 
-export function BookletHouseRulesDetails() {
-  return (
+export function BookletHouseRulesDetails({ language = "fr" } = {}) {
+  return localizeBookletTree((
 <section
           id="depart"
           className="livret-page"
@@ -224,5 +226,5 @@ export function BookletHouseRulesDetails() {
 
           </div>
         </section>
-  );
+  ), language);
 }

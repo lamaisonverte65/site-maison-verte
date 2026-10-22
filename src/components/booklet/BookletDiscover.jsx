@@ -1,5 +1,7 @@
-export function BookletDiscover() {
-  return (
+import { localizeBookletTree } from "../../booklet/localizeBooklet";
+
+export function BookletDiscover({ language = "fr" } = {}) {
+  return localizeBookletTree((
 <section
           id="decouvrir-vallees"
           className="livret-page livret-discover-page"
@@ -94,11 +96,11 @@ export function BookletDiscover() {
             </footer>
           </div>
         </section>
-  );
+  ), language);
 }
 
-export function BookletDiscoverDetails() {
-  return (
+export function BookletDiscoverDetails({ language = "fr" } = {}) {
+  return localizeBookletTree((
 <section
           id="votre-avis"
           className="livret-page"
@@ -234,5 +236,5 @@ export function BookletDiscoverDetails() {
 
           </div>
         </section>
-  );
+  ), language);
 }

@@ -12,9 +12,24 @@ import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet";
 import "../styles/livret.css";
 import PublicNavigation from "../components/PublicNavigation";
+import { localizeBookletTree, normalizeBookletLanguage } from "../booklet/localizeBooklet";
 
 export default function LivretAccueil() {
   const [keyboxImageError, setKeyboxImageError] = useState(false);
+  const [language, setLanguage] = useState(() => {
+    // Le rendu serveur (tests SSR et génération HTML) ne possède pas de window.
+    if (typeof window === "undefined") return "fr";
+    return normalizeBookletLanguage(new URLSearchParams(window.location.search).get("lang"));
+  });
+  const selectLanguage = (next) => {
+    const lang = normalizeBookletLanguage(next);
+    setLanguage(lang);
+    setKeyboxImageError(false);
+    const url = new URL(window.location.href);
+    if (lang === "fr") url.searchParams.delete("lang");
+    else url.searchParams.set("lang", lang);
+    window.history.replaceState(window.history.state, "", url);
+  };
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("print") !== "1") return;
@@ -81,48 +96,63 @@ export default function LivretAccueil() {
 
   return (
     <>
-      <Helmet>
-        <title>Livret d'accueil | La Maison Verte - Arreau</title>
+      <Helmet htmlAttributes={{ lang: language }}>
+        <title>{language === "en" ? "Welcome booklet" : language === "es" ? "Guía de bienvenida" : "Livret d'accueil"} | La Maison Verte - Arreau</title>
         <meta
           name="description"
-          content="Livret d'accueil de La Maison Verte à Arreau : coordonnées, informations utiles, guide des vallées d'Aure et du Louron."
+          content={language === "en"
+            ? "La Maison Verte welcome booklet: arrival, access, key lockbox and practical information for your stay."
+            : language === "es"
+              ? "Guía de bienvenida de La Maison Verte: llegada, acceso, caja de llaves e información práctica."
+              : "Livret d'accueil de La Maison Verte à Arreau : coordonnées, informations utiles, guide des vallées d'Aure et du Louron."}
         />
         <link rel="canonical" href="https://lamaisonverte65.fr/livret" />
       </Helmet>
 
       <PublicNavigation solid={false} />
 
-      <main className="livret">
+      <main className="livret" data-livret-lang={language}>
+        <div className="livret-language-bar no-print">
+          <label htmlFor="livret-language">{language === "en" ? "Language" : language === "es" ? "Idioma" : "Langue"}</label>
+          <select id="livret-language" value={language} onChange={(event) => selectLanguage(event.target.value)}>
+            <option value="fr">Français</option>
+            <option value="en">English</option>
+            <option value="es">Español</option>
+          </select>
+          <button type="button" onClick={() => window.print()}>
+            {language === "en" ? "Print / PDF" : language === "es" ? "Imprimir / PDF" : "Imprimer / PDF"}
+          </button>
+        </div>
         {/* PAGE 1 — COUVERTURE */}
-        <BookletWelcome />
+        <BookletWelcome language={language} />
 
         {/* PAGE 2 — BIENVENUE */}
-        <BookletWelcomeDetails />
+        <BookletWelcomeDetails language={language} />
 
         {/* PAGE 3 — FONCTIONNEMENT DU LOGEMENT */}
-        <BookletHouseRules />
+        <BookletHouseRules language={language} />
 
         {/* PAGE 4 — AVANT VOTRE DÉPART */}
 
-        <BookletHouseRulesDetails />
+        <BookletHouseRulesDetails language={language} />
 
         {/* PAGE 5 — INFORMATIONS PRATIQUES ET BONNES ADRESSES*/}
 
-        <BookletPractical />
+        <BookletPractical language={language} />
 
         {/* PAGE 6 - ACCES & STATIONNEMENT */}
-        <BookletPracticalDetails />
+        <BookletPracticalDetails language={language} />
 
 
         {/* PAGE 7 — DÉCOUVRIR LES VALLÉES */}
-        <BookletDiscover />
+        <BookletDiscover language={language} />
 
         {/* PAGE 8 — VOTRE AVIS */}
 
-        <BookletDiscoverDetails />
+        <BookletDiscoverDetails language={language} />
 
         {/* PAGE 9 — ARRIVÉE & BOÎTE À CLÉS */}
-        <section
+        {localizeBookletTree(<section
           id="boite-a-cles"
           className="livret-page livret-function-page"
           aria-label="Arrivée et boîte à clés"
@@ -139,7 +169,7 @@ export default function LivretAccueil() {
                 <img
                   src="/livret/procedure-boite-a-cles.webp"
                   alt="Procédure d’ouverture et de fermeture de la boîte à clés"
-                  loading="lazy"
+                  loading="eager"
                   onError={() => setKeyboxImageError(true)}
                   style={{
                     display: "block",
@@ -195,13 +225,13 @@ export default function LivretAccueil() {
               <div className="livret-page-number">9</div>
             </footer>
           </div>
-        </section>
+        </section>, language)}
 
         {/* PAGE 10 — INVENTAIRE — REZ-DE-CHAUSSÉE */}
-        <BookletInventory />
+        <BookletInventory language={language} />
 
         {/* PAGE 11 — INVENTAIRE — ÉTAGES */}
-        <BookletInventoryDetails />
+        <BookletInventoryDetails language={language} />
 
       </main>
     </>
