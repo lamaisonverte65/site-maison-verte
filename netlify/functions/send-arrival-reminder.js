@@ -1,8 +1,11 @@
+import { emailAutomationAllowed, emailAutomationSkippedResponse } from "./_lib/email-delivery-policy.js";
 import { schedule } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 import { createArrivalToken, shouldSendSecureArrivalReminder } from "./_lib/arrival-token.js";
 import { escapeHtml } from "./_lib/html.js";
 import { resendEmail } from "./_lib/resend-email.js";
+import { buildLocalizedArrivalEmail } from "./_lib/guest-scheduled-emails.js";
+import { emailLanguageForAudience } from "../../shared/guestLocale.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -161,9 +164,6 @@ async function sendArrivalReminderEmail(booking) {
       <p><strong>Arrivée :</strong> à partir de 16 h.<br /><strong>Départ :</strong> avant 10 h.</p>
       <p>Ces horaires peuvent éventuellement être adaptés selon les départs et arrivées précédant ou suivant votre séjour. N’hésitez pas à nous contacter pour une demande particulière.</p>
 
-      <h3>Wi-Fi</h3>
-      <p><strong>Réseau :</strong> La Maison Verte<br /><strong>Mot de passe :</strong> lamaisonverte65</p>
-
       <h3>Livret d'accueil</h3>
       <p><a href="${SITE_URL}/livret" style="color:#14532d;font-weight:bold;">Consulter le livret d’accueil</a></p>
 
@@ -172,12 +172,20 @@ async function sendArrivalReminderEmail(booking) {
     </div>
   `;
 
+  // Ne pas traduire ou modifier les jetons, codes ou critères d'envoi.
+  const guestLanguage = emailLanguageForAudience(booking);
+  const localized = guestLanguage === "fr" ? null : buildLocalizedArrivalEmail({
+    language: guestLanguage, booking, keyboxCode, arrivalUrl, siteUrl: SITE_URL,
+  });
+  const emailSubject = localized?.subject || subject;
+  const emailHtml = localized?.html || html;
+
   const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [booking.guest_email],
       reply_to: "contact@lamaisonverte65.fr",
-      subject,
-      html,
+      subject: emailSubject,
+      html: emailHtml,
     };
   const response = await resendEmail(retryPayload);
 
@@ -188,7 +196,7 @@ async function sendArrivalReminderEmail(booking) {
       bookingId: booking.id,
       emailType: "arrival_reminder",
       toEmail: booking.guest_email,
-      subject,
+      subject: emailSubject,
       status: "error",
       errorMessage: errorText,
       metadata: { tokenExpiresAt: capability.expiresAt },
@@ -207,7 +215,7 @@ async function sendArrivalReminderEmail(booking) {
     bookingId: booking.id,
     emailType: "arrival_reminder",
     toEmail: booking.guest_email,
-    subject,
+    subject: emailSubject,
     status: "sent",
     providerId: responseData?.id || null,
     metadata: { tokenExpiresAt: capability.expiresAt },
@@ -274,6 +282,7 @@ async function runArrivalReminder() {
 }
 
 export const handler = schedule("0 9 * * *", async () => {
+  if (!emailAutomationAllowed()) return emailAutomationSkippedResponse();
   try {
     const result = await runArrivalReminder();
 

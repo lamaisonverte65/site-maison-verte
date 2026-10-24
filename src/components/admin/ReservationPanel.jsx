@@ -8,6 +8,7 @@ import ReservationHeader from "./reservation/ReservationHeader";
 import ReservationActionsBlock from "./reservation/ReservationActionsBlock";
 import ReservationContactLinks from "./reservation/ReservationContactLinks";
 import ReservationSummaryBlock from "./reservation/ReservationSummaryBlock";
+import GuestLanguagePreference from "./reservation/GuestLanguagePreference";
 import CustomerBlock from "./reservation/CustomerBlock";
 import OccupancyBlock from "./reservation/OccupancyBlock";
 import StayBlock from "./reservation/StayBlock";
@@ -339,6 +340,10 @@ export default function ReservationPanel({
         />
       ) : (
         <ReservationSummaryBlock reservation={reservation} status={status} amounts={amounts} />
+      )}
+
+      {!isReadOnly && !isEditing && permissions?.isOwner && request?.id && !request?.uid && getBookingKind(request) !== "personal" && (
+        <GuestLanguagePreference booking={reservation} onUpdated={onReservationUpdated} />
       )}
 
       {!isReadOnly && onEdit && (

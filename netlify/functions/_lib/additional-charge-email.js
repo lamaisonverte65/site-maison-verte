@@ -1,5 +1,7 @@
 import { escapeHtml } from "./html.js";
 import { resendEmail } from "./resend-email.js";
+import { emailLanguageForAudience } from "../../../shared/guestLocale.js";
+import { buildLocalizedAdditionalChargeEmail } from "./guest-secondary-emails.js";
 
 const dateFr = (value) => value ? new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris" }).format(new Date(`${String(value).slice(0,10)}T12:00:00Z`)) : "—";
 const money = (value) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(value || 0));
@@ -18,7 +20,9 @@ export function buildAdditionalChargeEmail({ booking, charge, paymentLink }) {
     <p style="margin-top:28px"><a href="${escapeHtml(paymentLink)}" style="background:#16a34a;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block">Régler ${escapeHtml(money(charge.amount))}</a></p>
     <p style="margin-top:28px;font-size:13px;color:#666">Ce paiement est distinct du règlement contractuel initial de votre séjour. Pour toute question, vous pouvez répondre à cet email.</p>
   </div>`;
-  return { subject, html };
+  const language = emailLanguageForAudience(booking);
+  return language === "fr" ? { subject, html }
+    : buildLocalizedAdditionalChargeEmail({ language, booking, charge, paymentLink });
 }
 
 export async function sendAdditionalChargeEmail({ booking, charge, paymentLink, supabase }) {

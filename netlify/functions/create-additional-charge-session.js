@@ -30,7 +30,7 @@ export async function handler(event) {
     if (!["draft", "payment_requested"].includes(charge.status)) return json(409, { error: "Cette demande n'est plus payable." });
 
     const { data: booking, error: bookingError } = await supabase.from("booking_requests")
-      .select("id,start_date,end_date,guest_first_name,guest_last_name,guest_email")
+      .select("id,start_date,end_date,guest_first_name,guest_last_name,guest_email,communication_language")
       .eq("id", charge.booking_request_id).maybeSingle();
     if (bookingError) throw bookingError;
     if (!booking) return json(404, { error: "Réservation introuvable." });

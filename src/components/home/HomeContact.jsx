@@ -1,4 +1,8 @@
+import { languageForPublicPage } from "../../../shared/publicSiteLocale.js";
+import { getHomeCopy } from "./homeTranslations.js";
 export function HomeContact() {
+  const language = typeof window === "undefined" ? "fr" : languageForPublicPage(window.location.href);
+  const copy = getHomeCopy(language).contact;
   return (
 <section id="contact" className="section">
         <div
@@ -18,7 +22,7 @@ export function HomeContact() {
               marginBottom: "20px",
             }}
           >
-            Contact & Réservation
+            {copy.title}
           </h2>
 
           <p
@@ -31,8 +35,8 @@ export function HomeContact() {
               color: "#555",
             }}
           >
-            Une question sur votre séjour, les disponibilités ou autre ?
-            <br></br>Nous serons ravis de vous répondre.
+            {copy.question}
+            <br />{copy.reply}
           </p>
 
           {/* CONTACT DIRECT : TELEPHONE + WHATSAPP BUSINESS */}
@@ -68,10 +72,12 @@ export function HomeContact() {
             </a>
 
             <a
-              href="https://wa.me/33695938315?text=Bonjour%2C%20je%20souhaite%20des%20renseignements%20concernant%20La%20Maison%20Verte."
+              href={language === "fr"
+                ? "https://wa.me/33695938315?text=Bonjour%2C%20je%20souhaite%20des%20renseignements%20concernant%20La%20Maison%20Verte."
+                : `https://wa.me/33695938315?text=${encodeURIComponent(language === "es" ? "Hola, me gustaría recibir información sobre La Maison Verte." : "Hello, I would like more information about La Maison Verte.")}`}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Écrire à La Maison Verte sur WhatsApp"
+              aria-label={copy.whatsappAria}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -86,7 +92,7 @@ export function HomeContact() {
                 boxShadow: "0 10px 30px rgba(31,111,61,0.18)",
               }}
             >
-              💬 Écrire sur WhatsApp
+              💬 {copy.whatsapp}
             </a>
           </div>
 
@@ -94,8 +100,10 @@ export function HomeContact() {
           <a   href="mailto:lamaisonverte65@gmail.com"  title="Cliquez pour nous envoyer un email">
           <img
             className="contact-banner"
+            loading="lazy"
+            decoding="async"
             src="/banniere.webp"
-            alt="Email et adresse de La Maison Verte à Arreau"
+            alt={copy.bannerAlt}
             style={{
               width: "100%",
               maxWidth: "1050px",
@@ -125,7 +133,7 @@ export function HomeContact() {
                 textDecoration: "none",
               }}
             >
-              Ouvrir dans Google Maps
+              {copy.openMap}
             </a>
           </div>
         </div>

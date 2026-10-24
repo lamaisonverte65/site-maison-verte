@@ -4,6 +4,7 @@ import fs from 'node:fs';
 
 const css = fs.readFileSync('src/index.css', 'utf8');
 const home = fs.readFileSync('src/pages/MaisonVerte.jsx', 'utf8');
+const translations = fs.readFileSync('src/components/home/bookingFormTranslations.js', 'utf8');
 
 test('portrait drawer navigation stays vertical without changing landscape drawer behavior', () => {
   assert.match(css, /@media\s*\(max-width:\s*768px\)\s*and\s*\(orientation:\s*portrait\)[\s\S]*?\.public-navigation-drawer\s+nav\s*\{[\s\S]*?display:\s*block\s*!important;/);
@@ -18,17 +19,19 @@ test('mobile landscape hero uses normal document flow so title and CTAs cannot o
 test('booking form exposes generic inline invalid-field feedback for required contact fields', () => {
   assert.match(home, /bookingValidationAttempted/);
   assert.match(home, /booking-field-error/);
-  assert.match(home, /getRequiredTextError\(guestFirstName, "Prénom", 80\)/);
-  assert.match(home, /getRequiredTextError\(guestLastName, "Nom", 80\)/);
-  assert.match(home, /Adresse email invalide\./);
-  assert.match(home, /Numéro de téléphone invalide\./);
-  assert.match(home, /getRequiredTextError\(guestAddress, "Adresse", 200\)/);
-  assert.match(home, /getRequiredTextError\(guestPostalCode, "Code postal", 20\)/);
-  assert.match(home, /getRequiredTextError\(guestCity, "Ville", 100\)/);
-  assert.match(home, /getRequiredTextError\(guestCountry, "Pays", 100\)/);
+  assert.match(home, /getRequiredTextError\(guestFirstName, bookingCopy\.fieldFirstName, 80\)/);
+  assert.match(home, /getRequiredTextError\(guestLastName, bookingCopy\.fieldLastName, 80\)/);
+  assert.match(home, /bookingCopy\.errorEmailInvalid/);
+  assert.match(translations, /errorEmailInvalid:\s*"Adresse email invalide\."/);
+  assert.match(home, /bookingCopy\.errorPhoneInvalid/);
+  assert.match(translations, /errorPhoneInvalid:\s*"Numéro de téléphone invalide\."/);
+  assert.match(home, /getRequiredTextError\(guestAddress, bookingCopy\.fieldAddress, 200\)/);
+  assert.match(home, /getRequiredTextError\(guestPostalCode, bookingCopy\.fieldPostalCode, 20\)/);
+  assert.match(home, /getRequiredTextError\(guestCity, bookingCopy\.fieldCity, 100\)/);
+  assert.match(home, /getRequiredTextError\(guestCountry, bookingCopy\.fieldCountry, 100\)/);
   assert.match(home, /const PHONE_PATTERN = \/\^\[\+\\d\]\[\\d\\s\(\)\.\-\]\{5,31\}\$\//);
   assert.match(home, /getPhoneError\(guestPhone, true\)/);
-  assert.match(home, /Contact \$\{index \+ 2\}/);
+  assert.match(home, /bookingText\(bookingCopy\.contactNumber, \{ number: index \+ 2 \}\)/);
   const patternLiteral = home.match(/const PHONE_PATTERN = (\/\^[^;]+\/);/)?.[1];
   assert.ok(patternLiteral, 'PHONE_PATTERN must remain explicit in MaisonVerte.jsx');
   const phonePattern = Function(`return ${patternLiteral}`)();

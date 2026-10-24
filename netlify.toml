@@ -35,3 +35,62 @@
     X-Frame-Options = "DENY"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     Content-Security-Policy = "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+
+# R13.1 : le contenu EN/ES est localise mais PAS encore ouvert a l'indexation.
+# A retirer uniquement apres recette visuelle, SEO et validation de publication.
+# L'en-tete HTTP agit meme pour les robots qui n'executent pas JavaScript.
+[[headers]]
+  for = "/en/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, follow"
+
+[[headers]]
+  for = "/es/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, follow"
+
+[[headers]]
+  for = "/en"
+  [headers.values]
+    X-Robots-Tag = "noindex, follow"
+
+[[headers]]
+  for = "/es"
+  [headers.values]
+    X-Robots-Tag = "noindex, follow"
+
+# Le livret et les pages techniques ne sont pas des pages de recherche publique.
+[[headers]]
+  for = "/livret"
+  [headers.values]
+    X-Robots-Tag = "noindex, follow"
+
+[[headers]]
+  for = "/livret-accueil"
+  [headers.values]
+    X-Robots-Tag = "noindex, follow"
+
+[[headers]]
+  for = "/admin"
+  [headers.values]
+    X-Robots-Tag = "noindex, follow"
+
+[[headers]]
+  for = "/arrival"
+  [headers.values]
+    X-Robots-Tag = "noindex, follow"
+
+[[headers]]
+  for = "/success"
+  [headers.values]
+    X-Robots-Tag = "noindex, follow"
+
+[[headers]]
+  for = "/cancel"
+  [headers.values]
+    X-Robots-Tag = "noindex, follow"
+
+[[headers]]
+  for = "/avis-validation"
+  [headers.values]
+    X-Robots-Tag = "noindex, follow"

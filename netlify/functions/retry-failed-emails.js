@@ -1,3 +1,4 @@
+import { emailAutomationAllowed, emailAutomationSkippedResponse } from "./_lib/email-delivery-policy.js";
 import { schedule } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 import { resendEmail } from "./_lib/resend-email.js";
@@ -162,6 +163,7 @@ export async function runFailedEmailRetry() {
 }
 
 export const handler = schedule("*/15 * * * *", async () => {
+  if (!emailAutomationAllowed()) return emailAutomationSkippedResponse();
   try {
     const result = await runFailedEmailRetry();
     console.log("Retry emails échoués :", result);

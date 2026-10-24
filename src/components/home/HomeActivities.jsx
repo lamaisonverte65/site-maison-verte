@@ -1,7 +1,11 @@
+import { languageForPublicPage, localizePublicHref } from "../../../shared/publicSiteLocale.js";
+import { getHomeSecondaryCopy } from "./homeSecondaryTranslations.js";
 export function HomeActivities() {
+  const language = typeof window === "undefined" ? "fr" : languageForPublicPage(window.location.href);
+  const copy = getHomeSecondaryCopy(language)?.activities;
   return (
 <section id="activites" className="section">
-        <h2>Activités & expériences</h2>
+        <h2>{copy?.heading || "Activités & expériences"}</h2>
 
         <p
           style={{
@@ -12,23 +16,23 @@ export function HomeActivities() {
             color: "#555",
           }}
         >
-          Profitez de la centralité unique d'Arreau pour vous offir une
+          {copy?.intro || `Profitez de la centralité unique d'Arreau pour vous offir une
           multitude d'activités possibles. Au coeur d'un cadre naturel
           exceptionnel, organisez votre séjour sportif, culturel, récréatif ou
-          bien-être selon vos envies.
+          bien-être selon vos envies.`}
         </p>
 
         {/* OFFRE SKI */}
 
         <div
+          className="home-ski-offer"
           style={{
             background: "#1f6f3d",
             color: "white",
             borderRadius: "36px",
-            padding: "42px",
+            padding: "clamp(20px, 4vw, 42px)",
             marginBottom: "42px",
             display: "grid",
-            gridTemplateColumns: "1fr 320px",
             gap: "30px",
             alignItems: "center",
             boxShadow: "0 20px 60px rgba(0,0,0,0.14)",
@@ -41,7 +45,7 @@ export function HomeActivities() {
                 marginBottom: "16px",
               }}
             >
-              Offre hiver : logement + cours de ski
+              {copy?.offerTitle || "Offre hiver : logement + cours de ski"}
             </h3>
 
             <p
@@ -51,20 +55,20 @@ export function HomeActivities() {
                 marginBottom: "20px",
               }}
             >
-              En hiver, combinez votre séjour à La Maison Verte avec des cours
+              {copy?.offerDescription || `En hiver, combinez votre séjour à La Maison Verte avec des cours
               de ski et de snowboard personnalisés sur la station de Peyragudes
-              avec un moniteur de ski diplômé.
+              avec un moniteur de ski diplômé.`}
             </p>
 
             <strong>
-              Tarif préférentiel : jusqu’à 15% de réduction sur le logement pour
+              {copy?.offerPromotion || `Tarif préférentiel : jusqu’à 15% de réduction sur le logement pour
               une formule séjour + cours de ski. Nous contacter pour plus
-              d'information.
+              d'information.`}
             </strong>
 
             <div style={{ marginTop: "24px" }}>
               <a
-                href="/ski-vallees-aure-louron"
+                href={localizePublicHref("/ski-vallees-aure-louron", language)}
                 style={{
                   display: "inline-block",
                   background: "white",
@@ -75,14 +79,16 @@ export function HomeActivities() {
                   fontWeight: "800",
                 }}
               >
-                Découvrir les cours de ski
+                {copy?.offerButton || "Découvrir les cours de ski"}
               </a>
             </div>
           </div>
 
           <img
+            loading="lazy"
+            decoding="async"
             src="/activite-ski.webp"
-            alt="Cours de ski dans les Pyrénées"
+            alt={copy?.offerAlt || "Cours de ski dans les Pyrénées"}
             style={{
               width: "100%",
               height: "220px",
@@ -97,7 +103,7 @@ export function HomeActivities() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))",
+            gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,260px),1fr))",
             gap: "28px",
           }}
         >
@@ -234,7 +240,7 @@ export function HomeActivities() {
                 },
               ],
             },
-          ].map((activity) => (
+          ].map((activity, activityIndex) => (
             <div
               key={activity.title}
               style={{
@@ -256,8 +262,10 @@ export function HomeActivities() {
               }}
             >
               <img
+                loading="lazy"
+                decoding="async"
                 src={activity.image}
-                alt={activity.alt}
+                alt={copy?.cards?.[activityIndex]?.alt || activity.alt}
                 style={{
                   width: "100%",
                   height: "240px",
@@ -275,7 +283,7 @@ export function HomeActivities() {
                     marginBottom: "14px",
                   }}
                 >
-                  {activity.title}
+                  {copy?.cards?.[activityIndex]?.title || activity.title}
                 </h3>
 
                 <p
@@ -285,7 +293,7 @@ export function HomeActivities() {
                     marginBottom: "24px",
                   }}
                 >
-                  {activity.text}
+                  {copy?.cards?.[activityIndex]?.text || activity.text}
                 </p>
 
                 <details
@@ -300,7 +308,7 @@ export function HomeActivities() {
                       cursor: "pointer",
                     }}
                   >
-                    Liens utiles
+                    {copy?.usefulLinks || "Liens utiles"}
                   </summary>
 
                   <div
@@ -310,7 +318,7 @@ export function HomeActivities() {
                       marginTop: "16px",
                     }}
                   >
-                    {activity.links.map((link) => (
+                    {activity.links.map((link, linkIndex) => (
                       <a
                         key={link.url}
                         href={link.url}
@@ -322,7 +330,7 @@ export function HomeActivities() {
                           fontWeight: "500",
                         }}
                       >
-                        {link.label} →
+                        {copy?.cards?.[activityIndex]?.links?.[linkIndex] || link.label} →
                       </a>
                     ))}
                   </div>
@@ -349,7 +357,7 @@ export function HomeActivities() {
               fontWeight: "600",
             }}
           >
-            Découvrir la vallée d'Aure
+            {copy?.guideTitle || "Découvrir la vallée d'Aure"}
           </h3>
 
           <p
@@ -361,14 +369,14 @@ export function HomeActivities() {
               margin: "0 auto 28px",
             }}
           >
-            Stations de ski, cols mythiques des Pyrénées, lacs du Néouvielle,
+            {copy?.guideDescription || `Stations de ski, cols mythiques des Pyrénées, lacs du Néouvielle,
             randonnées, patrimoine, villages de montagne et bien-être :
             découvrez notre guide complet pour préparer votre séjour à Arreau et
-            explorer les incontournables de la vallée d'Aure.
+            explorer les incontournables de la vallée d'Aure.`}
           </p>
 
           <a
-            href="/guide-vallees-aure-louron"
+            href={localizePublicHref("/guide-vallees-aure-louron", language)}
             style={{
               display: "inline-block",
               padding: "16px 34px",
@@ -382,7 +390,7 @@ export function HomeActivities() {
               transition: "all 0.3s ease",
             }}
           >
-            Voir le guide complet →
+            {copy?.guideButton || "Voir le guide complet →"}
           </a>
         </div>
 

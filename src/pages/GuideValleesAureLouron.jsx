@@ -1,5 +1,7 @@
+import { localizePublicHref, languageForPublicPage } from "../../shared/publicSiteLocale.js";
 import { Helmet } from "react-helmet";
 import PublicNavigation from "../components/PublicNavigation";
+import { getGuideCopy, localizeGuideRecords, localizeGuideLinks } from "./guideTranslations.js";
 
 const travelTimes = [
   ["Saint-Lary téléphérique", "15 min"],
@@ -308,27 +310,42 @@ function ExternalLink({ href, children }) {
 }
 
 export default function GuideValleesAureLouron() {
+  const language = typeof window === "undefined" ? "fr" : languageForPublicPage(window.location.href);
+  const copy = getGuideCopy(language);
+  const visibleTravelTimes = travelTimes.map(([place, time], index) => [
+    copy?.places[index] ?? place,
+    time === "1h15" ? (language === "en" ? "1 hr 15 min" : language === "es" ? "1 h 15 min" : time) : time,
+  ]);
+  const visibleStayIdeas = localizeGuideRecords(stayIdeas, copy?.stayIdeas, ["title", "items"]);
+  const visibleSections = localizeGuideRecords(guideSections, copy?.sections, ["kicker", "title", "alt", "caption", "paragraphs"]);
+  const visibleEvents = majorEvents.map((event, index) => ({ ...event, text: copy?.events[index] ?? event.text }));
+  const visibleLinks = localizeGuideLinks(usefulLinks, copy?.linkGroups);
+  const canonicalUrl = `https://lamaisonverte65.fr/${language === "fr" ? "" : `${language}/`}guide-vallees-aure-louron`;
   return (
     <>
-      <Helmet>
+      <Helmet htmlAttributes={{ lang: language }}>
         <title>
-          Guide vallée d'Aure et du Louron – Que faire autour d'Arreau | La Maison Verte
+          {copy?.seoTitle ?? "Guide vallée d'Aure et du Louron – Que faire autour d'Arreau | La Maison Verte"}
         </title>
         <meta
           name="description"
-          content="Guide complet de la vallée d'Aure et du Louron depuis Arreau : ski, ski de fond à Nistos et Piau-Pineta, randonnée, pêche, vélo, VTT, parapente, canyoning, Néouvielle, Pineta, Mont-Perdu, patrimoine et liens utiles."
+          content={copy?.seoDescription ?? "Guide complet de la vallée d'Aure et du Louron depuis Arreau : ski, ski de fond à Nistos et Piau-Pineta, randonnée, pêche, vélo, VTT, parapente, canyoning, Néouvielle, Pineta, Mont-Perdu, patrimoine et liens utiles."}
         />
         <link
           rel="canonical"
-          href="https://lamaisonverte65.fr/guide-vallees-aure-louron"
+          href={canonicalUrl}
         />
+        <link rel="alternate" hrefLang="fr" href="https://lamaisonverte65.fr/guide-vallees-aure-louron" />
+        <link rel="alternate" hrefLang="en" href="https://lamaisonverte65.fr/en/guide-vallees-aure-louron" />
+        <link rel="alternate" hrefLang="es" href="https://lamaisonverte65.fr/es/guide-vallees-aure-louron" />
+        <link rel="alternate" hrefLang="x-default" href="https://lamaisonverte65.fr/guide-vallees-aure-louron" />
         <meta
           property="og:title"
-          content="Guide complet de la vallée d'Aure et du Louron"
+          content={copy?.seoOgTitle ?? "Guide complet de la vallée d'Aure et du Louron"}
         />
         <meta
           property="og:description"
-          content="Que faire autour d'Arreau ? Stations de ski, ski nordique à Nistos et Piau-Pineta, pêche, cols, VTT, parapente, Néouvielle, vallée de Pineta, Mont-Perdu, patrimoine et idées de séjour."
+          content={copy?.seoOgDescription ?? "Que faire autour d'Arreau ? Stations de ski, ski nordique à Nistos et Piau-Pineta, pêche, cols, VTT, parapente, Néouvielle, vallée de Pineta, Mont-Perdu, patrimoine et idées de séjour."}
         />
         <meta
           property="og:image"
@@ -336,7 +353,7 @@ export default function GuideValleesAureLouron() {
         />
         <meta
           property="og:url"
-          content="https://lamaisonverte65.fr/guide-vallees-aure-louron"
+          content={canonicalUrl}
         />
         <meta property="og:type" content="article" />
       </Helmet>
@@ -382,11 +399,11 @@ export default function GuideValleesAureLouron() {
                 textShadow: "0 8px 35px rgba(0,0,0,0.65)",
               }}
             >
-              Guide complet
+              {copy?.hero[0] ?? "Guide complet"}
               <br />
-              de la vallée d'Aure
+              {copy?.hero[1] ?? "de la vallée d'Aure"}
               <br />
-              et du Louron
+              {copy?.hero[2] ?? "et du Louron"}
             </h1>
           </div>
 
@@ -433,11 +450,11 @@ export default function GuideValleesAureLouron() {
                 marginBottom: "20px",
               }}
             >
-              Que faire autour d'Arreau ?
+              {copy?.introTitle ?? "Que faire autour d'Arreau ?"}
             </h2>
 
             <p style={{ lineHeight: "1.9", fontSize: "1.1rem", margin: 0 }}>
-              Situé à la confluence des vallées d'Aure et du Louron, Arreau constitue un point de départ idéal pour découvrir les Pyrénées. Stations de ski, cols mythiques du Tour de France, VTT, parapente, canyoning, randonnée, patrimoine, gastronomie et grands espaces naturels : ce guide rassemble les incontournables pour préparer votre séjour.
+              {copy?.intro ?? "Situé à la confluence des vallées d'Aure et du Louron, Arreau constitue un point de départ idéal pour découvrir les Pyrénées. Stations de ski, cols mythiques du Tour de France, VTT, parapente, canyoning, randonnée, patrimoine, gastronomie et grands espaces naturels : ce guide rassemble les incontournables pour préparer votre séjour."}
             </p>
           </div>
         </section>
@@ -468,7 +485,7 @@ export default function GuideValleesAureLouron() {
                 margin: "0 0 18px",
               }}
             >
-              Arreau, le point de départ idéal pour rayonner en étoile
+              {copy?.locationTitle ?? "Arreau, le point de départ idéal pour rayonner en étoile"}
             </h2>
 
             <p
@@ -479,20 +496,17 @@ export default function GuideValleesAureLouron() {
                 marginBottom: "28px",
               }}
             >
-              Situé à la confluence des vallées d'Aure et du Louron, Arreau
-              permet de multiplier les possibilités sans changer d'hébergement :
-              ski, vélo, VTT, parapente, randonnée, bien-être, patrimoine,
-              événements sportifs, Espagne et sorties dans le piémont pyrénéen.
+              {copy?.locationText ?? "Situé à la confluence des vallées d'Aure et du Louron, Arreau permet de multiplier les possibilités sans changer d'hébergement : ski, vélo, VTT, parapente, randonnée, bien-être, patrimoine, événements sportifs, Espagne et sorties dans le piémont pyrénéen."}
             </p>
 
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 210px), 1fr))",
                 gap: "12px",
               }}
             >
-              {travelTimes.map(([place, time]) => (
+              {visibleTravelTimes.map(([place, time]) => (
                 <div
                   key={place}
                   style={{
@@ -520,12 +534,12 @@ export default function GuideValleesAureLouron() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))",
               gap: "18px",
               marginBottom: "42px",
             }}
           >
-            {stayIdeas.map((idea) => (
+            {visibleStayIdeas.map((idea) => (
               <div
                 key={idea.title}
                 style={{
@@ -564,7 +578,7 @@ export default function GuideValleesAureLouron() {
               lineHeight: "1.9",
             }}
           >
-            {guideSections.map((section, index) => (
+            {visibleSections.map((section, index) => (
               <section
                 key={section.title}
                 style={{
@@ -576,7 +590,7 @@ export default function GuideValleesAureLouron() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
                     gap: "34px",
                     alignItems: "center",
                   }}
@@ -658,25 +672,22 @@ export default function GuideValleesAureLouron() {
                   marginTop: 0,
                 }}
               >
-                Les grands événements de l'année
+                {copy?.eventsTitle ?? "Les grands événements de l'année"}
               </h2>
 
               <p>
-                La vallée d'Aure et la vallée du Louron accueillent plusieurs
-                événements majeurs autour du sport, de la montagne et de la
-                culture locale. Les dates changent chaque année : vérifiez
-                toujours les sites officiels avant votre séjour.
+                {copy?.eventsIntro ?? "La vallée d'Aure et la vallée du Louron accueillent plusieurs événements majeurs autour du sport, de la montagne et de la culture locale. Les dates changent chaque année : vérifiez toujours les sites officiels avant votre séjour."}
               </p>
 
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))",
                   gap: "16px",
                   marginTop: "24px",
                 }}
               >
-                {majorEvents.map((event) => (
+                {visibleEvents.map((event) => (
                   <a
                     key={event.title}
                     href={event.url}
@@ -715,23 +726,22 @@ export default function GuideValleesAureLouron() {
                   color: "#2f4f35",
                 }}
               >
-                Préparer son séjour : liens utiles
+                {copy?.linksTitle ?? "Préparer son séjour : liens utiles"}
               </h2>
 
               <p>
-                Voici les principaux liens pour vérifier les horaires, réserver
-                certaines activités, consulter les agendas et préparer vos sorties.
+                {copy?.linksIntro ?? "Voici les principaux liens pour vérifier les horaires, réserver certaines activités, consulter les agendas et préparer vos sorties."}
               </p>
 
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
                   gap: "18px",
                   marginTop: "24px",
                 }}
               >
-                {usefulLinks.map((group) => (
+                {visibleLinks.map((group) => (
                   <div
                     key={group.category}
                     style={{
@@ -786,7 +796,7 @@ export default function GuideValleesAureLouron() {
                   margin: "0 0 18px",
                 }}
               >
-                Se loger à Arreau
+                {copy?.accommodationTitle ?? "Se loger à Arreau"}
               </h2>
 
               <p
@@ -797,12 +807,7 @@ export default function GuideValleesAureLouron() {
                   fontSize: "1.08rem",
                 }}
               >
-                Située au cœur historique d'Arreau, La Maison Verte est une
-                maison de vacances rénovée pour 4 personnes. Sa localisation
-                permet de rayonner facilement vers les stations de ski, les
-                cols mythiques, les sentiers de randonnée, les événements
-                sportifs, le Néouvielle, le Louron et les grands sites des
-                Pyrénées.
+                {copy?.accommodationText ?? "Située au cœur historique d'Arreau, La Maison Verte est une maison de vacances rénovée pour 4 personnes. Sa localisation permet de rayonner facilement vers les stations de ski, les cols mythiques, les sentiers de randonnée, les événements sportifs, le Néouvielle, le Louron et les grands sites des Pyrénées."}
               </p>
 
               <div
@@ -814,7 +819,7 @@ export default function GuideValleesAureLouron() {
                 }}
               >
                 <a
-                  href="/#reservation"
+                  href={localizePublicHref("/#reservation", language)}
                   style={{
                     display: "inline-block",
                     padding: "16px 32px",
@@ -825,11 +830,11 @@ export default function GuideValleesAureLouron() {
                     fontWeight: "800",
                   }}
                 >
-                  Voir les disponibilités
+                  {copy?.availabilityButton ?? "Voir les disponibilités"}
                 </a>
 
                 <a
-                  href="/"
+                  href={localizePublicHref("/", language)}
                   style={{
                     display: "inline-block",
                     padding: "16px 32px",
@@ -840,7 +845,7 @@ export default function GuideValleesAureLouron() {
                     fontWeight: "800",
                   }}
                 >
-                  Découvrir La Maison Verte
+                  {copy?.homeButton ?? "Découvrir La Maison Verte"}
                 </a>
               </div>
             </section>

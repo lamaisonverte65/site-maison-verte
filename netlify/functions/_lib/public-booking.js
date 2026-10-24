@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
 import { escapeHtml } from "./html.js";
 import { CURRENT_CONTRACT_URL, CURRENT_CONTRACT_VERSION } from "./contract-version.js";
+import { normalizeGuestLanguage } from "../../../shared/guestLocale.js";
+import { buildLocalizedGuestBookingReceipt } from "./guest-booking-receipt.js";
 
 const allowedFields = new Set([
   "guestFirstName", "guestLastName", "guestEmail", "guestPhone", "guestAddress", "guestPostalCode", "guestCity", "guestCountry", "adultsCount", "childrenCount",
   "childrenAges", "babyBedNeeded", "marketingConsent", "guestMessage", "startDate", "endDate",
-  "nights", "accommodationTotal", "promotionCode", "cleaningOption", "cleaningObligationsAccepted", "paymentPreference", "contractAccepted", "website", "additionalContacts",
+  "nights", "accommodationTotal", "promotionCode", "cleaningOption", "cleaningObligationsAccepted", "paymentPreference", "contractAccepted", "website", "additionalContacts", "communicationLanguage",
 ]);
 const fail = (error) => ({ ok: false, statusCode: 400, error });
 const clean = (value) => String(value ?? "").trim();
@@ -216,13 +218,14 @@ export function validatePublicBookingPayload(input = {}, { cleaningFee = 0 } = {
     firstName, lastName, email, phone, address, postalCode, city, country, adults, children, childrenAges,
     babyBedNeeded: input.babyBedNeeded, message, startDate, endDate,
     nights: computedNights, accommodationTotal, cleaningOption: input.cleaningOption,
+    communication_language: normalizeGuestLanguage(input.communicationLanguage),
     cleaningFee: authoritativeCleaningFee, total, paymentPreference, additionalContacts,
   };
   return {
     ok: true,
     additionalContacts,
     booking: {
-      status: "pending", guest_first_name: firstName, guest_last_name: lastName,
+      status: "pending", communication_language: normalizeGuestLanguage(input.communicationLanguage), guest_first_name: firstName, guest_last_name: lastName,
       guest_email: email, guest_phone: phone, guest_address: address, guest_postal_code: postalCode,
       guest_city: city, guest_country: country, adults_count: adults, children_count: children,
       children_ages: childrenAges || null, baby_bed_needed: input.babyBedNeeded,
@@ -279,10 +282,11 @@ export function buildPublicBookingEmails(model, { ownerEmail }) {
       subject: "Nouvelle demande de réservation",
       html: `<div style="font-family:Arial,sans-serif;line-height:1.7"><h2>Nouvelle demande de réservation</h2><p><strong>Nom :</strong> ${firstName} ${lastName}<br /><strong>Email :</strong> ${email}<br /><strong>Téléphone :</strong> ${phone}</p>${summary}${additionalContactsHtml}${message ? `<p><strong>Message :</strong><br />${message}</p>` : ""}</div>`,
     },
-    guest: {
+    // Garder l'email FR historique inchangé ; traduire uniquement l'accusé voyageur.
+    guest: normalizeGuestLanguage(model.communication_language) === "fr" ? {
       to: model.email,
       subject: "Votre demande pour La Maison Verte à Arreau",
       html: `<div style="font-family:Arial,sans-serif;line-height:1.7"><p>Bonjour ${firstName},</p><p>Merci pour votre demande de réservation à La Maison Verte.</p><p>Nous avons bien reçu votre demande pour votre séjour à Arreau du <strong>${escapeHtml(model.startDate)}</strong> au <strong>${escapeHtml(model.endDate)}</strong>.</p><p><strong>Récapitulatif de votre demande</strong></p>${summary}<p><strong>Votre réservation n'est pas encore définitive à ce stade, mais les dates sont bloquées.</strong></p><p>Après acceptation de votre demande, vous recevrez les informations nécessaires pour confirmer votre réservation. Un lien de paiement Stripe vous sera envoyé. Ce lien sera valable pendant <strong>24 h</strong> ; passé ce délai, en l'absence de paiement, la période sera à nouveau disponible.</p><p>Au plaisir de vous accueillir,<br /><strong>Raphaël &amp; Emmanuelle</strong><br /><a href="tel:+33695938315">06 95 93 83 15</a><br /><strong>La Maison Verte — Arreau</strong></p></div>`,
-    },
+    } : buildLocalizedGuestBookingReceipt(model),
   };
 }

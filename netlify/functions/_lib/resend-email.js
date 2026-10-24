@@ -1,3 +1,5 @@
+import { evaluateEmailDelivery } from "./email-delivery-policy.js";
+
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
 function syntheticFailure(error) {
@@ -14,7 +16,16 @@ function syntheticFailure(error) {
   };
 }
 
-export async function resendEmail(payload, { fetchImpl = fetch, apiKey = process.env.RESEND_API_KEY } = {}) {
+export async function resendEmail(payload, { fetchImpl = fetch, apiKey = process.env.RESEND_API_KEY, env = process.env } = {}) {
+  const decision = evaluateEmailDelivery(payload, env);
+  if (!decision.allowed) {
+    return {
+      ok: false,
+      status: 403,
+      async text() { return decision.reason; },
+      async json() { return { error: decision.reason }; },
+    };
+  }
   try {
     return await fetchImpl(RESEND_ENDPOINT, {
       method: "POST",

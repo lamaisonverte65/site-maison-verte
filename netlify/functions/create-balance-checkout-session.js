@@ -5,6 +5,8 @@ import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.
 import { createBalancePaymentUrl } from "./_lib/balance-link.js";
 import { contractualTotal, recordedPaidAmount, remainingContractualDue } from "./_lib/booking-financial-authority.js";
 import { resendEmail } from "./_lib/resend-email.js";
+import { emailLanguageForAudience } from "../../shared/guestLocale.js";
+import { buildLocalizedBalanceEmail } from "./_lib/guest-scheduled-emails.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -63,12 +65,16 @@ async function sendBalanceEmail(booking, paymentLink, amount, step = "request") 
   `;
 
   const subject = `${labels[step] || labels.request} - La Maison Verte`;
+  const language = emailLanguageForAudience(booking);
+  const safeStep = ["request", "reminder_1", "reminder_2", "urgent"].includes(step) ? step : "request";
+  const localized = language === "fr" ? null : buildLocalizedBalanceEmail({ language, booking, paymentLink, amount, step: safeStep });
+  const emailSubject = localized?.subject || subject;
   const retryPayload = {
     from: "La Maison Verte <contact@lamaisonverte65.fr>",
     to: [booking.guest_email],
     reply_to: "contact@lamaisonverte65.fr",
-    subject,
-    html,
+    subject: emailSubject,
+    html: localized?.html || html,
   };
   const response = await resendEmail(retryPayload);
 
@@ -78,7 +84,7 @@ async function sendBalanceEmail(booking, paymentLink, amount, step = "request") 
       booking_request_id: booking.id,
       email_type: `balance:${step}`,
       to_email: booking.guest_email,
-      subject,
+      subject: emailSubject,
       status: "error",
       error_message: errorText,
       sent_at: new Date().toISOString(),
@@ -92,7 +98,7 @@ async function sendBalanceEmail(booking, paymentLink, amount, step = "request") 
     booking_request_id: booking.id,
     email_type: `balance:${step}`,
     to_email: booking.guest_email,
-    subject,
+    subject: emailSubject,
     status: "sent",
     provider_id: responseData?.id || null,
     sent_at: new Date().toISOString(),

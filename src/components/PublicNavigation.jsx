@@ -1,4 +1,35 @@
 import { useEffect, useState } from "react";
+import {
+  languageForPublicPage, localizePublicHref, publicUrlForLanguage,
+} from "../../shared/publicSiteLocale.js";
+
+const translatedLabels = {
+  en: {
+    "Accueil": "Home", "Présentation": "The house", "Galerie": "Gallery",
+    "Avis": "Reviews", "Réservation": "Booking", "Activités": "Activities",
+    "Situation": "Location", "FAQ": "FAQ", "Guide des vallées": "Valleys guide",
+    "Livret d'accueil": "Welcome booklet", "Ski – Moniteur": "Ski lessons",
+    "Contact": "Contact", "WhatsApp": "WhatsApp", "Appeler": "Call",
+    "Réserver": "Book", "Langue": "Language",
+  },
+  es: {
+    "Accueil": "Inicio", "Présentation": "La casa", "Galerie": "Galería",
+    "Avis": "Opiniones", "Réservation": "Reservas", "Activités": "Actividades",
+    "Situation": "Ubicación", "FAQ": "Preguntas frecuentes", "Guide des vallées": "Guía de los valles",
+    "Livret d'accueil": "Guía de bienvenida", "Ski – Moniteur": "Clases de esquí",
+    "Contact": "Contacto", "WhatsApp": "WhatsApp", "Appeler": "Llamar",
+    "Réserver": "Reservar", "Langue": "Idioma",
+  },
+};
+
+function whatsappUrlForLanguage(language, original) {
+  if (language === "fr") return original;
+  const message = language === "en"
+    ? "Hello, I would like more information about La Maison Verte."
+    : "Hola, me gustaría recibir información sobre La Maison Verte.";
+  return `https://wa.me/33695938315?text=${encodeURIComponent(message)}`;
+}
+
 
 const menuItems = [
   ["Accueil", "/#accueil"],
@@ -19,6 +50,44 @@ const menuItems = [
 
 export default function PublicNavigation({ solid = true }) {
   const [open, setOpen] = useState(false);
+  const [language, setLanguage] = useState(() =>
+    typeof window === "undefined" ? "fr" : languageForPublicPage(window.location.href)
+  );
+  const label = (name) => translatedLabels[language]?.[name] || name;
+  const internalHref = (href) => localizePublicHref(href, language);
+
+  useEffect(() => {
+    // Le livret modifie l'URL via history.replaceState sans recharger la page.
+    const sync = () => setLanguage(languageForPublicPage(window.location.href));
+    window.addEventListener("popstate", sync);
+    window.addEventListener("pageshow", sync);
+    return () => {
+      window.removeEventListener("popstate", sync);
+      window.removeEventListener("pageshow", sync);
+    };
+  }, []);
+
+  function changeLanguage(nextLanguage) {
+    if (nextLanguage === language) return;
+    window.location.assign(publicUrlForLanguage(window.location.href, nextLanguage));
+  }
+
+  const languageSelector = (id, className) => (
+    <label htmlFor={id} className={className} style={{ display: "inline-flex", alignItems: "center", gap: "7px", color: "#173823", fontSize: "0.85rem", fontWeight: 800, background: "rgba(255,255,255,0.96)", border: "1px solid rgba(31,111,61,0.34)", padding: "5px 7px 5px 11px", borderRadius: "12px", boxShadow: "0 3px 14px rgba(0,0,0,0.2)", whiteSpace: "nowrap" }}>
+      <span className="public-navigation-language-label">{label("Langue")}</span>
+      <select
+        id={id}
+        aria-label={label("Langue")}
+        value={language}
+        onChange={(event) => changeLanguage(event.target.value)}
+        style={{ background: "white", color: "#1e2b1f", border: "1px solid rgba(47,79,53,0.28)", borderRadius: "9px", fontSize: "14px", padding: "9px 6px", cursor: "pointer" }}
+      >
+        <option value="fr">FR</option>
+        <option value="en">EN</option>
+        <option value="es">ES</option>
+      </select>
+    </label>
+  );
 
   useEffect(() => {
     if (!open) return undefined;
@@ -41,6 +110,15 @@ export default function PublicNavigation({ solid = true }) {
   return (
     <>
       <style>{`
+        @media (max-width: 650px) {
+          /* Choix de langue visible même sur mobile, sans cacher le bouton Réserver. */
+          .public-nav-language-header { padding: 3px 4px !important; gap: 0 !important; }
+          .public-nav-language-header .public-navigation-language-label { display: none; }
+          .public-nav-language-header select { padding: 7px 3px !important; }
+        }
+        @media (max-width: 420px) {
+          .public-navigation-shell { padding-left: 8px !important; padding-right: 8px !important; }
+        }
         @media print {
           .public-navigation-shell,
           .public-navigation-backdrop,
@@ -70,7 +148,7 @@ export default function PublicNavigation({ solid = true }) {
       >
         <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
           <a
-            href="/#accueil"
+            href={internalHref("/#accueil")}
             aria-label="La Maison Verte - accueil"
             style={{ display: "flex", alignItems: "center", textDecoration: "none" }}
           >
@@ -124,8 +202,10 @@ export default function PublicNavigation({ solid = true }) {
           </button>
         </div>
 
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px", minWidth: 0 }}>
+        {languageSelector("public-language-header", "public-nav-language-header")}
         <a
-          href="/#reservation"
+          href={internalHref("/#reservation")}
           className="button"
           style={{
             textDecoration: "none",
@@ -134,8 +214,9 @@ export default function PublicNavigation({ solid = true }) {
             fontSize: "clamp(0.9rem, 2vw, 1rem)",
           }}
         >
-          Réserver
+          {label("Réserver")}
         </a>
+        </div>
       </header>
 
       {open && (
@@ -184,7 +265,7 @@ export default function PublicNavigation({ solid = true }) {
                 borderBottom: "1px solid rgba(47,79,53,0.16)",
               }}
             >
-              <a href="/#accueil" onClick={() => setOpen(false)} style={{ display: "flex" }}>
+              <a href={internalHref("/#accueil")} onClick={() => setOpen(false)} style={{ display: "flex" }}>
                 <img
                   src="/logo.webp"
                   alt="La Maison Verte"
@@ -211,11 +292,14 @@ export default function PublicNavigation({ solid = true }) {
               </button>
             </div>
 
+            <div style={{ padding: "12px 8px 16px", borderBottom: "1px solid rgba(47,79,53,0.12)", marginBottom: "8px" }}>
+              {languageSelector("public-language-drawer", "public-nav-language-drawer")}
+            </div>
             <nav aria-label="Navigation publique">
-              {menuItems.map(([label, href]) => (
+              {menuItems.map(([itemLabel, href]) => (
                 <a
                   key={href}
-                  href={href}
+                  href={href.startsWith("https://wa.me/") ? whatsappUrlForLanguage(language, href) : internalHref(href)}
                   target={href.startsWith("https://wa.me/") ? "_blank" : undefined}
                   rel={href.startsWith("https://wa.me/") ? "noopener noreferrer" : undefined}
                   onClick={() => setOpen(false)}
@@ -224,12 +308,12 @@ export default function PublicNavigation({ solid = true }) {
                     padding: "11px 8px",
                     color: "#1e2b1f",
                     textDecoration: "none",
-                    fontWeight: label === "Réservation" ? "800" : "600",
+                    fontWeight: itemLabel === "Réservation" ? "800" : "600",
                     fontSize: "1.04rem",
                     borderRadius: "10px",
                   }}
                 >
-                  {label}
+                  {label(itemLabel)}
                 </a>
               ))}
             </nav>

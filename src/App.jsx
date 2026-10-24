@@ -1,6 +1,9 @@
-import MaisonVerte from "./pages/MaisonVerte";
+import { Helmet } from "react-helmet";
+import { resolvePublicPage, languageForPublicPage } from "../shared/publicSiteLocale.js";
 import { lazy, Suspense, useEffect, useState } from "react";
 
+// Le formulaire lourd de l’accueil est chargé uniquement sur la route publique accueil.
+const MaisonVerte = lazy(() => import("./pages/MaisonVerte"));
 const Admin = lazy(() => import("./pages/Admin"));
 const GuideValleesAureLouron = lazy(() => import("./pages/GuideValleesAureLouron"));
 const LivretAccueil = lazy(() => import("./pages/LivretAccueil"));
@@ -335,8 +338,31 @@ function ArrivalTimePage() {
   );
 }
 
+function UntranslatedPublicPreview({ language }) {
+  // R13.1 : les pages EN/ES restent noindex jusqu'a la recette de publication.
+  // Ne pas lever ce verrou par erreur en ne modifiant que le sitemap.
+  if (language === "fr") return null;
+  return <Helmet><meta name="robots" content="noindex,follow" /></Helmet>;
+}
+
+function PublicNotFound() {
+  return (
+    <>
+      <Helmet><meta name="robots" content="noindex,follow" /></Helmet>
+      <main style={{ minHeight: "100vh", padding: "14vh 24px", textAlign: "center", background: "#f6f3ee", fontFamily: "Inter, sans-serif" }}>
+        <h1>Page introuvable</h1>
+        <p>Cette page n'existe pas.</p>
+        <a href="/">Retour à La Maison Verte</a>
+      </main>
+    </>
+  );
+}
+
 export default function App() {
   const path = window.location.pathname;
+  const publicPage = resolvePublicPage(path);
+  const publicLanguage = languageForPublicPage(window.location.href);
+  const previewMarker = <UntranslatedPublicPreview language={publicLanguage} />;
 
   function withAnalytics(page) {
     return (
@@ -380,16 +406,16 @@ export default function App() {
   }
 
   
-  if (path === "/guide-vallees-aure-louron") {
-    return withLazyAnalytics(<GuideValleesAureLouron />);
+  if (path === "/guide-vallees-aure-louron" || publicPage?.page === "guide") {
+    return withLazyAnalytics(<>{previewMarker}<GuideValleesAureLouron /></>);
   }
   
-  if (path === "/livret" || path === "/livret-accueil") {
+  if (path === "/livret" || path === "/livret-accueil" || publicPage?.page === "booklet") {
     return withLazyAnalytics(<LivretAccueil />);
   }
 
-  if (path === "/ski-vallees-aure-louron") {
-    return withLazyAnalytics(<SkiValleesAureLouron />);
+  if (path === "/ski-vallees-aure-louron" || publicPage?.page === "ski") {
+    return withLazyAnalytics(<>{previewMarker}<SkiValleesAureLouron /></>);
   }
 
   if (path === "/mentions-legales") {
@@ -408,7 +434,11 @@ export default function App() {
     return withLazyAnalytics(<AppelerRedirect />);
   }
   
-  return withAnalytics(<MaisonVerte />);
+  if (publicPage?.page === "home") {
+    return withLazyAnalytics(<>{previewMarker}<MaisonVerte /></>);
+  }
 
-  
+  // Éviter que les URL inventées soient silencieusement affichées comme l'accueil.
+  // Réponse HTTP Netlify encore 200 à cause du fallback SPA : traitement SEO en R13.
+  return withAnalytics(<PublicNotFound />);
 }

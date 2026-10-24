@@ -58,10 +58,23 @@ test('additional contacts reject duplicates of the main contact, duplicates betw
 
 test('the public form sends multiple contacts and lets the user add or remove them', () => {
   const source = fs.readFileSync('src/pages/MaisonVerte.jsx', 'utf8');
-  assert.match(source, /additionalContacts/);
-  assert.match(source, /Ajouter un contact/);
-  assert.match(source, /Supprimer ce contact/);
+  const translations = fs.readFileSync('src/components/home/bookingFormTranslations.js', 'utf8');
+
+  assert.match(source, /additionalContacts\.map\(\(contact, index\)/);
   assert.match(source, /additionalContacts,/);
+  assert.match(source, /onClick=\{addAdditionalContact\}/);
+  assert.match(source, /onClick=\{\(\) => removeAdditionalContact\(index\)\}/);
+  assert.match(source, /additionalContacts\.length < 4/);
+  assert.match(source, /\{bookingCopy\.addContact\}/);
+  assert.match(source, /\{bookingCopy\.removeContact\}/);
+
+  // Les libellés restent fournis dans les trois langues, sans coder le français dans le JSX.
+  assert.match(translations, /addContact:\s*"\+ Ajouter un contact"/);
+  assert.match(translations, /removeContact:\s*"Supprimer ce contact"/);
+  assert.match(translations, /addContact:\s*"\+ Add a contact"/);
+  assert.match(translations, /removeContact:\s*"Remove this contact"/);
+  assert.match(translations, /addContact:\s*"\+ Añadir un contacto"/);
+  assert.match(translations, /removeContact:\s*"Eliminar este contacto"/);
 });
 
 test('booking contact migration and endpoint persist linked customer records after atomic booking creation', () => {

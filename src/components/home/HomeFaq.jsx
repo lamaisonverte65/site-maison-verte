@@ -1,7 +1,9 @@
-export function HomeFaq({ faqCategories, setOpenFaqCategory, openFaqCategory, setOpenFaqIndex, openFaqIndex }) {
+import { getHomeSecondaryCopy } from "./homeSecondaryTranslations.js";
+export function HomeFaq({ language = "fr", faqCategories, setOpenFaqCategory, openFaqCategory, setOpenFaqIndex, openFaqIndex }) {
+  const copy = getHomeSecondaryCopy(language)?.faq;
   return (
 <section id="faq" className="section">
-        <h2>Questions fréquentes</h2>
+        <h2>{copy?.title || "Questions fréquentes"}</h2>
 
         <div style={{ maxWidth: "900px", margin: "0 auto" }}>
           {faqCategories.map((category, categoryIndex) => (
@@ -105,7 +107,7 @@ export function HomeFaq({ faqCategories, setOpenFaqCategory, openFaqCategory, se
                                     textDecoration: "none",
                                   }}
                                 >
-                                  {item.linkLabel || "Voir le document →"}
+                                  {item.linkLabel || copy?.document || "Voir le document →"}
                                 </a>
                               </div>
                             )}
@@ -121,7 +123,7 @@ export function HomeFaq({ faqCategories, setOpenFaqCategory, openFaqCategory, se
                                     textDecoration: "none",
                                   }}
                                 >
-                                  Voir le plan d’accès et de stationnement →
+                                  {copy?.parkingPlan || "Voir le plan d’accès et de stationnement →"}
                                 </a>
                               </div>
                             )}

@@ -4,6 +4,8 @@ import { authorizeAdminRequest, authorizationResponse } from "./_lib/admin-auth.
 import { escapeHtml } from "./_lib/html.js";
 import { expireOpenCheckoutSession } from "./_lib/stripe-checkout-session.js";
 import { resendEmail } from "./_lib/resend-email.js";
+import { emailLanguageForAudience } from "../../shared/guestLocale.js";
+import { buildLocalizedCleaningEmail } from "./_lib/guest-secondary-emails.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(
@@ -48,22 +50,26 @@ async function sendCleaningPaymentEmail({ booking, issue, paymentLink }) {
     <p style="margin-top:28px"><a href="${escapeHtml(paymentLink)}" style="background:#16a34a;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block">Régler le ménage</a></p>
     <p style="margin-top:28px;font-size:13px;color:#666">Pour toute question, vous pouvez répondre directement à cet email.</p>
   </div>`;
+  const language = emailLanguageForAudience(booking);
+  const localized = language === "fr" ? null : buildLocalizedCleaningEmail({ language, booking, issue, paymentLink });
+  const emailSubject = localized?.subject || subject;
+  const emailHtml = localized?.html || html;
   const retryPayload = {
     from: "La Maison Verte <contact@lamaisonverte65.fr>",
     to: [booking.guest_email],
     reply_to: "contact@lamaisonverte65.fr",
-    subject,
-    html,
+    subject: emailSubject,
+    html: emailHtml,
   };
   const response = await resendEmail(retryPayload);
   if (!response.ok) {
     const errorText = await response.text();
-    await logEmail({ bookingId: booking.id, toEmail: booking.guest_email, subject, status: "error", errorMessage: errorText, retryPayload });
+    await logEmail({ bookingId: booking.id, toEmail: booking.guest_email, subject: emailSubject, status: "error", errorMessage: errorText, retryPayload });
     return { sent: false, error: errorText };
   }
   let responseData = null;
   try { responseData = await response.json(); } catch (_) {}
-  await logEmail({ bookingId: booking.id, toEmail: booking.guest_email, subject, status: "sent", providerId: responseData?.id || null });
+  await logEmail({ bookingId: booking.id, toEmail: booking.guest_email, subject: emailSubject, status: "sent", providerId: responseData?.id || null });
   return { sent: true };
 }
 
@@ -81,7 +87,7 @@ export async function handler(event) {
 
     const [{ data: issue, error: issueError }, { data: booking, error: bookingError }] = await Promise.all([
       supabase.from("booking_cleaning_issues").select("*").eq("booking_request_id", bookingId).maybeSingle(),
-      supabase.from("booking_requests").select("id,start_date,end_date,guest_first_name,guest_last_name,guest_email").eq("id", bookingId).maybeSingle(),
+      supabase.from("booking_requests").select("id,start_date,end_date,guest_first_name,guest_last_name,guest_email,communication_language").eq("id", bookingId).maybeSingle(),
     ]);
     if (issueError) throw issueError;
     if (bookingError) throw bookingError;

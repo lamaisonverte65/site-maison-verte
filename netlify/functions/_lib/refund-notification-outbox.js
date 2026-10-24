@@ -2,6 +2,8 @@
 // L'envoi est réservé atomiquement ; un état d'envoi incertain reste en revue
 // humaine plutôt que d'être retransmis par un webhook/retry automatique.
 import { escapeHtml } from './html.js';
+import { emailLanguageForAudience } from '../../../shared/guestLocale.js';
+import { buildLocalizedRefundNotification } from './guest-refund-emails.js';
 import { resendEmail } from './resend-email.js';
 import { expireBookingOpenCheckoutSessions } from './stripe-checkout-session.js';
 
@@ -49,9 +51,19 @@ export function buildRefundNotificationPayload(operation) {
   const html = `<div style="font-family: Arial, sans-serif; line-height: 1.6;">${body}
       <p style="margin-top:30px;font-size:13px;color:#666;">Pensez à vérifier vos courriers indésirables / spams si vous ne recevez pas nos prochains messages, puis ajoutez contact@lamaisonverte65.fr à vos contacts.</p>
     </div>`;
+  // R5 : seul le texte voyageur varie. Les garde-fous, l'outbox et
+  // l'intention Stripe finalisée restent strictement inchangés.
+  // Le libellé de politique et le message libre sont reproduits sans traduction
+  // automatique : ne jamais modifier une règle de remboursement.
+  const language = emailLanguageForAudience(booking);
+  const localized = language === 'fr' ? null : buildLocalizedRefundNotification({
+    language, booking, refundOnly, cancellationType, amountEur, message, policyLabel: label,
+  });
+  const emailSubject = localized?.subject || subject;
+  const emailHtml = localized?.html || html;
   return {
     payload: {from:'La Maison Verte <contact@lamaisonverte65.fr>',to:[booking.guest_email],
-      reply_to:'contact@lamaisonverte65.fr',subject,html},
+      reply_to:'contact@lamaisonverte65.fr',subject:emailSubject,html:emailHtml},
     bookingId: booking.id,
     emailType: refundOnly ? 'refund_only' : 'booking_cancelled_refund',
     metadata: {refundOperationId:operation.id,cancellationType,refundedAmount:amountEur,policyLabel:label},

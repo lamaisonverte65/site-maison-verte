@@ -1,15 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-
-<urlset
-  xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
->
-
-  <url>
-    <loc>https://lamaisonverte65.fr/</loc>
-
-    <changefreq>weekly</changefreq>
-
-    <priority>1.0</priority>
-  </url>
-
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <!-- Uniquement les pages francaises indexables : EN/ES conservent noindex avant publication. -->
+  <url><loc>https://lamaisonverte65.fr/</loc></url>
+  <url><loc>https://lamaisonverte65.fr/guide-vallees-aure-louron</loc></url>
+  <url><loc>https://lamaisonverte65.fr/ski-vallees-aure-louron</loc></url>
 </urlset>

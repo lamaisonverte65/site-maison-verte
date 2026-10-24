@@ -94,6 +94,8 @@ export async function recoverArrivalLink(input, {
       toEmail: booking.guest_email,
       status: "sent",
       providerId: delivery?.providerId || null,
+      subject: delivery?.subject,
+      booking,
       tokenExpiresAt: capability.expiresAt,
     });
   } catch (error) {
@@ -119,6 +121,7 @@ export async function recoverArrivalLink(input, {
           toEmail: booking.guest_email || null,
           status: "error",
           providerId: null,
+          booking,
           tokenExpiresAt: capability?.expiresAt || null,
         });
       } catch (logError) {

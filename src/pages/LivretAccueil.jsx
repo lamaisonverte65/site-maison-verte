@@ -13,23 +13,15 @@ import { Helmet } from "react-helmet";
 import "../styles/livret.css";
 import PublicNavigation from "../components/PublicNavigation";
 import { localizeBookletTree, normalizeBookletLanguage } from "../booklet/localizeBooklet";
+import { guestLanguageFromUrl } from "../../shared/guestLocale.js";
 
 export default function LivretAccueil() {
   const [keyboxImageError, setKeyboxImageError] = useState(false);
-  const [language, setLanguage] = useState(() => {
+  const [language] = useState(() => {
     // Le rendu serveur (tests SSR et génération HTML) ne possède pas de window.
     if (typeof window === "undefined") return "fr";
-    return normalizeBookletLanguage(new URLSearchParams(window.location.search).get("lang"));
+    return normalizeBookletLanguage(guestLanguageFromUrl(window.location.href));
   });
-  const selectLanguage = (next) => {
-    const lang = normalizeBookletLanguage(next);
-    setLanguage(lang);
-    setKeyboxImageError(false);
-    const url = new URL(window.location.href);
-    if (lang === "fr") url.searchParams.delete("lang");
-    else url.searchParams.set("lang", lang);
-    window.history.replaceState(window.history.state, "", url);
-  };
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("print") !== "1") return;
@@ -97,6 +89,7 @@ export default function LivretAccueil() {
   return (
     <>
       <Helmet htmlAttributes={{ lang: language }}>
+        <meta name="robots" content="noindex,follow" />
         <title>{language === "en" ? "Welcome booklet" : language === "es" ? "Guía de bienvenida" : "Livret d'accueil"} | La Maison Verte - Arreau</title>
         <meta
           name="description"
@@ -106,19 +99,17 @@ export default function LivretAccueil() {
               ? "Guía de bienvenida de La Maison Verte: llegada, acceso, caja de llaves e información práctica."
               : "Livret d'accueil de La Maison Verte à Arreau : coordonnées, informations utiles, guide des vallées d'Aure et du Louron."}
         />
-        <link rel="canonical" href="https://lamaisonverte65.fr/livret" />
+        <link rel="canonical" href={`https://lamaisonverte65.fr/livret${language === "fr" ? "" : `?lang=${language}`}`} />
+        <link rel="alternate" hrefLang="fr" href="https://lamaisonverte65.fr/livret" />
+        <link rel="alternate" hrefLang="en" href="https://lamaisonverte65.fr/livret?lang=en" />
+        <link rel="alternate" hrefLang="es" href="https://lamaisonverte65.fr/livret?lang=es" />
+        <link rel="alternate" hrefLang="x-default" href="https://lamaisonverte65.fr/livret" />
       </Helmet>
 
       <PublicNavigation solid={false} />
 
       <main className="livret" data-livret-lang={language}>
         <div className="livret-language-bar no-print">
-          <label htmlFor="livret-language">{language === "en" ? "Language" : language === "es" ? "Idioma" : "Langue"}</label>
-          <select id="livret-language" value={language} onChange={(event) => selectLanguage(event.target.value)}>
-            <option value="fr">Français</option>
-            <option value="en">English</option>
-            <option value="es">Español</option>
-          </select>
           <button type="button" onClick={() => window.print()}>
             {language === "en" ? "Print / PDF" : language === "es" ? "Imprimir / PDF" : "Imprimer / PDF"}
           </button>

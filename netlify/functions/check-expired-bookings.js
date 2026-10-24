@@ -1,9 +1,12 @@
+import { emailAutomationAllowed, emailAutomationSkippedResponse } from "./_lib/email-delivery-policy.js";
 import { escapeHtml } from "./_lib/html.js";
 import { schedule } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 import { expireBookingOpenCheckoutSessions } from "./_lib/stripe-checkout-session.js";
 import { resendEmail } from "./_lib/resend-email.js";
+import { emailLanguageForAudience } from "../../shared/guestLocale.js";
+import { buildLocalizedExpiredEmail } from "./_lib/guest-secondary-emails.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -109,12 +112,15 @@ async function sendExpiredEmail(booking) {
     </div>
   `;
 
+  const language = emailLanguageForAudience(booking);
+  const localized = language === "fr" ? null : buildLocalizedExpiredEmail({ language, booking });
+  const emailSubject = localized?.subject || subject;
   const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [booking.guest_email],
       reply_to: "contact@lamaisonverte65.fr",
-      subject,
-      html,
+      subject: emailSubject,
+      html: localized?.html || html,
     };
   const response = await resendEmail(retryPayload);
 
@@ -125,7 +131,7 @@ async function sendExpiredEmail(booking) {
       bookingId: booking.id,
       emailType: "booking_expired",
       toEmail: booking.guest_email,
-      subject,
+      subject: emailSubject,
       status: "error",
       errorMessage: errorText,
       metadata: { status: booking.status, acceptanceExpiresAt: booking.acceptance_expires_at },
@@ -144,7 +150,7 @@ async function sendExpiredEmail(booking) {
     bookingId: booking.id,
     emailType: "booking_expired",
     toEmail: booking.guest_email,
-    subject,
+    subject: emailSubject,
     status: "sent",
     providerId: responseData?.id || null,
     metadata: { status: booking.status, acceptanceExpiresAt: booking.acceptance_expires_at },
@@ -275,6 +281,7 @@ async function runExpiredBookingsCheck() {
 }
 
 export const handler = schedule("0 * * * *", async () => {
+  if (!emailAutomationAllowed()) return emailAutomationSkippedResponse();
   try {
     const result = await runExpiredBookingsCheck();
 

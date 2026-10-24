@@ -1,4 +1,8 @@
+import { languageForPublicPage } from "../../../shared/publicSiteLocale.js";
+import { getHomeCopy } from "./homeTranslations.js";
 export function HomeHero() {
+  const language = typeof window === "undefined" ? "fr" : languageForPublicPage(window.location.href);
+  const copy = getHomeCopy(language).hero;
   return (
 <section id="accueil" className="hero">
   <div className="overlay">
@@ -46,14 +50,14 @@ export function HomeHero() {
           margin: "0 auto 30px",
         }}
       >
-        Location de vacances dans les Hautes-Pyrénées
+        {copy.subtitle1}
         <br />
-        Gîte de charme pour 4 personnes au cœur de la vallée d'Aure
+        {copy.subtitle2}
       </h2>
 
       <div
         className="hero-classification"
-        title="Classement officiel meublé de tourisme 3 étoiles"
+        title={copy.classificationTitle}
         style={{
           display: "inline-flex",
           alignItems: "center",
@@ -73,7 +77,7 @@ export function HomeHero() {
         }}
       >
         <span aria-hidden="true" style={{ letterSpacing: "2px" }}>★★★</span>
-        <span>Meublé de tourisme classé 3 étoiles</span>
+        <span>{copy.classification}</span>
       </div>
 
       <div
@@ -104,7 +108,7 @@ export function HomeHero() {
         >
           -Arreau-
           <br />
-          Pyrénées
+          {copy.location}
         </div>
         <p
           className="hero-description"
@@ -123,9 +127,7 @@ export function HomeHero() {
            0 4px 16px rgba(0,0,0,0.70)`,
           }}
         >
-          Entre cols mythiques, stations de ski et randonnées,
-          profitez d'un séjour authentique dans une maison de caractère
-          entièrement rénovée au cœur du quartier historique.
+          {copy.description}
         </p>
       </div>
 
@@ -148,7 +150,7 @@ export function HomeHero() {
             textDecoration: "none",
           }}
         >
-          Réserver maintenant
+          {copy.book}
         </a>
 
         <a
@@ -165,7 +167,7 @@ export function HomeHero() {
             fontSize: "17px",
           }}
         >
-          Voir les photos
+          {copy.photos}
         </a>
 
         <a

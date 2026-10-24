@@ -2,6 +2,9 @@ import { createClient } from "@supabase/supabase-js";
 import { createHmac } from "node:crypto";
 import { recoverArrivalLink } from "./_lib/arrival-link-recovery.js";
 import { escapeHtml } from "./_lib/html.js";
+import { resendEmail } from "./_lib/resend-email.js";
+import { emailLanguageForAudience } from "../../shared/guestLocale.js";
+import { buildLocalizedArrivalRecoveryEmail } from "./_lib/guest-secondary-emails.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const SITE_URL = process.env.URL || "https://lamaisonverte65.fr";
@@ -45,7 +48,7 @@ const repository = {
   async findBookingById(bookingId) {
     const { data, error } = await supabase
       .from("booking_requests")
-      .select("id,status,start_date,end_date,guest_email,guest_first_name,guest_last_name,arrival_time,arrival_token_hash,arrival_token_expires_at,arrival_token_created_at")
+      .select("id,status,start_date,end_date,guest_email,guest_first_name,guest_last_name,communication_language,arrival_time,arrival_token_hash,arrival_token_expires_at,arrival_token_created_at")
       .eq("id", bookingId)
       .maybeSingle();
     if (error) throw error;
@@ -87,11 +90,13 @@ const repository = {
     if (error) throw error;
   },
   async appendEmailLog(value) {
+    const language = emailLanguageForAudience(value.booking);
+    const localizedSubject = language === "fr" ? null : buildLocalizedArrivalRecoveryEmail({ language, booking: value.booking, url: "" }).subject;
     const { error } = await supabase.from("email_logs").insert([{
       booking_request_id: value.bookingId,
       email_type: value.emailType,
       to_email: value.toEmail,
-      subject: "Nouveau lien sécurisé pour votre heure d’arrivée",
+      subject: value.subject || localizedSubject || "Nouveau lien sécurisé pour votre heure d’arrivée",
       status: value.status,
       provider_id: value.providerId,
       error_message: value.status === "error" ? "Envoi du lien sécurisé impossible." : null,
@@ -104,20 +109,18 @@ const repository = {
 
 const mailer = {
   async sendArrivalLink({ to, url, booking }) {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const language = emailLanguageForAudience(booking);
+    const localized = language === "fr" ? null : buildLocalizedArrivalRecoveryEmail({ language, booking, url });
+    const response = await resendEmail({
         from: "La Maison Verte <contact@lamaisonverte65.fr>",
         to: [to],
         reply_to: "contact@lamaisonverte65.fr",
-        subject: "Nouveau lien sécurisé pour votre heure d’arrivée",
-        html: `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>Votre heure d’arrivée</h2><p>Bonjour ${escapeHtml(booking.guest_first_name)} ${escapeHtml(booking.guest_last_name)},</p><p>Voici votre nouveau lien sécurisé pour indiquer votre heure d’arrivée à La Maison Verte.</p><p><a href="${escapeHtml(url)}" style="background:#16a34a;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block">Renseigner mon heure d’arrivée</a></p><p>Si vous n’êtes pas à l’origine de cette demande, vous pouvez ignorer cet email.</p></div>`,
-      }),
-    });
+        subject: localized?.subject || "Nouveau lien sécurisé pour votre heure d’arrivée",
+        html: localized?.html || `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>Votre heure d’arrivée</h2><p>Bonjour ${escapeHtml(booking.guest_first_name)} ${escapeHtml(booking.guest_last_name)},</p><p>Voici votre nouveau lien sécurisé pour indiquer votre heure d’arrivée à La Maison Verte.</p><p><a href="${escapeHtml(url)}" style="background:#16a34a;color:white;padding:14px 22px;border-radius:12px;text-decoration:none;font-weight:bold;display:inline-block">Renseigner mon heure d’arrivée</a></p><p>Si vous n’êtes pas à l’origine de cette demande, vous pouvez ignorer cet email.</p></div>`,
+      });
     if (!response.ok) throw new Error("Recovery email delivery failed.");
     const data = await response.json().catch(() => null);
-    return { providerId: data?.id || null };
+    return { providerId: data?.id || null, subject: localized?.subject || "Nouveau lien sécurisé pour votre heure d’arrivée" };
   },
 };
 

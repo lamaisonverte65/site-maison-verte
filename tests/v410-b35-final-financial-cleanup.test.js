@@ -6,7 +6,14 @@ const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "
 
 test("B3.5 public payment explanation uses the authoritative deposit percentage", () => {
   const source = read("src/pages/MaisonVerte.jsx");
-  assert.match(source, /acompte de \{depositPercent\} %/);
+  const translations = read("src/components/home/bookingFormTranslations.js");
+
+  // La phrase est traduite mais le pourcentage doit provenir du devis serveur.
+  assert.match(source, /const depositPercent = Math\.round\(depositRate \* 100\)/);
+  assert.match(source, /bookingText\(bookingCopy\.depositInfo,\s*\{\s*percent:\s*depositPercent,/);
+  assert.match(translations, /depositInfo:\s*"Par défaut, un acompte de \{percent\} %/);
+  assert.match(translations, /depositInfo:\s*"By default, a \{percent\}% deposit/);
+  assert.match(translations, /depositInfo:\s*"Por defecto, se solicitará un anticipo del \{percent\}%/);
   assert.doesNotMatch(source, /acompte de 30 % sera demandé/);
 });
 

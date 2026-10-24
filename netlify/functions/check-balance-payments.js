@@ -1,9 +1,12 @@
+import { emailAutomationAllowed, emailAutomationSkippedResponse } from "./_lib/email-delivery-policy.js";
 import { escapeHtml } from "./_lib/html.js";
 import { schedule } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 import { createBalancePaymentUrl } from "./_lib/balance-link.js";
 import { contractualTotal, recordedPaidAmount } from "./_lib/booking-financial-authority.js";
 import { resendEmail } from "./_lib/resend-email.js";
+import { buildLocalizedBalanceEmail } from "./_lib/guest-scheduled-emails.js";
+import { emailLanguageForAudience } from "../../shared/guestLocale.js";
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -170,24 +173,32 @@ async function sendEmail(booking, paymentLink, amount, step) {
     </div>
   `;
 
+  // R4 : la langue est liée à la réservation ; le modèle historique FR est intact.
+  const guestLanguage = emailLanguageForAudience(booking);
+  const localized = guestLanguage === "fr" ? null : buildLocalizedBalanceEmail({
+    language: guestLanguage, booking, paymentLink, amount, step,
+  });
+  const emailSubject = localized?.subject || `${labels[step]} - La Maison Verte`;
+  const emailHtml = localized?.html || html;
+
   const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [booking.guest_email],
       reply_to: "contact@lamaisonverte65.fr",
-      subject: `${labels[step]} - La Maison Verte`,
-      html,
+      subject: emailSubject,
+      html: emailHtml,
     };
   const response = await resendEmail(retryPayload);
 
   if (!response.ok) {
     const errorText = await response.text();
-    await logEmail({ bookingId: booking.id, emailType: `balance:${step}`, toEmail: booking.guest_email, subject: `${labels[step]} - La Maison Verte`, status: "error", errorMessage: errorText, retryPayload});
+    await logEmail({ bookingId: booking.id, emailType: `balance:${step}`, toEmail: booking.guest_email, subject: emailSubject, status: "error", errorMessage: errorText, retryPayload});
     throw new Error(errorText);
   }
 
   let responseData = null;
   try { responseData = await response.json(); } catch (_) {}
-  await logEmail({ bookingId: booking.id, emailType: `balance:${step}`, toEmail: booking.guest_email, subject: `${labels[step]} - La Maison Verte`, status: "sent", providerId: responseData?.id || null });
+  await logEmail({ bookingId: booking.id, emailType: `balance:${step}`, toEmail: booking.guest_email, subject: emailSubject, status: "sent", providerId: responseData?.id || null });
 }
 
 async function sendOwnerJ17Alert(booking, balance) {
@@ -202,6 +213,7 @@ async function sendOwnerJ17Alert(booking, balance) {
 }
 
 export const handler = schedule("0 8 * * *", async (event) => {
+  if (!emailAutomationAllowed()) return emailAutomationSkippedResponse();
   try {
     const { data: bookings, error } = await supabase
       .from("booking_requests")

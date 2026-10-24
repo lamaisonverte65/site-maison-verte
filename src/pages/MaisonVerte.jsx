@@ -1,3 +1,4 @@
+import "../components/home/homeResponsive.css";
 import { HomeHero } from "../components/home/HomeHero";
 import { HomePresentation } from "../components/home/HomePresentation";
 import { HomeGallery } from "../components/home/HomeGallery";
@@ -6,11 +7,17 @@ import { HomeActivities } from "../components/home/HomeActivities";
 import { HomeWeather } from "../components/home/HomeWeather";
 import { HomeContact } from "../components/home/HomeContact";
 import { galleryPhotos, faqCategories, faqSchema } from "../components/home/homeContent";
+import { getHomeSecondaryCopy, localizeFaqCategories } from "../components/home/homeSecondaryTranslations.js";
+import { getGuestReviewDisplay, localizeGuestReviewStayPeriod } from "../components/home/guestReviewTranslations.js";
+import { getBookingFormCopy, interpolateBookingCopy, formatBookingMoney, formatBookingCalendarMoney, localizeBookingFailure } from "../components/home/bookingFormTranslations.js";
 import { useEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet";
+import { getHomeSeo, HOME_ALTERNATES } from "../components/home/homeSeo.js";
 import { submitPublicBooking } from "../utils/publicBookingSubmission";
 import { isDepartureOnlyDate, selectionContainsUnavailableNight } from "../utils/publicCalendarSelection";
 import PublicNavigation from "../components/PublicNavigation";
+import { guestLanguageFromUrl } from "../../shared/guestLocale.js";
+import { localizePublicHref } from "../../shared/publicSiteLocale.js";
 
 const createEmptyAdditionalContact = () => ({
   firstName: "",
@@ -33,6 +40,21 @@ function normalizeContactPhone(value) {
 }
 
 export default function MaisonVerte() {
+  const siteLanguage = typeof window === "undefined" ? "fr" : guestLanguageFromUrl(window.location.href);
+  const reviewCopy = getHomeSecondaryCopy(siteLanguage)?.reviews;
+  const homeSeo = getHomeSeo(siteLanguage);
+  const bookingCopy = getBookingFormCopy(siteLanguage);
+  const bookingText = (template, values) => interpolateBookingCopy(template, values);
+  const bookingMoney = (amount) => formatBookingMoney(amount, siteLanguage);
+  const bookingCalendarMoney = (amount) => formatBookingCalendarMoney(amount, siteLanguage);
+  const bookingFeeMoney = (amount) => siteLanguage === "fr" ? `${amount} €` : bookingMoney(amount);
+  const bookingDisplayDate = (value) => {
+    if (!value || siteLanguage === "fr") return value || "";
+    return new Intl.DateTimeFormat(siteLanguage === "es" ? "es-ES" : "en-GB", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+    }).format(parseLocalDate(value));
+  };
+  const visibleFaqCategories = localizeFaqCategories(faqCategories, siteLanguage);
   const [selectedDates, setSelectedDates] = useState([]);
   const [unavailableDates, setUnavailableDates] = useState([]);
   const [departureOnlyDates, setDepartureOnlyDates] = useState([]);
@@ -290,7 +312,7 @@ export default function MaisonVerte() {
 
     // La date de départ n'est pas une nuit occupée : seule la plage [arrivée, départ[ est contrôlée.
     if (selectionContainsUnavailableNight(realStart, end, unavailableDates)) {
-      alert("Cette période contient une date déjà réservée.");
+      alert(bookingCopy.unavailableDates);
       setSelectedDates([]);
       setContractAccepted(false);
       return;
@@ -396,12 +418,12 @@ export default function MaisonVerte() {
 
   const reservationMessage =
     selectedDates.length !== 2
-      ? "Sélectionnez vos dates d’arrivée et de départ."
+      ? bookingCopy.selectDates
       : numberOfNights < minimumNights
-        ? `Séjour minimum : ${minimumNights} nuits sur cette période.`
+        ? bookingText(bookingCopy.minimumStay, { nights: minimumNights })
         : activeStayRule
-          ? "Votre demande concerne une période de forte demande. Elle sera étudiée avant confirmation."
-          : "Renseignez vos coordonnées.";
+          ? bookingCopy.busyPeriod
+          : bookingCopy.enterContact;
 
   const canRequestBooking =
     selectedDates.length === 2 && numberOfNights >= minimumNights;
@@ -411,34 +433,34 @@ export default function MaisonVerte() {
 
   function getRequiredTextError(value, label, maxLength, showRequired = bookingValidationAttempted) {
     const text = String(value ?? "").trim();
-    if (!text) return showRequired ? `${label} requis.` : "";
-    if (text.length > maxLength) return `${label} trop long (${maxLength} caractères maximum).`;
+    if (!text) return showRequired ? bookingText(bookingCopy.errorRequired, { field: label }) : "";
+    if (text.length > maxLength) return bookingText(bookingCopy.errorTooLong, { field: label, max: maxLength });
     return "";
   }
 
   function getEmailError(value, showRequired = bookingValidationAttempted) {
     const text = String(value ?? "").trim();
-    if (!text) return showRequired ? "Adresse email requise." : "";
-    if (text.length > 254 || !EMAIL_PATTERN.test(text)) return "Adresse email invalide.";
+    if (!text) return showRequired ? bookingCopy.errorEmailRequired : "";
+    if (text.length > 254 || !EMAIL_PATTERN.test(text)) return bookingCopy.errorEmailInvalid;
     return "";
   }
 
   function getPhoneError(value, showRequired = bookingValidationAttempted) {
     const text = String(value ?? "").trim();
-    if (!text) return showRequired ? "Numéro de téléphone requis." : "";
-    if (text.length > 32 || !PHONE_PATTERN.test(text)) return "Numéro de téléphone invalide.";
+    if (!text) return showRequired ? bookingCopy.errorPhoneRequired : "";
+    if (text.length > 32 || !PHONE_PATTERN.test(text)) return bookingCopy.errorPhoneInvalid;
     return "";
   }
 
   const mainContactErrors = {
-    firstName: getRequiredTextError(guestFirstName, "Prénom", 80),
-    lastName: getRequiredTextError(guestLastName, "Nom", 80),
+    firstName: getRequiredTextError(guestFirstName, bookingCopy.fieldFirstName, 80),
+    lastName: getRequiredTextError(guestLastName, bookingCopy.fieldLastName, 80),
     email: getEmailError(guestEmail),
     phone: getPhoneError(guestPhone),
-    address: getRequiredTextError(guestAddress, "Adresse", 200),
-    postalCode: getRequiredTextError(guestPostalCode, "Code postal", 20),
-    city: getRequiredTextError(guestCity, "Ville", 100),
-    country: getRequiredTextError(guestCountry, "Pays", 100),
+    address: getRequiredTextError(guestAddress, bookingCopy.fieldAddress, 200),
+    postalCode: getRequiredTextError(guestPostalCode, bookingCopy.fieldPostalCode, 20),
+    city: getRequiredTextError(guestCity, bookingCopy.fieldCity, 100),
+    country: getRequiredTextError(guestCountry, bookingCopy.fieldCountry, 100),
   };
 
   const isEmailValid = mainContactErrors.email === "" && guestEmail.trim() !== "";
@@ -461,14 +483,14 @@ export default function MaisonVerte() {
     const phoneError = getPhoneError(contact.phone, showRequired);
 
     return {
-      firstName: getRequiredTextError(contact.firstName, "Prénom", 80, showRequired),
-      lastName: getRequiredTextError(contact.lastName, "Nom", 80, showRequired),
-      email: emailError || (emailDuplicate ? "Adresse email déjà renseignée." : ""),
-      phone: phoneError || (phoneDuplicate ? "Numéro de téléphone déjà renseigné." : ""),
-      address: contact.address.trim().length > 200 ? "Adresse trop longue (200 caractères maximum)." : "",
-      postalCode: contact.postalCode.trim().length > 20 ? "Code postal trop long (20 caractères maximum)." : "",
-      city: contact.city.trim().length > 100 ? "Ville trop longue (100 caractères maximum)." : "",
-      country: contact.country.trim().length > 100 ? "Pays trop long (100 caractères maximum)." : "",
+      firstName: getRequiredTextError(contact.firstName, bookingCopy.fieldFirstName, 80, showRequired),
+      lastName: getRequiredTextError(contact.lastName, bookingCopy.fieldLastName, 80, showRequired),
+      email: emailError || (emailDuplicate ? bookingCopy.errorEmailDuplicate : ""),
+      phone: phoneError || (phoneDuplicate ? bookingCopy.errorPhoneDuplicate : ""),
+      address: contact.address.trim().length > 200 ? bookingText(bookingCopy.errorTooLong, { field: bookingCopy.fieldAddress, max: 200 }) : "",
+      postalCode: contact.postalCode.trim().length > 20 ? bookingText(bookingCopy.errorTooLong, { field: bookingCopy.fieldPostalCode, max: 20 }) : "",
+      city: contact.city.trim().length > 100 ? bookingText(bookingCopy.errorTooLong, { field: bookingCopy.fieldCity, max: 100 }) : "",
+      country: contact.country.trim().length > 100 ? bookingText(bookingCopy.errorTooLong, { field: bookingCopy.fieldCountry, max: 100 }) : "",
     };
   }
 
@@ -555,32 +577,32 @@ export default function MaisonVerte() {
 
     if (selectedDates.length !== 2) {
       errors.push({
-        message: "Sélectionnez vos dates d’arrivée et de départ.",
+        message: bookingCopy.selectDates,
         ref: bookingFormRef,
       });
     } else if (numberOfNights < minimumNights) {
       errors.push({
-        message: `Le séjour doit comporter au minimum ${minimumNights} nuits sur cette période.`,
+        message: bookingText(bookingCopy.errorStayMinimum, { nights: minimumNights }),
         ref: bookingFormRef,
       });
     }
 
     const requiredContactChecks = [
-      [getRequiredTextError(guestFirstName, "Prénom", 80, true), guestFirstNameRef],
-      [getRequiredTextError(guestLastName, "Nom", 80, true), guestLastNameRef],
+      [getRequiredTextError(guestFirstName, bookingCopy.fieldFirstName, 80, true), guestFirstNameRef],
+      [getRequiredTextError(guestLastName, bookingCopy.fieldLastName, 80, true), guestLastNameRef],
       [getEmailError(guestEmail, true), guestEmailRef],
       [getPhoneError(guestPhone, true), guestPhoneRef],
-      [getRequiredTextError(guestAddress, "Adresse", 200, true), guestAddressRef],
-      [getRequiredTextError(guestPostalCode, "Code postal", 20, true), guestPostalCodeRef],
-      [getRequiredTextError(guestCity, "Ville", 100, true), guestCityRef],
-      [getRequiredTextError(guestCountry, "Pays", 100, true), guestCountryRef],
+      [getRequiredTextError(guestAddress, bookingCopy.fieldAddress, 200, true), guestAddressRef],
+      [getRequiredTextError(guestPostalCode, bookingCopy.fieldPostalCode, 20, true), guestPostalCodeRef],
+      [getRequiredTextError(guestCity, bookingCopy.fieldCity, 100, true), guestCityRef],
+      [getRequiredTextError(guestCountry, bookingCopy.fieldCountry, 100, true), guestCountryRef],
     ];
     for (const [message, ref] of requiredContactChecks) {
       if (message) errors.push({ message, ref });
     }
 
     additionalContacts.forEach((contact, index) => {
-      const label = `Contact ${index + 2}`;
+      const label = bookingText(bookingCopy.contactNumber, { number: index + 2 });
       const contactErrors = getAdditionalContactFieldErrors(contact, index, true);
       for (const message of Object.values(contactErrors)) {
         if (message) errors.push({ message: `${label} : ${message}`, ref: bookingFormRef });
@@ -591,15 +613,15 @@ export default function MaisonVerte() {
       errors.push({
         message:
           childrenCount > 0 && childrenAges.trim() === ""
-            ? "Précisez l’âge des enfants."
-            : "Indiquez entre 1 et 4 voyageurs.",
+            ? bookingCopy.errorChildrenAges
+            : bookingCopy.errorGuestCount,
         ref: childrenCount > 0 ? childrenAgesRef : bookingFormRef,
       });
     }
 
     if (!contractAccepted) {
       errors.push({
-        message: "Acceptez le contrat de location et les conditions générales de réservation.",
+        message: bookingCopy.errorContract,
         ref: contractAcceptedRef,
       });
     }
@@ -663,6 +685,7 @@ export default function MaisonVerte() {
         cleaningObligationsAccepted,
         paymentPreference: canChooseFullPayment && payFullNow ? "full" : "deposit",
         guestMessage,
+        communicationLanguage: guestLanguageFromUrl(window.location.href),
         startDate: selectedDates[0],
         endDate: selectedDates[1],
         nights: numberOfNights,
@@ -679,7 +702,7 @@ export default function MaisonVerte() {
           setContractAccepted(false);
           if (outcome.refreshCalendar) await fetchCalendar();
         }
-        setBookingValidationErrors([outcome.message]);
+        setBookingValidationErrors([localizeBookingFailure(outcome.kind, siteLanguage, outcome.message)]);
         setTimeout(() => bookingErrorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
         return;
       }
@@ -717,7 +740,7 @@ export default function MaisonVerte() {
 
     } catch (err) {
       console.error(err);
-      setBookingValidationErrors(["Une erreur inattendue est survenue. Vos informations sont conservées ; réessayez."]);
+      setBookingValidationErrors([bookingCopy.errorUnexpected]);
     } finally {
       bookingSubmitLockRef.current = false;
       setBookingSubmitting(false);
@@ -730,7 +753,8 @@ export default function MaisonVerte() {
       (sum, review) => sum + Number(review.rating || 0),
       0,
     );
-    return (total / publishedReviews.length).toFixed(1).replace(".", ",");
+    const average = (total / publishedReviews.length).toFixed(1);
+    return siteLanguage === "en" ? average : average.replace(".", ",");
   }
 
   async function submitGuestReview(event) {
@@ -739,15 +763,15 @@ export default function MaisonVerte() {
 
     const rating = Number(reviewRating);
     if (!reviewFirstName.trim()) {
-      alert("Merci d’indiquer votre prénom.");
+      alert(reviewCopy?.alertFirstName || "Merci d’indiquer votre prénom.");
       return;
     }
     if (!rating || rating < 1 || rating > 5) {
-      alert("Merci de sélectionner une note entre 1 et 5.");
+      alert(reviewCopy?.alertRating || "Merci de sélectionner une note entre 1 et 5.");
       return;
     }
     if (!reviewComment.trim()) {
-      alert("Merci d’écrire un petit commentaire.");
+      alert(reviewCopy?.alertComment || "Merci d’écrire un petit commentaire.");
       return;
     }
 
@@ -767,7 +791,7 @@ export default function MaisonVerte() {
         }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Erreur lors de l’envoi de l’avis.");
+      if (!response.ok) throw new Error(reviewCopy?.errorSending || data.error || "Erreur lors de l’envoi de l’avis.");
 
       setReviewSubmitted(true);
       setReviewFirstName("");
@@ -779,7 +803,7 @@ export default function MaisonVerte() {
       setReviewStayPeriod("");
     } catch (error) {
       console.error(error);
-      alert(error.message || "Erreur lors de l’envoi de l’avis. Vous pouvez aussi nous l’envoyer par email.");
+      alert(siteLanguage === "fr" ? (error.message || "Erreur lors de l’envoi de l’avis. Vous pouvez aussi nous l’envoyer par email.") : reviewCopy?.errorFallback);
     } finally {
       setReviewSubmitting(false);
     }
@@ -787,45 +811,25 @@ export default function MaisonVerte() {
 
   return (
     <>
-      <Helmet>
-        <title>
-          Location vacances Arreau 3 étoiles – Gîte 4 personnes | La Maison
-          Verte
-        </title>
-        <meta
-          name="description"
-          content="Meublé de tourisme classé 3 étoiles à Arreau pour 4 personnes. Réservation directe auprès du propriétaire, proche Saint-Lary, Peyragudes, Loudenvielle, Val Louron et du Néouvielle."
-        />
-        <link rel="canonical" href="https://lamaisonverte65.fr/" />
-        <meta
-          property="og:title"
-          content="La Maison Verte – Meublé de tourisme 3 étoiles à Arreau"
-        />
-        <meta
-          property="og:description"
-          content="Maison rénovée classée meublé de tourisme 3 étoiles pour 4 personnes à Arreau. Réservation directe propriétaire, au cœur des Pyrénées."
-        />
-
-        <meta
-          property="og:image"
-          content="https://lamaisonverte65.fr/hero.webp"
-        />
-        <meta property="og:url" content="https://lamaisonverte65.fr/" />
+      <Helmet htmlAttributes={{ lang: siteLanguage }}>
+        <title>{homeSeo.title}</title>
+        <meta name="description" content={homeSeo.description} />
+        <link rel="canonical" href={homeSeo.canonical} />
+        <link rel="alternate" hrefLang="fr" href={HOME_ALTERNATES.fr} />
+        <link rel="alternate" hrefLang="en" href={HOME_ALTERNATES.en} />
+        <link rel="alternate" hrefLang="es" href={HOME_ALTERNATES.es} />
+        <link rel="alternate" hrefLang="x-default" href={HOME_ALTERNATES["x-default"]} />
+        <meta property="og:title" content={homeSeo.ogTitle} />
+        <meta property="og:description" content={homeSeo.ogDescription} />
+        <meta property="og:image" content="https://lamaisonverte65.fr/hero.webp" />
+        <meta property="og:url" content={homeSeo.canonical} />
+        <meta property="og:locale" content={homeSeo.ogLocale} />
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content="La Maison Verte" />
         <meta name="twitter:card" content="summary_large_image" />
-        <meta
-          name="twitter:title"
-          content="La Maison Verte – Meublé de tourisme 3 étoiles à Arreau"
-        />
-        <meta
-          name="twitter:description"
-          content="Maison classée 3 étoiles pour 4 personnes à Arreau. Réservation directe propriétaire, au cœur des Pyrénées."
-        />
-        <meta
-          name="twitter:image"
-          content="https://lamaisonverte65.fr/hero.webp"
-        />
+        <meta name="twitter:title" content={homeSeo.ogTitle} />
+        <meta name="twitter:description" content={homeSeo.twitterDescription} />
+        <meta name="twitter:image" content="https://lamaisonverte65.fr/hero.webp" />
 
         {/* FAVICONS */}
 
@@ -929,7 +933,7 @@ export default function MaisonVerte() {
                 },
                 {
                   "@type": "LocationFeatureSpecification",
-                  name: "Balcon plein sud",
+                  name: "Balcon sud-ouest",
                   value: true,
                 },
                 {
@@ -949,22 +953,10 @@ export default function MaisonVerte() {
                 },
                 {
                   "@type": "LocationFeatureSpecification",
-                  name: "Wi-Fi 7",
-                  value: true,
-                },
-                {
-                  "@type": "LocationFeatureSpecification",
                   name: "Parking gratuit proche",
                   value: true,
                 },
               ],
-            },
-            aggregateRating: {
-              "@type": "AggregateRating",
-              ratingValue: "4.8",
-              reviewCount: "51",
-              bestRating: "5",
-              worstRating: "1",
             },
             priceRange: `À partir de ${defaultPrice}€ par nuit`,
           })}
@@ -1002,35 +994,31 @@ export default function MaisonVerte() {
             }}
           >
             <h2 id="booking-confirmation-title" style={{ marginTop: 0, color: "#1f6f3d" }}>
-              Votre demande a bien été envoyée
+              {bookingCopy.confirmationTitle}
             </h2>
 
             {bookingConfirmation.confirmationPending ? (
               <p style={{ lineHeight: "1.7", color: "#444" }}>
-                Votre demande a bien été enregistrée. L’envoi de l’email de
-                confirmation n’a pas pu être confirmé immédiatement. Ne renvoyez
-                pas le formulaire et contactez-nous si vous ne recevez rien.
+                {bookingCopy.confirmationPending}
               </p>
             ) : (
               <>
                 <p style={{ lineHeight: "1.7", color: "#444" }}>
-                  Vous allez recevoir un email de confirmation dans quelques instants.
+                  {bookingCopy.confirmationEmail}
                 </p>
                 <p style={{ lineHeight: "1.7", color: "#444" }}>
-                  <strong>Pensez à vérifier vos courriers indésirables (spams)</strong>{" "}
-                  et, si possible, à enregistrer notre adresse email dans vos contacts.
+                  <strong>{bookingCopy.confirmationSpamTitle}</strong>{" "}
+                  {bookingCopy.confirmationSpamHelp}
                 </p>
                 <p style={{ lineHeight: "1.7", color: "#444" }}>
-                  Si votre demande est acceptée, le lien permettant de confirmer
-                  votre réservation par paiement sera également envoyé par email
-                  et restera valable <strong>24 h</strong>.
+                  {bookingCopy.confirmationPayment}{" "}<strong>24 h</strong>.
                 </p>
               </>
             )}
 
             {bookingConfirmation.additionalContactsPending && (
               <p style={{ lineHeight: "1.7", color: "#8a5a00", background: "#fff7df", padding: "12px", borderRadius: "14px" }}>
-                Votre demande est bien enregistrée. L’enregistrement d’au moins un contact supplémentaire doit être vérifié. Ne renvoyez pas le formulaire ; nous disposons des informations transmises et vous contacterons si nécessaire.
+                {bookingCopy.confirmationAdditionalContacts}
               </p>
             )}
 
@@ -1043,7 +1031,7 @@ export default function MaisonVerte() {
               }}
               style={{ marginTop: "10px", border: "none", cursor: "pointer", fontSize: "1rem" }}
             >
-              J’ai compris
+              {bookingCopy.confirmationClose}
             </button>
           </div>
         </div>
@@ -1068,7 +1056,7 @@ export default function MaisonVerte() {
       {/* AVIS */}
 
       <section id="avis" className="section">
-        <h2>Avis voyageurs</h2>
+        <h2>{reviewCopy?.title || "Avis voyageurs"}</h2>
 
         {/* AVIS DIRECTS SITE - désactivés temporairement, mais conservés dans le code */}
 
@@ -1090,7 +1078,7 @@ export default function MaisonVerte() {
               textAlign: "center",
             }}
           >
-            Vous avez déjà séjourné à La Maison Verte ? Votre retour nous aide beaucoup et rassure les futurs voyageurs.
+            {reviewCopy?.introduction || "Vous avez déjà séjourné à La Maison Verte ? Votre retour nous aide beaucoup et rassure les futurs voyageurs."}
           </p>
 
           <div
@@ -1111,11 +1099,11 @@ export default function MaisonVerte() {
               >
                 {publishedReviews.length > 0
                   ? `${getPublishedReviewAverage()}/5`
-                  : "Vos avis"}
+                  : (reviewCopy?.noReviewsHeading || "Vos avis")}
               </div>
               {publishedReviews.length > 0 && (
                 <p style={{ color: "#555", lineHeight: "1.7" }}>
-                  Basé sur {publishedReviews.length} avis publiés sur le site.
+                  {reviewCopy?.siteReviewsCount?.(publishedReviews.length) || `Basé sur ${publishedReviews.length} avis publiés sur le site.`}
                 </p>
               )}
             </div>
@@ -1124,7 +1112,7 @@ export default function MaisonVerte() {
               {publishedReviews.length === 0 ? (
                 <div>
                   <p style={{ color: "#555", lineHeight: "1.7", marginTop: 0 }}>
-                    Les premiers avis directs seront bientôt affichés ici.
+                    {reviewCopy?.noReviews || "Les premiers avis directs seront bientôt affichés ici."}
                   </p>
                   <button
                     type="button"
@@ -1140,11 +1128,13 @@ export default function MaisonVerte() {
                       fontSize: "1rem",
                     }}
                   >
-                    Laisser un avis →
+                    {reviewCopy?.leave || "Laisser un avis →"}
                   </button>
                 </div>
               ) : (
-                publishedReviews.slice(0, 3).map((review) => (
+                publishedReviews.slice(0, 3).map((review) => {
+                  const displayedReview = getGuestReviewDisplay(review.comment, siteLanguage);
+                  return (
                   <div
                     key={review.id}
                     style={{
@@ -1165,9 +1155,16 @@ export default function MaisonVerte() {
                     <p
                       style={{ margin: 0, color: "#334155", lineHeight: "1.6" }}
                     >
-                      “{String(review.comment || "").slice(0, 180)}
-                      {String(review.comment || "").length > 180 ? "…" : ""}”
+                      “{displayedReview.text}”
                     </p>
+                    {displayedReview.translated && (
+                      <details style={{ marginTop: "8px", color: "#64748b", fontSize: "0.82rem" }}>
+                        <summary style={{ cursor: "pointer" }}>
+                          {siteLanguage === "es" ? "Extracto traducido del francés · Ver original" : "Excerpt translated from French · View original"}
+                        </summary>
+                        <p style={{ margin: "8px 0 0", whiteSpace: "pre-wrap" }}>“{displayedReview.original}”</p>
+                      </details>
+                    )}
                     <p
                       style={{
                         marginTop: "8px",
@@ -1177,11 +1174,12 @@ export default function MaisonVerte() {
                     >
                       {review.display_name ||
                         review.guest_first_name ||
-                        "Voyageur"}
-                      {review.stay_period ? ` · ${review.stay_period}` : ""}
+                        (reviewCopy?.traveler || "Voyageur")}
+                      {review.stay_period ? ` · ${localizeGuestReviewStayPeriod(review.stay_period, siteLanguage)}` : ""}
                     </p>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -1207,7 +1205,7 @@ export default function MaisonVerte() {
                 alignItems: "center",
               }}
             >
-              <h3>Laisser un avis</h3>
+              <h3>{reviewCopy?.formTitle || "Laisser un avis"}</h3>
               <button
                 type="button"
                 onClick={() => setShowReviewForm(false)}
@@ -1220,14 +1218,14 @@ export default function MaisonVerte() {
                   fontWeight: 700,
                 }}
               >
-                Fermer
+                {reviewCopy?.close || "Fermer"}
               </button>
             </div>
             <p
               style={{ color: "#555", lineHeight: "1.7", marginBottom: "22px" }}
             >
-              Vous avez déjà séjourné à La Maison Verte ? Vous pouvez laisser un
-              commentaire. Il sera publié uniquement après validation.
+              {reviewCopy?.formIntro || `Vous avez déjà séjourné à La Maison Verte ? Vous pouvez laisser un
+              commentaire. Il sera publié uniquement après validation.`}
             </p>
 
             {reviewSubmitted && (
@@ -1240,12 +1238,12 @@ export default function MaisonVerte() {
                   marginBottom: "24px",
                 }}
               >
-                <h4 style={{ marginTop: 0, color: "#1f6f3d" }}>Merci beaucoup pour votre retour.</h4>
+                <h4 style={{ marginTop: 0, color: "#1f6f3d" }}>{reviewCopy?.thankYou || "Merci beaucoup pour votre retour."}</h4>
                 <p style={{ color: "#334155", lineHeight: "1.7" }}>
-                  Votre avis a bien été enregistré et sera relu avant publication.
+                  {reviewCopy?.submitted || `Votre avis a bien été enregistré et sera relu avant publication.
                   Si vous disposez d'un compte Google, vous pouvez également partager
                   votre expérience sur Google. Cela nous aide énormément à faire
-                  connaître La Maison Verte.
+                  connaître La Maison Verte.`}
                 </p>
                 <a
                   href={googleReviewUrl}
@@ -1254,7 +1252,7 @@ export default function MaisonVerte() {
                   className="button"
                   style={{ textDecoration: "none", display: "inline-block" }}
                 >
-                  Donner aussi un avis Google
+                  {reviewCopy?.alsoGoogle || "Donner aussi un avis Google"}
                 </a>
               </div>
             )}
@@ -1270,7 +1268,7 @@ export default function MaisonVerte() {
                 <input
                   value={reviewFirstName}
                   onChange={(event) => setReviewFirstName(event.target.value)}
-                  placeholder="Prénom *"
+                  placeholder={reviewCopy?.firstName || "Prénom *"}
                   style={{
                     padding: "15px",
                     borderRadius: "16px",
@@ -1280,7 +1278,7 @@ export default function MaisonVerte() {
                 <input
                   value={reviewLastName}
                   onChange={(event) => setReviewLastName(event.target.value)}
-                  placeholder="Nom (facultatif)"
+                  placeholder={reviewCopy?.lastName || "Nom (facultatif)"}
                   style={{
                     padding: "15px",
                     borderRadius: "16px",
@@ -1291,7 +1289,7 @@ export default function MaisonVerte() {
                   type="email"
                   value={reviewEmail}
                   onChange={(event) => setReviewEmail(event.target.value)}
-                  placeholder="Email (non publié)"
+                  placeholder={reviewCopy?.email || "Email (non publié)"}
                   style={{
                     padding: "15px",
                     borderRadius: "16px",
@@ -1301,7 +1299,7 @@ export default function MaisonVerte() {
                 <input
                   value={reviewPhone}
                   onChange={(event) => setReviewPhone(event.target.value)}
-                  placeholder="Téléphone (non publié)"
+                  placeholder={reviewCopy?.phone || "Téléphone (non publié)"}
                   style={{
                     padding: "15px",
                     borderRadius: "16px",
@@ -1317,16 +1315,16 @@ export default function MaisonVerte() {
                     border: "1px solid #ddd",
                   }}
                 >
-                  <option value="5">5 étoiles</option>
-                  <option value="4">4 étoiles</option>
-                  <option value="3">3 étoiles</option>
-                  <option value="2">2 étoiles</option>
-                  <option value="1">1 étoile</option>
+                  <option value="5">{reviewCopy?.stars?.(5) || "5 étoiles"}</option>
+                  <option value="4">{reviewCopy?.stars?.(4) || "4 étoiles"}</option>
+                  <option value="3">{reviewCopy?.stars?.(3) || "3 étoiles"}</option>
+                  <option value="2">{reviewCopy?.stars?.(2) || "2 étoiles"}</option>
+                  <option value="1">{reviewCopy?.stars?.(1) || "1 étoile"}</option>
                 </select>
                 <input
                   value={reviewStayPeriod}
                   onChange={(event) => setReviewStayPeriod(event.target.value)}
-                  placeholder="Période du séjour (ex : février 2026)"
+                  placeholder={reviewCopy?.stayPeriod || "Période du séjour (ex : février 2026)"}
                   style={{
                     padding: "15px",
                     borderRadius: "16px",
@@ -1338,7 +1336,7 @@ export default function MaisonVerte() {
               <textarea
                 value={reviewComment}
                 onChange={(event) => setReviewComment(event.target.value)}
-                placeholder="Votre commentaire *"
+                placeholder={reviewCopy?.comment || "Votre commentaire *"}
                 style={{
                   width: "100%",
                   minHeight: "130px",
@@ -1359,10 +1357,10 @@ export default function MaisonVerte() {
                   fontSize: "0.92rem",
                 }}
               >
-                En envoyant cet avis, vous acceptez sa publication sur le site de
+                {reviewCopy?.publicationConsent || `En envoyant cet avis, vous acceptez sa publication sur le site de
                 La Maison Verte après validation. Seuls votre prénom, votre note et
                 votre commentaire pourront être affichés ; votre email et votre
-                téléphone resteront privés.
+                téléphone resteront privés.`}
               </p>
 
               <button
@@ -1374,7 +1372,7 @@ export default function MaisonVerte() {
                   opacity: reviewSubmitting ? 0.6 : 1,
                 }}
               >
-                {reviewSubmitting ? "Envoi en cours..." : "Envoyer mon avis"}
+                {reviewSubmitting ? (reviewCopy?.sending || "Envoi en cours...") : (reviewCopy?.send || "Envoyer mon avis")}
               </button>
             </form>
           </div>
@@ -1388,7 +1386,7 @@ export default function MaisonVerte() {
               marginBottom: "34px",
             }}
           >
-            Un établissement très apprécié des voyageurs
+            {reviewCopy?.ratingsTitle || "Un établissement très apprécié des voyageurs"}
           </h3>
           <div
             style={{
@@ -1419,9 +1417,9 @@ export default function MaisonVerte() {
               </div>
 
               <p>
-                <strong>5,0/5 · 2 avis Google</strong>
+                <strong>{reviewCopy?.googleCount || "5,0/5 · 2 avis Google"}</strong>
                 <br />
-                Merci aux voyageurs qui ont déjà partagé leur expérience.
+                {reviewCopy?.googleThanks || "Merci aux voyageurs qui ont déjà partagé leur expérience."}
               </p>
 
               <div
@@ -1442,7 +1440,7 @@ export default function MaisonVerte() {
                     textDecoration: "none",
                   }}
                 >
-                  Voir la fiche →
+                  {reviewCopy?.viewProfile || "Voir la fiche →"}
                 </a>
                 <a
                   href={googleReviewUrl}
@@ -1454,7 +1452,7 @@ export default function MaisonVerte() {
                     textDecoration: "none",
                   }}
                 >
-                  Donner un avis →
+                  {reviewCopy?.giveReview || "Donner un avis →"}
                 </a>
               </div>
             </div>
@@ -1490,7 +1488,7 @@ export default function MaisonVerte() {
                   9,5/10
                 </div>
 
-                <p>Basé sur 50 expériences vécues</p>
+                <p>{reviewCopy?.bookingCount || "Basé sur 50 expériences vécues"}</p>
 
                 <div
                   style={{
@@ -1499,7 +1497,7 @@ export default function MaisonVerte() {
                     fontWeight: "600",
                   }}
                 >
-                  Voir les avis →
+                  {reviewCopy?.viewReviews || "Voir les avis →"}
                 </div>
               </div>
             </a>
@@ -1535,7 +1533,7 @@ export default function MaisonVerte() {
                   4,89/5
                 </div>
 
-                <p>Basé sur 9 évaluations voyageurs</p>
+                <p>{reviewCopy?.airbnbCount || "Basé sur 9 évaluations voyageurs"}</p>
 
                 <div
                   style={{
@@ -1544,7 +1542,7 @@ export default function MaisonVerte() {
                     fontWeight: "600",
                   }}
                 >
-                  Voir les avis →
+                  {reviewCopy?.viewReviews || "Voir les avis →"}
                 </div>
               </div>
             </a>
@@ -1554,12 +1552,12 @@ export default function MaisonVerte() {
 
       {/* FAQ */}
 
-      <HomeFaq faqCategories={faqCategories} setOpenFaqCategory={setOpenFaqCategory} openFaqCategory={openFaqCategory} setOpenFaqIndex={setOpenFaqIndex} openFaqIndex={openFaqIndex} />
+      <HomeFaq language={siteLanguage} faqCategories={visibleFaqCategories} setOpenFaqCategory={setOpenFaqCategory} openFaqCategory={openFaqCategory} setOpenFaqIndex={setOpenFaqIndex} openFaqIndex={openFaqIndex} />
 
       {/* RESERVATION */}
 
       <section id="reservation" className="section">
-        <h2>Réserver votre séjour</h2>
+        <h2>{bookingCopy.title}</h2>
 
         <p
           style={{
@@ -1568,11 +1566,11 @@ export default function MaisonVerte() {
             marginBottom: "45px",
           }}
         >
-          Sélectionnez vos dates d'arrivée et de départ.
+          {bookingCopy.intro1}
           <br />
-          Après acceptation de votre demande, un lien de paiement sécurisé, valable 24h, vous sera envoyé par email.
+          {bookingCopy.intro2}
           <br />
-          Votre réservation sera confirmée après règlement de l'acompte.
+          {bookingCopy.intro3}
         </p>
 
         <div
@@ -1614,7 +1612,7 @@ export default function MaisonVerte() {
                   fontSize: "1.6rem",
                 }}
               >
-                {currentMonth.toLocaleDateString("fr-FR", {
+                {currentMonth.toLocaleDateString(siteLanguage === "es" ? "es-ES" : siteLanguage === "en" ? "en-GB" : "fr-FR", {
                   month: "long",
                   year: "numeric",
                 })}
@@ -1633,7 +1631,7 @@ export default function MaisonVerte() {
                 marginBottom: "12px",
               }}
             >
-              {["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map((day) => (
+              {bookingCopy.weekdays.map((day) => (
                 <div
                   key={day}
                   style={{
@@ -1701,7 +1699,7 @@ export default function MaisonVerte() {
                             opacity: 0.7,
                           }}
                         >
-                          {pricingLoaded ? `${getPriceForDate(key)}€` : "..."}
+                          {pricingLoaded ? bookingCalendarMoney(getPriceForDate(key)) : "..."}
                         </div>
                       )}
                     </div>
@@ -1743,14 +1741,14 @@ export default function MaisonVerte() {
                     fontWeight: "700",
                   }}
                 >
-                  À partir de {defaultPrice}€
+                  {bookingCopy.from} {bookingMoney(defaultPrice)}
                   <span
                     style={{
                       fontSize: "1rem",
                       color: "#666",
                     }}
                   >
-                    / nuit
+                    {bookingCopy.perNight}
                   </span>
                 </div>
               </div>
@@ -1766,8 +1764,8 @@ export default function MaisonVerte() {
               >
                 <input
                   type="text"
-                  placeholder="Date d’arrivée sélectionnée"
-                  value={selectedDates[0] || ""}
+                  placeholder={bookingCopy.arrival}
+                  value={bookingDisplayDate(selectedDates[0])}
                   readOnly
                   style={{
                     width: "100%",
@@ -1779,8 +1777,8 @@ export default function MaisonVerte() {
 
                 <input
                   type="text"
-                  placeholder="Date de départ sélectionnée"
-                  value={selectedDates[1] || ""}
+                  placeholder={bookingCopy.departure}
+                  value={bookingDisplayDate(selectedDates[1])}
                   readOnly
                   style={{
                     width: "100%",
@@ -1813,14 +1811,14 @@ export default function MaisonVerte() {
                     marginTop: "2px",
                   }}
                 >
-                  Contact principal
+                  {bookingCopy.contact}
                 </div>
 
                 <div className="booking-field">
                   <input
                     ref={guestFirstNameRef}
                     type="text"
-                    placeholder="Votre prénom"
+                    placeholder={bookingCopy.firstName}
                     value={guestFirstName}
                     onChange={(e) => setGuestFirstName(e.target.value)}
                     aria-invalid={mainContactErrors.firstName ? "true" : undefined}
@@ -1833,7 +1831,7 @@ export default function MaisonVerte() {
                   <input
                     ref={guestLastNameRef}
                     type="text"
-                    placeholder="Votre nom"
+                    placeholder={bookingCopy.lastName}
                     value={guestLastName}
                     onChange={(e) => setGuestLastName(e.target.value)}
                     aria-invalid={mainContactErrors.lastName ? "true" : undefined}
@@ -1846,7 +1844,7 @@ export default function MaisonVerte() {
                   <input
                     ref={guestEmailRef}
                     type="email"
-                    placeholder="Votre email"
+                    placeholder={bookingCopy.email}
                     value={guestEmail}
                     onChange={(e) => setGuestEmail(e.target.value)}
                     aria-invalid={mainContactErrors.email ? "true" : undefined}
@@ -1859,7 +1857,7 @@ export default function MaisonVerte() {
                   <input
                     ref={guestPhoneRef}
                     type="tel"
-                    placeholder="Votre téléphone"
+                    placeholder={bookingCopy.phone}
                     value={guestPhone}
                     onChange={(e) => setGuestPhone(e.target.value)}
                     aria-invalid={mainContactErrors.phone ? "true" : undefined}
@@ -1873,7 +1871,7 @@ export default function MaisonVerte() {
                     ref={guestAddressRef}
                     type="text"
                     autoComplete="street-address"
-                    placeholder="Votre adresse"
+                    placeholder={bookingCopy.address}
                     value={guestAddress}
                     onChange={(e) => setGuestAddress(e.target.value)}
                     aria-invalid={mainContactErrors.address ? "true" : undefined}
@@ -1887,7 +1885,7 @@ export default function MaisonVerte() {
                     ref={guestPostalCodeRef}
                     type="text"
                     autoComplete="postal-code"
-                    placeholder="Code postal"
+                    placeholder={bookingCopy.postalCode}
                     value={guestPostalCode}
                     onChange={(e) => setGuestPostalCode(e.target.value)}
                     aria-invalid={mainContactErrors.postalCode ? "true" : undefined}
@@ -1901,7 +1899,7 @@ export default function MaisonVerte() {
                     ref={guestCityRef}
                     type="text"
                     autoComplete="address-level2"
-                    placeholder="Ville"
+                    placeholder={bookingCopy.city}
                     value={guestCity}
                     onChange={(e) => setGuestCity(e.target.value)}
                     aria-invalid={mainContactErrors.city ? "true" : undefined}
@@ -1915,7 +1913,7 @@ export default function MaisonVerte() {
                     ref={guestCountryRef}
                     type="text"
                     autoComplete="country-name"
-                    placeholder="Pays"
+                    placeholder={bookingCopy.country}
                     value={guestCountry}
                     onChange={(e) => setGuestCountry(e.target.value)}
                     aria-invalid={mainContactErrors.country ? "true" : undefined}
@@ -1935,10 +1933,10 @@ export default function MaisonVerte() {
                 }}
               >
                 <div style={{ fontWeight: "700", color: "#1f6f3d", marginBottom: "6px" }}>
-                  Contacts supplémentaires <span style={{ fontWeight: "400", color: "#64748b" }}>(facultatif)</span>
+                  {bookingCopy.additional} <span style={{ fontWeight: "400", color: "#64748b" }}>{bookingCopy.optional}</span>
                 </div>
                 <p style={{ margin: "0 0 14px", color: "#64748b", lineHeight: "1.45", fontSize: "0.9rem" }}>
-                  Ajoutez un autre occupant ou une personne joignable pendant le séjour. Chaque contact disposera de sa propre fiche client.
+                  {bookingCopy.additionalHelp}
                 </p>
 
                 {additionalContacts.map((contact, index) => {
@@ -1955,47 +1953,47 @@ export default function MaisonVerte() {
                       }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", marginBottom: "12px" }}>
-                        <strong style={{ color: "#334155" }}>Contact {index + 2}</strong>
+                        <strong style={{ color: "#334155" }}>{bookingText(bookingCopy.contactNumber, { number: index + 2 })}</strong>
                         <button
                           type="button"
                           onClick={() => removeAdditionalContact(index)}
                           style={{ border: "none", background: "transparent", color: "#a33", cursor: "pointer", textDecoration: "underline" }}
                         >
-                          Supprimer ce contact
+                          {bookingCopy.removeContact}
                         </button>
                       </div>
 
                       <div className="booking-additional-contact-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "12px" }}>
                         <div className="booking-field">
-                          <input type="text" placeholder="Prénom *" value={contact.firstName} onChange={(event) => updateAdditionalContact(index, "firstName", event.target.value)} aria-invalid={contactErrors.firstName ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.firstName ? "1px solid #d33" : "1px solid #d1d5db" }} />
+                          <input type="text" placeholder={bookingCopy.firstNameRequired} value={contact.firstName} onChange={(event) => updateAdditionalContact(index, "firstName", event.target.value)} aria-invalid={contactErrors.firstName ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.firstName ? "1px solid #d33" : "1px solid #d1d5db" }} />
                           {contactErrors.firstName && <div className="booking-field-error">{contactErrors.firstName}</div>}
                         </div>
                         <div className="booking-field">
-                          <input type="text" placeholder="Nom *" value={contact.lastName} onChange={(event) => updateAdditionalContact(index, "lastName", event.target.value)} aria-invalid={contactErrors.lastName ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.lastName ? "1px solid #d33" : "1px solid #d1d5db" }} />
+                          <input type="text" placeholder={bookingCopy.lastNameRequired} value={contact.lastName} onChange={(event) => updateAdditionalContact(index, "lastName", event.target.value)} aria-invalid={contactErrors.lastName ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.lastName ? "1px solid #d33" : "1px solid #d1d5db" }} />
                           {contactErrors.lastName && <div className="booking-field-error">{contactErrors.lastName}</div>}
                         </div>
                         <div className="booking-field">
-                          <input type="email" placeholder="Email *" value={contact.email} onChange={(event) => updateAdditionalContact(index, "email", event.target.value)} aria-invalid={contactErrors.email ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.email ? "1px solid #d33" : "1px solid #d1d5db" }} />
+                          <input type="email" placeholder={bookingCopy.emailRequired} value={contact.email} onChange={(event) => updateAdditionalContact(index, "email", event.target.value)} aria-invalid={contactErrors.email ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.email ? "1px solid #d33" : "1px solid #d1d5db" }} />
                           {contactErrors.email && <div className="booking-field-error">{contactErrors.email}</div>}
                         </div>
                         <div className="booking-field">
-                          <input type="tel" placeholder="Téléphone *" value={contact.phone} onChange={(event) => updateAdditionalContact(index, "phone", event.target.value)} aria-invalid={contactErrors.phone ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.phone ? "1px solid #d33" : "1px solid #d1d5db" }} />
+                          <input type="tel" placeholder={bookingCopy.phoneRequired} value={contact.phone} onChange={(event) => updateAdditionalContact(index, "phone", event.target.value)} aria-invalid={contactErrors.phone ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.phone ? "1px solid #d33" : "1px solid #d1d5db" }} />
                           {contactErrors.phone && <div className="booking-field-error">{contactErrors.phone}</div>}
                         </div>
                         <div className="booking-field booking-field--wide">
-                          <input type="text" autoComplete="street-address" placeholder="Adresse (facultatif)" value={contact.address} onChange={(event) => updateAdditionalContact(index, "address", event.target.value)} aria-invalid={contactErrors.address ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.address ? "1px solid #d33" : "1px solid #d1d5db" }} />
+                          <input type="text" autoComplete="street-address" placeholder={bookingCopy.addressOptional} value={contact.address} onChange={(event) => updateAdditionalContact(index, "address", event.target.value)} aria-invalid={contactErrors.address ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.address ? "1px solid #d33" : "1px solid #d1d5db" }} />
                           {contactErrors.address && <div className="booking-field-error">{contactErrors.address}</div>}
                         </div>
                         <div className="booking-field">
-                          <input type="text" autoComplete="postal-code" placeholder="Code postal (facultatif)" value={contact.postalCode} onChange={(event) => updateAdditionalContact(index, "postalCode", event.target.value)} aria-invalid={contactErrors.postalCode ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.postalCode ? "1px solid #d33" : "1px solid #d1d5db" }} />
+                          <input type="text" autoComplete="postal-code" placeholder={bookingCopy.postalOptional} value={contact.postalCode} onChange={(event) => updateAdditionalContact(index, "postalCode", event.target.value)} aria-invalid={contactErrors.postalCode ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.postalCode ? "1px solid #d33" : "1px solid #d1d5db" }} />
                           {contactErrors.postalCode && <div className="booking-field-error">{contactErrors.postalCode}</div>}
                         </div>
                         <div className="booking-field">
-                          <input type="text" autoComplete="address-level2" placeholder="Ville (facultatif)" value={contact.city} onChange={(event) => updateAdditionalContact(index, "city", event.target.value)} aria-invalid={contactErrors.city ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.city ? "1px solid #d33" : "1px solid #d1d5db" }} />
+                          <input type="text" autoComplete="address-level2" placeholder={bookingCopy.cityOptional} value={contact.city} onChange={(event) => updateAdditionalContact(index, "city", event.target.value)} aria-invalid={contactErrors.city ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.city ? "1px solid #d33" : "1px solid #d1d5db" }} />
                           {contactErrors.city && <div className="booking-field-error">{contactErrors.city}</div>}
                         </div>
                         <div className="booking-field booking-field--wide">
-                          <input type="text" autoComplete="country-name" placeholder="Pays (facultatif)" value={contact.country} onChange={(event) => updateAdditionalContact(index, "country", event.target.value)} aria-invalid={contactErrors.country ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.country ? "1px solid #d33" : "1px solid #d1d5db" }} />
+                          <input type="text" autoComplete="country-name" placeholder={bookingCopy.countryOptional} value={contact.country} onChange={(event) => updateAdditionalContact(index, "country", event.target.value)} aria-invalid={contactErrors.country ? "true" : undefined} style={{ width: "100%", padding: "14px", borderRadius: "14px", border: contactErrors.country ? "1px solid #d33" : "1px solid #d1d5db" }} />
                           {contactErrors.country && <div className="booking-field-error">{contactErrors.country}</div>}
                         </div>
                       </div>
@@ -2017,7 +2015,7 @@ export default function MaisonVerte() {
                       cursor: "pointer",
                     }}
                   >
-                    + Ajouter un contact
+                    {bookingCopy.addContact}
                   </button>
                 )}
               </div>
@@ -2039,7 +2037,7 @@ export default function MaisonVerte() {
                     marginBottom: "12px",
                   }}
                 >
-                  Voyageurs
+                  {bookingCopy.travellers}
                 </div>
 
                 <div
@@ -2060,7 +2058,7 @@ export default function MaisonVerte() {
                       fontSize: "0.9rem",
                     }}
                   >
-                    Adultes
+                    {bookingCopy.adults}
                     <input
                       type="number"
                       min="1"
@@ -2085,7 +2083,7 @@ export default function MaisonVerte() {
                       fontSize: "0.9rem",
                     }}
                   >
-                    Enfants
+                    {bookingCopy.children}
                     <input
                       type="number"
                       min="0"
@@ -2118,7 +2116,7 @@ export default function MaisonVerte() {
                       checked={babyBedNeeded}
                       onChange={(event) => setBabyBedNeeded(event.target.checked)}
                     />
-                    Lit bébé / bébé à prévoir
+                    {bookingCopy.babyBed}
                   </label>
                 </div>
 
@@ -2144,8 +2142,8 @@ export default function MaisonVerte() {
                     style={{ marginTop: "4px" }}
                   />
                   <span>
-                    Forfait ménage de fin de séjour
-                    {cleaningFee !== null ? ` (+${cleaningFee} €)` : " (tarif en cours de chargement)"}
+                    {bookingCopy.cleaningOption}
+                    {cleaningFee !== null ? ` (+${bookingFeeMoney(cleaningFee)})` : ` ${bookingCopy.cleaningLoading}`}
                   </span>
                 </label>
 
@@ -2162,13 +2160,16 @@ export default function MaisonVerte() {
                     }}
                   >
                     <p style={{ margin: "0 0 10px" }}>
-                      <strong>Paiement de la réservation</strong>
+                      <strong>{bookingCopy.paymentTitle}</strong>
                     </p>
                     {canChooseFullPayment ? (
                       <>
                         <p style={{ margin: "0 0 12px" }}>
-                          Par défaut, un acompte de {depositPercent} % sera demandé après acceptation de votre réservation.
-                          Le solde sera demandé 30 jours avant votre arrivée, soit dans {daysUntilBalanceRequest} jour{daysUntilBalanceRequest > 1 ? "s" : ""}.
+                          {bookingText(bookingCopy.depositInfo, {
+                            percent: depositPercent,
+                            days: daysUntilBalanceRequest,
+                            plural: daysUntilBalanceRequest > 1 ? "s" : "",
+                          })}
                         </p>
                         <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", fontWeight: 600 }}>
                           <input
@@ -2177,12 +2178,12 @@ export default function MaisonVerte() {
                             onChange={(event) => setPayFullNow(event.target.checked)}
                             style={{ marginTop: "4px" }}
                           />
-                          <span>Je préfère régler la totalité du séjour en une seule fois.</span>
+                          <span>{bookingCopy.fullPaymentChoice}</span>
                         </label>
                       </>
                     ) : (
                       <p style={{ margin: 0 }}>
-                        Votre arrivée étant prévue dans 30 jours ou moins, le règlement intégral du séjour sera demandé après acceptation de votre réservation.
+                        {bookingCopy.fullPaymentRequired}
                       </p>
                     )}
                   </div>
@@ -2201,20 +2202,13 @@ export default function MaisonVerte() {
                     }}
                   >
                     <p style={{ margin: "0 0 10px" }}>
-                      <strong>Vous choisissez de ne pas prendre le forfait ménage de fin de séjour.</strong>
+                      <strong>{bookingCopy.cleaningWarning}</strong>
                     </p>
                     <p style={{ margin: "0 0 10px" }}>
-                      Vous vous engagez à rendre le logement dans un état de propreté comparable à celui dans lequel
-                      vous l’avez trouvé à votre arrivée : sols aspirés et nettoyés si nécessaire, cuisine et
-                      équipements nettoyés, vaisselle propre et rangée, sanitaires et salle de bains nettoyés,
-                      poubelles vidées et déchets déposés dans les conteneurs prévus.
+                      {bookingCopy.cleaningDuties}
                     </p>
                     <p style={{ margin: "0 0 12px" }}>
-                      Après votre départ, nous effectuons dans tous les cas un passage de contrôle et la remise en état
-                      nécessaire entre deux locations, notamment la préparation du linge et des lits. Ce contrôle
-                      permet également de vérifier le ménage effectué. Si ces obligations ne sont pas respectées ou si
-                      le ménage est manifestement insuffisant, le forfait ménage de {cleaningFee} € prévu pour votre
-                      réservation pourra être facturé.
+                      {bookingText(bookingCopy.cleaningInspection, { fee: bookingFeeMoney(cleaningFee) })}
                     </p>
                     <label
                       style={{
@@ -2231,9 +2225,7 @@ export default function MaisonVerte() {
                         style={{ marginTop: "4px" }}
                       />
                       <span>
-                        J’ai pris connaissance de ces obligations et les accepte. J’accepte, dans les conditions
-                        prévues au contrat, la facturation du forfait ménage de {cleaningFee} € si le ménage de fin
-                        de séjour n’est pas effectué ou est manifestement insuffisant.
+                        {bookingText(bookingCopy.cleaningConsent, { fee: bookingFeeMoney(cleaningFee) })}
                       </span>
                     </label>
                   </div>
@@ -2243,7 +2235,7 @@ export default function MaisonVerte() {
                   <input
                     ref={childrenAgesRef}
                     type="text"
-                    placeholder="Âge des enfants : ex. 4 ans, 8 ans"
+                    placeholder={bookingCopy.childrenAges}
                     value={childrenAges}
                     onChange={(event) => setChildrenAges(event.target.value)}
                     style={{
@@ -2266,8 +2258,7 @@ export default function MaisonVerte() {
                       marginTop: "10px",
                     }}
                   >
-                    Indiquez entre 1 et 4 voyageurs. Si des enfants sont
-                    présents, précisez leurs âges.
+                    {bookingCopy.childrenWarning}
                   </div>
                 )}
               </div>
@@ -2275,7 +2266,7 @@ export default function MaisonVerte() {
               <textarea
                 value={guestMessage}
                 onChange={(event) => setGuestMessage(event.target.value)}
-                placeholder="Message optionnel : arrivée tardive, question particulière, ancien client, promo..."
+                placeholder={bookingCopy.message}
                 style={{
                   width: "100%",
                   minHeight: "120px",
@@ -2331,8 +2322,7 @@ export default function MaisonVerte() {
                       }}
                     />
                     <span>
-                      J’accepte de recevoir occasionnellement des nouvelles,
-                      offres et informations de La Maison Verte (vos données restent confidentielles).
+                      {bookingCopy.marketingConsent}
                     </span>
                   </label>
                 </div>
@@ -2347,25 +2337,28 @@ export default function MaisonVerte() {
                     />
 
                     <span className="contract-acceptance-text">
-                      J’ai lu et j’accepte le{" "}
+                      {bookingCopy.contractPrefix}{" "}
                       <a
                         href="/documents/contrat-location.pdf"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="contract-link"
                       >
-                        contrat de location
+                        {bookingCopy.contractLink}
                         <br />
-                        et les conditions générales
+                        {bookingCopy.contractTerms}
                         <br />
-                        de réservation
+                        {bookingCopy.contractEnd}
                       </a>.
+                      {bookingCopy.contractFrenchNotice && (
+                        <small style={{ display: "block", marginTop: "5px" }}>{bookingCopy.contractFrenchNotice}</small>
+                      )}
                     </span>
                   </label>
                 </div>
 
                 <a
-                  href="https://lamaisonverte65.fr/livret"
+                  href={`https://lamaisonverte65.fr${localizePublicHref("/livret", siteLanguage)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{
@@ -2380,7 +2373,7 @@ export default function MaisonVerte() {
                     lineHeight: "1.5",
                   }}
                 >
-                  Préparer votre séjour
+                  {bookingCopy.bookletTitle}
                   <br />
                   <span
                     style={{
@@ -2389,7 +2382,7 @@ export default function MaisonVerte() {
                       fontSize: "0.9rem",
                     }}
                   >
-                    Consulter le livret d’accueil
+                    {bookingCopy.bookletLink}
                   </span>
                 </a>
               </div>
@@ -2409,9 +2402,9 @@ export default function MaisonVerte() {
                     lineHeight: "1.55",
                   }}
                 >
-                  <strong>Votre demande ne peut pas encore être envoyée.</strong>
+                  <strong>{bookingCopy.validationTitle}</strong>
                   <div style={{ marginTop: "8px", marginBottom: "6px" }}>
-                    Merci de compléter :
+                    {bookingCopy.validationHelp}
                   </div>
                   <ul style={{ margin: "0", paddingLeft: "20px" }}>
                     {bookingValidationErrors.map((error) => (
@@ -2437,20 +2430,20 @@ export default function MaisonVerte() {
                     lineHeight: "1.5",
                   }}
                 >
-                  Demande en cours d’envoi, merci de patienter. Ne cliquez pas une deuxième fois.
+                  {bookingCopy.sendingNotice}
                 </div>
               )}
 
               <div style={{ marginTop: "18px", marginBottom: "18px" }}>
                 <label htmlFor="promotion-code" style={{ display: "block", fontWeight: "700", marginBottom: "6px" }}>
-                  Code fidélité
+                  {bookingCopy.loyaltyCode}
                 </label>
                 <input
                   id="promotion-code"
                   type="text"
                   value={promotionCode}
                   onChange={(event) => setPromotionCode(event.target.value.toUpperCase())}
-                  placeholder="VOTRE CODE ICI"
+                  placeholder={bookingCopy.loyaltyPlaceholder}
                   maxLength={40}
                   autoComplete="off"
                   style={{ width: "100%", boxSizing: "border-box" }}
@@ -2458,8 +2451,8 @@ export default function MaisonVerte() {
                 {promotionCode.trim() && bookingQuote && (
                   <div style={{ marginTop: "6px", color: bookingQuote.promotionCode ? "#1f6f3d" : "#7a3f12" }}>
                     {bookingQuote.promotionCode
-                      ? `Code ${bookingQuote.promotionCode} appliqué : -${bookingQuote.promotionDiscount} € sur l’hébergement.`
-                      : "Ce code n’est pas applicable à cette demande."}
+                      ? bookingText(bookingCopy.loyaltyApplied, { code: bookingQuote.promotionCode, amount: bookingFeeMoney(bookingQuote.promotionDiscount) })
+                      : bookingCopy.loyaltyNotApplied}
                   </div>
                 )}
               </div>
@@ -2477,7 +2470,7 @@ export default function MaisonVerte() {
                   cursor: bookingSubmitting ? "wait" : "pointer",
                 }}
               >
-                {bookingSubmitting ? "Envoi en cours..." : "Faire une demande de réservation"}
+                {bookingSubmitting ? bookingCopy.sendingButton : bookingCopy.submitButton}
               </button>
 
               <div
@@ -2492,26 +2485,26 @@ export default function MaisonVerte() {
                     marginBottom: "12px",
                   }}
                 >
-                  <span>Séjour x {numberOfNights} nuits</span>
+                  <span>{bookingText(bookingCopy.stayLine, { nights: numberOfNights })}</span>
 
                   <span>
                     {pricingLoaded && displayedAccommodationTotal > 0
-                      ? `${displayedAccommodationTotal}€`
+                      ? bookingMoney(displayedAccommodationTotal)
                       : "..."}
                   </span>
                 </div>
 
                 {bookingQuote?.promotionCode && bookingQuote.promotionDiscount > 0 && (
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px", color: "#1f6f3d" }}>
-                    <span>Remise {bookingQuote.promotionCode}</span>
-                    <span>-{bookingQuote.promotionDiscount}€</span>
+                    <span>{bookingText(bookingCopy.discount, { code: bookingQuote.promotionCode })}</span>
+                    <span>-{bookingMoney(bookingQuote.promotionDiscount)}</span>
                   </div>
                 )}
 
                 {bookingQuote && (
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
-                    <span>Taxe de séjour</span>
-                    <span>{touristTaxAmount}€</span>
+                    <span>{bookingCopy.tax}</span>
+                    <span>{bookingMoney(touristTaxAmount)}</span>
                   </div>
                 )}
 
@@ -2523,8 +2516,8 @@ export default function MaisonVerte() {
                       marginBottom: "12px",
                     }}
                   >
-                    <span>Forfait ménage</span>
-                    <span>{cleaningFee !== null ? `${cleaningFee}€` : "..."}</span>
+                    <span>{bookingCopy.cleaningFee}</span>
+                    <span>{cleaningFee !== null ? bookingMoney(cleaningFee) : "..."}</span>
                   </div>
                 )}
 
@@ -2542,10 +2535,10 @@ export default function MaisonVerte() {
                     fontSize: "1.2rem",
                   }}
                 >
-                  <span>{canChooseFullPayment && !payFullNow ? "Total" : "Total à régler"}</span>
+                  <span>{canChooseFullPayment && !payFullNow ? bookingCopy.total : bookingCopy.totalToPay}</span>
 
                   <span>
-                    {pricingLoaded && total > 0 ? `${total}€` : "..."}
+                    {pricingLoaded && total > 0 ? bookingMoney(total) : "..."}
                   </span>
                 </div>
 
@@ -2560,8 +2553,8 @@ export default function MaisonVerte() {
                         color: "#1f6f3d",
                       }}
                     >
-                      <span>Acompte à régler ({depositPercent} %)</span>
-                      <span>{depositAmount}€</span>
+                      <span>{bookingText(bookingCopy.depositToPay, { percent: depositPercent })}</span>
+                      <span>{bookingMoney(depositAmount)}</span>
                     </div>
                     <div
                       style={{
@@ -2570,8 +2563,8 @@ export default function MaisonVerte() {
                         color: "#555",
                       }}
                     >
-                      <span>Solde à régler à J-30</span>
-                      <span>{balanceAmount}€</span>
+                      <span>{bookingCopy.balance}</span>
+                      <span>{bookingMoney(balanceAmount)}</span>
                     </div>
                   </div>
                 )}
@@ -2625,7 +2618,7 @@ export default function MaisonVerte() {
             ].map(([label, href]) => (
               <a
                 key={href}
-                href={href}
+                href={localizePublicHref(href, siteLanguage)}
                 target={href.endsWith(".pdf") ? "_blank" : undefined}
                 rel={href.endsWith(".pdf") ? "noopener noreferrer" : undefined}
                 style={{

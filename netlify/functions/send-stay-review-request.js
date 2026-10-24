@@ -1,7 +1,10 @@
+import { emailAutomationAllowed, emailAutomationSkippedResponse } from "./_lib/email-delivery-policy.js";
 import { escapeHtml } from "./_lib/html.js";
 import { schedule } from "@netlify/functions";
 import { createClient } from "@supabase/supabase-js";
 import { resendEmail } from "./_lib/resend-email.js";
+import { buildLocalizedReviewEmail } from "./_lib/guest-scheduled-emails.js";
+import { emailLanguageForAudience } from "../../shared/guestLocale.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -132,26 +135,35 @@ Raphaël & Emmanuelle
 06 95 93 83 15
 La Maison Verte — Arreau`;
 
+  // Le modèle FR, les URL des avis et le code de fidélité sont conservés.
+  const guestLanguage = emailLanguageForAudience(booking);
+  const localized = guestLanguage === "fr" ? null : buildLocalizedReviewEmail({
+    language: guestLanguage, booking, reviewUrl, googleReviewUrl: GOOGLE_REVIEW_URL,
+  });
+  const emailSubject = localized?.subject || subject;
+  const emailHtml = localized?.html || html;
+  const emailText = localized?.text || text;
+
   const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [booking.guest_email],
       reply_to: "contact@lamaisonverte65.fr",
-      subject,
-      html,
-      text,
+      subject: emailSubject,
+      html: emailHtml,
+      text: emailText,
     };
   const response = await resendEmail(retryPayload);
 
   if (!response.ok) {
     const errorText = await response.text();
-    await logEmail({ bookingId: booking.id, emailType: "review_request", toEmail: booking.guest_email, subject, status: "error", errorMessage: errorText, metadata: { reviewUrl, googleReviewUrl: GOOGLE_REVIEW_URL }, retryPayload});
+    await logEmail({ bookingId: booking.id, emailType: "review_request", toEmail: booking.guest_email, subject: emailSubject, status: "error", errorMessage: errorText, metadata: { reviewUrl, googleReviewUrl: GOOGLE_REVIEW_URL }, retryPayload});
     return { sent: false, reason: errorText };
   }
 
   let responseData = null;
   try { responseData = await response.json(); } catch (_) {}
 
-  await logEmail({ bookingId: booking.id, emailType: "review_request", toEmail: booking.guest_email, subject, status: "sent", providerId: responseData?.id || null, metadata: { reviewUrl, googleReviewUrl: GOOGLE_REVIEW_URL } });
+  await logEmail({ bookingId: booking.id, emailType: "review_request", toEmail: booking.guest_email, subject: emailSubject, status: "sent", providerId: responseData?.id || null, metadata: { reviewUrl, googleReviewUrl: GOOGLE_REVIEW_URL } });
   return { sent: true };
 }
 
@@ -198,6 +210,7 @@ async function runReviewRequest() {
 }
 
 export const handler = schedule("0 10 * * *", async () => {
+  if (!emailAutomationAllowed()) return emailAutomationSkippedResponse();
   try {
     const result = await runReviewRequest();
     return { statusCode: 200, body: JSON.stringify(result) };

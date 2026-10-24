@@ -1,19 +1,19 @@
+import { languageForPublicPage } from "../../../shared/publicSiteLocale.js";
+import { getHomeCopy } from "./homeTranslations.js";
 export function HomeGallery({ galleryPhotos, setCurrentImageIndex, setLightboxOpen }) {
+  const language = typeof window === "undefined" ? "fr" : languageForPublicPage(window.location.href);
+  const copy = getHomeCopy(language);
   return (
 <section id="galerie" className="section">
-        <h2>Galerie immersive</h2>
+        <h2>{copy.galleryTitle}</h2>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: "16px",
-          }}
-        >
+        <div className="home-gallery-grid">
           {galleryPhotos.map((photo, index) => (
-            <div
+            <button
               key={photo.src}
-              className="gallery-item"
+              type="button"
+              className="gallery-item home-gallery-thumb"
+              aria-label={copy.galleryCaptions[index] || photo.caption}
               onClick={() => {
                 setCurrentImageIndex(index);
                 setLightboxOpen(true);
@@ -23,13 +23,17 @@ export function HomeGallery({ galleryPhotos, setCurrentImageIndex, setLightboxOp
                 overflow: "hidden",
                 borderRadius: "22px",
                 cursor: "pointer",
+                padding: 0,
+                border: 0,
+                background: "transparent",
+                textAlign: "left",
                 boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
               }}
             >
               <img
                 src={photo.src}
-                alt={photo.caption}
-                loading={index === 0 ? "eager" : "lazy"}
+                alt={copy.galleryCaptions[index] || photo.caption}
+                loading="lazy"
                 decoding="async"
                 style={{
                   width: "100%",
@@ -58,9 +62,9 @@ export function HomeGallery({ galleryPhotos, setCurrentImageIndex, setLightboxOp
                   pointerEvents: "none",
                 }}
               >
-                {photo.caption}
+                {copy.galleryCaptions[index] || photo.caption}
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </section>

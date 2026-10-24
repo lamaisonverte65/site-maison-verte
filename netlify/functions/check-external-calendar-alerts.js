@@ -12,6 +12,8 @@ import {
   reconcileSuccessfulExternalSources,
 } from "./_lib/external-occupancy-conflicts.js";
 import { escapeHtml } from "./_lib/html.js";
+import { resendEmail } from "./_lib/resend-email.js";
+import { emailAutomationAllowed, emailAutomationSkippedResponse } from "./_lib/email-delivery-policy.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -135,30 +137,22 @@ async function sendAlertEmail(actions) {
   const to = String(process.env.EXTERNAL_CALENDAR_ALERT_EMAIL || "lamaisonverte65@gmail.com").trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new Error("Destinataire d'alerte calendrier invalide.");
   const items = actions.map((action) => `<li><strong>${escapeHtml(action.source)}</strong> · ${escapeHtml(action.start_date || "?")} → ${escapeHtml(action.end_date || "?")} · UID ${escapeHtml(action.uid)}</li>`).join("");
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
+  const response = await resendEmail({
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [to],
       subject: "Alerte réservation externe disparue de l'ICS",
       html: `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>Alerte calendrier externe — La Maison Verte</h2><p>Une ou plusieurs réservations Booking/Airbnb ne sont plus présentes dans l'ICS.</p><ul>${items}</ul></div>`,
-    }),
-  });
+    });
   if (!response.ok) throw new Error("Envoi de l'alerte calendrier refusé.");
 }
 
 async function sendConflictAlertEmail(email) {
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
+  const response = await resendEmail({
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [email.to],
       subject: email.subject,
       html: email.html,
-    }),
-  });
+    });
   if (!response.ok) throw new Error("Envoi de l'alerte de chevauchement refusé.");
 }
 
@@ -220,6 +214,7 @@ export async function runExternalCalendarAlerts() {
 }
 
 export const handler = schedule("*/5 * * * *", async () => {
+  if (!emailAutomationAllowed()) return emailAutomationSkippedResponse();
   try {
     return { statusCode: 200, body: JSON.stringify(await runExternalCalendarAlerts()) };
   } catch (error) {

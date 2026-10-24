@@ -6,6 +6,8 @@ import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.
 import { DATE_CONFLICT_MESSAGE, isBookingDateConflictError } from "./_lib/public-booking-request.js";
 import { calculatePublicBookingQuote, quoteToBookingMoney } from "./_lib/booking-quote.js";
 import { resendEmail } from "./_lib/resend-email.js";
+import { normalizeGuestLanguage, emailLanguageForAudience } from "../../shared/guestLocale.js";
+import { buildLocalizedAdminBookingPaymentEmail } from "./_lib/guest-secondary-emails.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(
@@ -161,24 +163,27 @@ async function sendAdminBookingPaymentEmail({ booking, paymentLink, paymentType,
     </div>
   `;
 
+  const language = emailLanguageForAudience(booking);
+  const localized = language === "fr" ? null : buildLocalizedAdminBookingPaymentEmail({ language, booking, paymentLink, paymentType, paymentAmount, acceptanceExpiresAt, message });
+  const emailSubject = localized?.subject || subject;
   const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [booking.guest_email],
       reply_to: "contact@lamaisonverte65.fr",
-      subject,
-      html,
+      subject: emailSubject,
+      html: localized?.html || html,
     };
   const response = await resendEmail(retryPayload);
 
   if (!response.ok) {
     const errorText = await response.text();
-    await logEmail({ bookingId: booking.id, emailType: `admin_booking_payment:${paymentType}`, toEmail: booking.guest_email, subject, status: "error", errorMessage: errorText, retryPayload});
+    await logEmail({ bookingId: booking.id, emailType: `admin_booking_payment:${paymentType}`, toEmail: booking.guest_email, subject: emailSubject, status: "error", errorMessage: errorText, retryPayload});
     throw new Error(errorText);
   }
 
   let responseData = null;
   try { responseData = await response.json(); } catch (_) {}
-  await logEmail({ bookingId: booking.id, emailType: `admin_booking_payment:${paymentType}`, toEmail: booking.guest_email, subject, status: "sent", providerId: responseData?.id || null });
+  await logEmail({ bookingId: booking.id, emailType: `admin_booking_payment:${paymentType}`, toEmail: booking.guest_email, subject: emailSubject, status: "sent", providerId: responseData?.id || null });
 }
 
 async function findOrCreateCustomer(body, startDate, endDate) {
@@ -395,6 +400,7 @@ export async function handler(event) {
         guest_last_name: guestLastName,
         guest_email: guestEmail,
         guest_phone: guestPhone,
+        communication_language: normalizeGuestLanguage(body.communicationLanguage),
         start_date: startDate,
         end_date: endDate,
         nights,
@@ -470,7 +476,8 @@ export async function handler(event) {
         paymentType,
         paymentAmount,
         acceptanceExpiresAt,
-        message: internalNotes,
+        // Do not send owner-only internal notes to the guest.
+        message: null,
       });
 
       await logBookingEvent({

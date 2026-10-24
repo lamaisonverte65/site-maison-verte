@@ -1,6 +1,8 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { escapeHtml } from "./_lib/html.js";
+import { emailLanguageForAudience } from "../../shared/guestLocale.js";
+import { buildLocalizedPaymentConfirmation } from "./_lib/guest-payment-confirmation.js";
 import { processCheckoutSessionCompleted } from "./_lib/stripe-checkout-completed.js";
 import { listAllBalanceTransactions } from "./_lib/stripe-balance-transactions.js";
 import { contractualDeposit, contractualTotal, remainingContractualDue } from "./_lib/booking-financial-authority.js";
@@ -331,7 +333,7 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
     ? "Nous avons bien reçu votre paiement à <strong>La Maison Verte à Arreau</strong>."
     : "Nous avons bien reçu votre acompte pour votre séjour à <strong>La Maison Verte à Arreau</strong> et nous vous en remercions.";
 
-  const html = `
+  const frenchHtml = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6;">
       <h2>${title}</h2>
 
@@ -399,11 +401,21 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
     </div>
   `;
 
+  // La version française demeure inchangée ; seuls les textes EN/ES
+  // sont localisés. Le déclenchement Stripe et les journaux restent identiques.
+  const language = emailLanguageForAudience(booking, "guest");
+  const localized = language === "fr" ? null : buildLocalizedPaymentConfirmation({
+    language, booking, paymentType, total, deposit, balance,
+    manualReason, manualAmount, arrivalUrl,
+  });
+  const html = localized?.html ?? frenchHtml;
+  const subject = localized?.subject ?? (isFull ? "Paiement reçu - La Maison Verte" : isBalance ? "Solde reçu - La Maison Verte" : isManual ? "Paiement reçu - La Maison Verte" : "Acompte reçu - La Maison Verte");
+
   const retryPayload = {
       from: "La Maison Verte <contact@lamaisonverte65.fr>",
       to: [booking.guest_email],
       reply_to: "contact@lamaisonverte65.fr",
-      subject: isFull ? "Paiement reçu - La Maison Verte" : isBalance ? "Solde reçu - La Maison Verte" : isManual ? "Paiement reçu - La Maison Verte" : "Acompte reçu - La Maison Verte",
+      subject,
       html,
     };
   const response = await resendEmail(retryPayload);
@@ -415,7 +427,7 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
       bookingId: booking.id,
       emailType: `payment_confirmation:${paymentType}`,
       toEmail: booking.guest_email,
-      subject: isFull ? "Paiement reçu - La Maison Verte" : isBalance ? "Solde reçu - La Maison Verte" : isManual ? "Paiement reçu - La Maison Verte" : "Acompte reçu - La Maison Verte",
+      subject,
       status: "error",
       errorMessage: errorText,
       retryPayload,
@@ -432,7 +444,7 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
     bookingId: booking.id,
     emailType: `payment_confirmation:${paymentType}`,
     toEmail: booking.guest_email,
-    subject: isFull ? "Paiement reçu - La Maison Verte" : isBalance ? "Solde reçu - La Maison Verte" : isManual ? "Paiement reçu - La Maison Verte" : "Acompte reçu - La Maison Verte",
+    subject,
     status: "sent",
     providerId: responseData?.id || null,
   });

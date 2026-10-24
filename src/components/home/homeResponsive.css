@@ -1,0 +1,45 @@
+/* R13.2b — sections de l'accueil : mise en page fluide, sans dépendre de l'orientation. */
+.home-presentation-grid {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+}
+.home-ski-offer {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+}
+.home-presentation-grid > *,
+.home-ski-offer > * {
+  min-width: 0;
+}
+.home-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+.home-gallery-thumb {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  color: inherit;
+}
+.home-gallery-thumb:focus-visible {
+  outline: 3px solid #1f6f3d;
+  outline-offset: 4px;
+}
+@media (max-width: 850px) {
+  .home-presentation-grid,
+  .home-ski-offer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .home-gallery-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .home-gallery-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .home-gallery-grid img {
+    height: min(40vw, 210px) !important;
+  }
+}

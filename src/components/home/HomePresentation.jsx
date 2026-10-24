@@ -1,4 +1,8 @@
+import { getHomeCopy } from "./homeTranslations.js";
+import { languageForPublicPage, localizePublicHref } from "../../../shared/publicSiteLocale.js";
 export function HomePresentation() {
+  const language = typeof window === "undefined" ? "fr" : languageForPublicPage(window.location.href);
+  const copy = getHomeCopy(language).presentation;
   return (
 <section id="presentation" className="section" style={{ scrollMarginTop: "86px" }}>
         <h2
@@ -6,12 +10,12 @@ export function HomePresentation() {
             marginBottom: "34px",
           }}
         >
-          La maison
+          {copy.title}
         </h2>
         <div
+          className="home-presentation-grid"
           style={{
             display: "grid",
-            gridTemplateColumns: "1.2fr 0.8fr",
             gap: "40px",
             alignItems: "start",
           }}
@@ -19,12 +23,12 @@ export function HomePresentation() {
           <div
             style={{
               background: "white",
-              padding: "40px",
+              padding: "clamp(20px, 3.3vw, 40px)",
               borderRadius: "35px",
               boxShadow: "0 15px 45px rgba(0,0,0,0.08)",
             }}
           >
-            <h3>Un petit cocon niché au cœur d'un village traditionnel</h3>
+            <h3>{copy.subtitle}</h3>
 
             <p
               style={{
@@ -33,12 +37,7 @@ export function HomePresentation() {
                 marginTop: "20px",
               }}
             >
-              Meublé de tourisme officiellement classé 3 étoiles, entièrement
-              rénové pour 4 personnes et niché dans le centre historique
-              d’Arreau. Situé à la Confluence des vallées
-              d’Aure (Saint-Lary) et du Louron (Loudenvielle), au pied de 4
-              stations de ski, de nombreux cols mythiques et de multiples
-              possibilités de randonnées.
+              {copy.paragraphs[0]}
             </p>
 
             <p
@@ -47,13 +46,7 @@ export function HomePresentation() {
                 color: "#555",
               }}
             >
-              La Maison Verte est une location de vacances de particulier à
-              particulier située au cœur d'Arreau. Réservez directement auprès
-              du propriétaire, sans intermédiaire ni frais de plateforme, pour
-              préparer votre séjour dans les Pyrénées en toute simplicité. Une
-              solution idéale pour les voyageurs recherchant un hébergement
-              authentique proche de Saint-Lary, Loudenvielle, Peyragudes, Val
-              Louron, du Néouvielle et du Mont-Perdu.
+              {copy.paragraphs[1]}
             </p>
 
 
@@ -63,10 +56,7 @@ export function HomePresentation() {
                 color: "#555",
               }}
             >
-              Sur 3 niveaux, elle offre un séjour avec cuisine entièrement
-              équipée, une chambre parentale avec balcon ensoleillé, une salle
-              de bain, des WC séparés et une chambre sous combles avec deux lits
-              jumeaux.
+              {copy.paragraphs[2]}
             </p>
 
             <p
@@ -75,9 +65,7 @@ export function HomePresentation() {
                 color: "#555",
               }}
             >
-              Toutes les commodités sont accessibles à pied en moins de 3
-              minutes : boulangerie, boucherie, pharmacie, librairie, bars,
-              restaurants et commerces du village.
+              {copy.paragraphs[3]}
             </p>
           </div>
 
@@ -85,7 +73,7 @@ export function HomePresentation() {
             style={{
               background: "#1f6f3d",
               color: "white",
-              padding: "35px",
+              padding: "clamp(20px, 3vw, 35px)",
               borderRadius: "35px",
               boxShadow: "0 15px 45px rgba(0,0,0,0.12)",
             }}
@@ -96,7 +84,7 @@ export function HomePresentation() {
                 marginBottom: "25px",
               }}
             >
-              En bref
+              {copy.quick}
             </h3>
 
             <div
@@ -105,17 +93,7 @@ export function HomePresentation() {
                 gap: "18px",
               }}
             >
-              <div>🏡 Maison rénovée sur 3 niveaux</div>
-              <div>👨‍👩‍👧‍👦 Idéale pour 4 personnes</div>
-              <div>🛏️ 2 chambres : 1 grand lit, 2 lits jumeaux</div>
-              <div>☀️ Balcon exposé sud</div>
-              <div>🚶 Commerces à pied</div>
-              <div>⛷️ Situation centrale stratégique </div>
-              <div>🚴 Hébergement idéal pour cyclistes</div>
-              <div>🏍️ Accueil pratique pour motards</div>
-              <div>📶 Wi-Fi 7</div>
-              <div>🤝 Réservation directe propriétaire</div>
-              <div>🐕 Animaux non acceptés</div>
+              {copy.benefits.map((benefit) => <div key={benefit}>{benefit}</div>)}
             </div>
 
             <div
@@ -129,14 +107,16 @@ export function HomePresentation() {
               }}
             >
               <img
+                loading="lazy"
+                decoding="async"
                 src="/classement/panonceau-meuble-tourisme-3-etoiles-2026.webp"
-                alt="Panonceau officiel du classement Meublé de tourisme 3 étoiles"
+                alt={copy.classification}
                 style={{ width: "92px", height: "auto", flex: "0 0 auto" }}
               />
               <div style={{ lineHeight: 1.45, fontSize: "0.92rem" }}>
-                <strong>Meublé de tourisme classé 3 étoiles</strong>
+                <strong>{copy.classification}</strong>
                 <br />
-                Classement officiel Atout France
+                {copy.classAuthority}
               </div>
             </div>
           </div>
@@ -146,32 +126,11 @@ export function HomePresentation() {
           style={{
             marginTop: "45px",
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
+            gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,190px),1fr))",
             gap: "18px",
           }}
         >
-          {[
-            "Cuisine équipée",
-            "Machine à laver",
-            "Lave-vaisselle",
-            "Congélateur",
-            "Smart TV",
-            "Cafetière italienne",
-            "Cafetière à filtres",
-            "Bouilloire",
-            "Grille-pain",
-            "Appareil à raclette",
-            "Sèche cheveux",
-            "Fer à repasser",
-            "Lit parapluie",
-            "58 m²",
-            "Balcon avec table et chaises",
-            "Linge de lit et serviettes fournis",
-            "Poubelle de tri",
-            "Animaux non acceptés",
-            "Parking gratuit proche",
-            "Impasse piétonne",
-          ].map((item) => (
+          {copy.amenities.map((item) => (
             <div
               key={item}
               style={{
@@ -195,7 +154,7 @@ export function HomePresentation() {
           }}
         >
           <a
-            href="/livret"
+            href={localizePublicHref("/livret", language)}
             target="_blank"
             rel="noopener noreferrer"
             style={{
@@ -210,7 +169,7 @@ export function HomePresentation() {
               boxShadow: "0 8px 24px rgba(0,0,0,0.06)",
             }}
           >
-            Consulter le livret d’accueil
+            {copy.booklet}
           </a>
 
           <p
@@ -220,8 +179,7 @@ export function HomePresentation() {
               lineHeight: "1.7",
             }}
           >
-            Vous y trouverez toutes les informations utiles pour préparer votre séjour :
-            fonctionnement du logement, accès, bonnes adresses, activités, consignes et inventaire complet des équipements.
+            {copy.bookletDescription}
           </p>
         </div>
       </section>

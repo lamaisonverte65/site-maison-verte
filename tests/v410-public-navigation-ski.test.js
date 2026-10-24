@@ -49,7 +49,7 @@ test("ski showcase has its route existing content and conversion links", () => {
 test("3-star plaque is in presentation without adding a gallery image", () => {
   const home = read("src/components/home/HomePresentation.jsx");
   assert.match(home, /\/classement\/panonceau-meuble-tourisme-3-etoiles-2026\.webp/);
-  assert.match(home, /Panonceau officiel du classement Meublé de tourisme 3 étoiles/);
+  assert.match(home, /alt=\{copy\.classification\}/);
   const galleryBlock = read("src/components/home/homeContent.js").match(/const galleryPhotos = \[[\s\S]*?\n  \];/)?.[0] || "";
   assert.ok(galleryBlock);
   assert.doesNotMatch(galleryBlock, /panonceau-meuble-tourisme/);
@@ -69,11 +69,14 @@ test("navigation header places logo before a prominent green hamburger", () => {
 test("presentation anchor reserves header space and plaque is integrated in En bref", () => {
   const home = read("src/components/home/HomePresentation.jsx");
   assert.match(home, /id="presentation"[\s\S]*scrollMarginTop: "86px"/);
-  const enBrefIndex = home.indexOf("En bref");
+  const summaryIndex = home.indexOf("{copy.quick}");
   const plaqueIndex = home.indexOf("panonceau-meuble-tourisme-3-etoiles-2026.webp");
-  const introIndex = home.indexOf("Un petit cocon niché");
-  assert.ok(enBrefIndex >= 0 && plaqueIndex > enBrefIndex);
-  assert.ok(introIndex >= 0 && plaqueIndex > enBrefIndex);
+  const introIndex = home.indexOf("{copy.subtitle}");
+  assert.ok(summaryIndex >= 0 && plaqueIndex > summaryIndex);
+  assert.ok(introIndex >= 0 && introIndex < plaqueIndex);
+  const translations = read("src/components/home/homeTranslations.js");
+  assert.match(translations, /En bref/);
+  assert.match(translations, /Un petit cocon niché/);
 });
 
 test("published site reviews no longer depend on consent_to_publish", () => {
@@ -100,8 +103,8 @@ test("Google review card displays the current two five-star reviews", () => {
 
 test("public contact section exposes WhatsApp Business alongside phone", () => {
   const home = read("src/components/home/HomeContact.jsx");
-  assert.match(home, /href="https:\/\/wa\.me\/33695938315\?text=/);
-  assert.match(home, /Écrire sur WhatsApp/);
+  assert.match(home, /wa\.me\/33695938315/);
+  assert.match(home, /\{copy\.whatsapp\}/);
   assert.match(home, /target="_blank"/);
   assert.match(home, /rel="noopener noreferrer"/);
 });

@@ -5,6 +5,8 @@ import { escapeHtml } from "./_lib/html.js";
 import { contractualDeposit, contractualTotal } from "./_lib/booking-financial-authority.js";
 import { resendEmail } from "./_lib/resend-email.js";
 import { resolveBookingContractUrl } from "./_lib/contract-version.js";
+import { buildLocalizedBookingDecision } from "./_lib/guest-booking-decision.js";
+import { emailLanguageForAudience } from "../../shared/guestLocale.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -377,6 +379,43 @@ export async function handler(event) {
       `;
     }
 
+    // Pour les demandes étrangères, seul le rendu des messages change :
+    // mêmes montants contractuels, liens Stripe validés et déclencheurs.
+    // Aucun changement dans les trois modèles historiques français.
+    const guestLanguage = emailLanguageForAudience(storedBooking);
+    if (guestLanguage !== "fr" && ["accepted", "refused", "confirmed"].includes(type)) {
+      const localized = buildLocalizedBookingDecision({
+        language: guestLanguage,
+        type,
+        firstName: guestFirstName,
+        lastName: guestLastName,
+        startDate,
+        endDate,
+        nights,
+        adultsCount,
+        childrenCount,
+        childrenAges,
+        babyBedNeeded,
+        arrivalTime,
+        acceptanceExpiresAt,
+        paymentLink,
+        paymentType,
+        daysBeforeArrival,
+        contractUrl,
+        ownerMessage,
+        accommodationNet,
+        actualDiscount,
+        actualDiscountRate,
+        cleaningApplied,
+        touristTax,
+        displayedPrice,
+        amountToPay: paymentContext.amountToPay,
+      });
+      subject = localized.subject;
+      title = localized.title;
+      content = localized.content;
+    }
+
     if (!subject || !content) {
       return {
         statusCode: 400,
@@ -384,7 +423,12 @@ export async function handler(event) {
       };
     }
 
-    const html = `
+    const localizedFooter = guestLanguage === "en"
+      ? "Please check your spam folder if you do not receive our messages, and add contact@lamaisonverte65.fr to your contacts."
+      : guestLanguage === "es"
+        ? "Si no recibe nuestros mensajes, compruebe la carpeta de correo no deseado y añada contact@lamaisonverte65.fr a sus contactos."
+        : "Pensez à vérifier vos courriers indésirables / spams si vous ne recevez pas nos prochains messages, puis ajoutez contact@lamaisonverte65.fr à vos contacts.";
+    const html = guestLanguage === "fr" ? `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <h2>${title}</h2>
         ${content}
@@ -393,6 +437,15 @@ export async function handler(event) {
           Pensez à vérifier vos courriers indésirables / spams
           si vous ne recevez pas nos prochains messages,
           puis ajoutez contact@lamaisonverte65.fr à vos contacts.
+        </p>
+      </div>
+    ` : `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+        <h2>${title}</h2>
+        ${content}
+
+        <p style="margin-top:30px;font-size:13px;color:#666;">
+          ${localizedFooter}
         </p>
       </div>
     `;
