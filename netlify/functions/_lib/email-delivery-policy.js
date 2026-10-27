@@ -10,7 +10,8 @@ const LIVE_HOSTS = new Set(["lamaisonverte65.fr", "www.lamaisonverte65.fr"]);
 const SIMPLE_EMAIL = /^[^\s<>@,;]+@[^\s<>@,;]+\.[^\s<>@,;]+$/;
 
 export function isKnownLiveDeployment(env = process.env) {
-  if (env.CONTEXT !== "production") return false;
+  const runtimeContext = String(env.CONTEXT || env.LMV_RUNTIME_CONTEXT || "").trim().toLowerCase();
+  if (runtimeContext !== "production") return false;
   try {
     const url = new URL(String(env.URL || ""));
     return url.protocol === "https:" && LIVE_HOSTS.has(url.hostname.toLowerCase());

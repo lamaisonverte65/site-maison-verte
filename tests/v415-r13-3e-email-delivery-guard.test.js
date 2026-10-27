@@ -40,6 +40,22 @@ test("R13.3e : production canonique seule conserve le mode live", () => {
   assert.equal(emailDeliveryMode({ ...production, LMV_EMAIL_DELIVERY_MODE: "allowlist" }), "allowlist");
 });
 
+test("R13.3e : contexte runtime explicite limité à la production", () => {
+  const runtime = {
+    URL: "https://lamaisonverte65.fr",
+    LMV_RUNTIME_CONTEXT: "production",
+  };
+  assert.equal(isKnownLiveDeployment(runtime), true);
+  assert.equal(emailDeliveryMode(runtime), "live");
+  assert.equal(emailAutomationAllowed(runtime), true);
+  assert.equal(emailDeliveryMode({ URL: runtime.URL }), "block");
+  assert.equal(emailDeliveryMode({
+    ...runtime, CONTEXT: "deploy-preview",
+  }), "block");
+  assert.equal(emailDeliveryMode({
+    ...runtime, URL: "https://recette.netlify.app",
+  }), "block");
+});
 test("R13.3e : allowlist absente ou invalide = refus", () => {
   assert.equal(evaluateEmailDelivery(payload(), { ...preview, LMV_EMAIL_DELIVERY_MODE: "allowlist" }).allowed, false);
   assert.equal(evaluateEmailDelivery(payload(), { ...allowlist, LMV_EMAIL_ALLOWED_RECIPIENTS: "*" }).allowed, false);
