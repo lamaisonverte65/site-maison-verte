@@ -11,16 +11,18 @@ async function readOptionalRows(query, table, loadErrors) {
   }
 }
 
-async function readVisitCount(query, loadErrors) {
+async function readVisitSummary(supabase, loadErrors) {
   try {
-    const { count, error } = await query;
+    const { data, error } = await supabase.rpc("get_admin_visit_summary", { p_days: 30 });
     if (error) throw error;
-    if (!Number.isSafeInteger(count) || count < 0) {
-      throw new Error("Compteur Supabase indisponible.");
+    if (!data || typeof data !== "object" || !Array.isArray(data.daily) ||
+        !Array.isArray(data.sources) || !Array.isArray(data.pages) ||
+        !Number.isSafeInteger(data.last30) || data.last30 < 0) {
+      throw new Error("Résumé statistique incomplet.");
     }
-    return count;
+    return data;
   } catch (error) {
-    loadErrors.site_visits_count = error?.message || "Compteur indisponible";
+    loadErrors.site_visits_summary = error?.message || "Statistiques indisponibles";
     return null;
   }
 }
@@ -61,15 +63,8 @@ export async function fetchAdminData(supabase) {
     table: "guest_reviews", orderBy: "created_at",
   }), "guest_reviews", loadErrors);
 
-  const sinceVisits = new Date();
-  sinceVisits.setDate(sinceVisits.getDate() - 180);
-  const siteVisitsData = await readOptionalRows(readAllAdminRows(supabase, {
-    table: "site_visits", orderBy: "created_at", since: sinceVisits.toISOString(),
-  }), "site_visits", loadErrors);
-
-  const siteVisitsTotalCount = await readVisitCount(supabase
-    .from("site_visits")
-    .select("id", { count: "exact", head: true }), loadErrors);
+  // R18 : les événements historiques ne sont plus téléchargés dans le navigateur.
+  const siteVisitSummary = await readVisitSummary(supabase, loadErrors);
 
   const reservationsData = await readOptionalRows(readAllAdminRows(supabase, {
     table: "reservations", orderBy: "created_at",
@@ -95,8 +90,7 @@ export async function fetchAdminData(supabase) {
     bookingEvents: eventsData || [],
     emailLogs: emailLogsData || [],
     guestReviews: guestReviewsData || [],
-    siteVisits: siteVisitsData || [],
-    siteVisitsTotal: siteVisitsTotalCount,
+    siteVisitSummary,
     confirmedReservations: reservationsData || [],
     stripePayouts: stripePayoutsData || [],
     stripeBalanceTransactions: stripeBalanceTransactionsData || [],

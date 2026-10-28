@@ -85,7 +85,7 @@ export default function Admin() {
   const [bookingEvents, setBookingEvents] = useState([]);
   const [emailLogs, setEmailLogs] = useState([]);
   const [guestReviews, setGuestReviews] = useState([]);
-  const [siteVisits, setSiteVisits] = useState([]);
+  const [siteVisitSummary, setSiteVisitSummary] = useState(null);
   const [ownVisitorId, setOwnVisitorId] = useState("");
   const [adminTrackingDisabled, setAdminTrackingDisabled] = useState(true);
   const [confirmedReservations, setConfirmedReservations] = useState([]);
@@ -130,7 +130,7 @@ export default function Admin() {
       setOwnVisitorId(window.localStorage.getItem("lmv_visitor_id") || "");
       setAdminTrackingDisabled(window.localStorage.getItem("lmv_admin_browser") === "1");
     } catch {
-      // localStorage peut être bloqué en navigation privée : ce n'est pas bloquant.
+      // L'absence de localStorage ne doit pas bloquer l'administration.
     }
   }, []);
 
@@ -193,7 +193,7 @@ export default function Admin() {
       setBookingEvents(adminData.bookingEvents);
       setEmailLogs(adminData.emailLogs);
       setGuestReviews(adminData.guestReviews);
-      setSiteVisits(adminData.siteVisits);
+      setSiteVisitSummary(adminData.siteVisitSummary);
       setConfirmedReservations(adminData.confirmedReservations);
       setStripePayouts(adminData.stripePayouts);
       setStripeBalanceTransactions(adminData.stripeBalanceTransactions);
@@ -603,30 +603,16 @@ export default function Admin() {
   });
 
   const {
-    visibleSiteVisits,
-    pageViewVisits,
-    clickEvents,
-    analyticsStats,
-    pageStats,
-    deviceStats,
-    browserStats,
-    screenStats,
-    clickedLinkStats,
-    sectionStats,
-    languageStats,
     dailyVisitStats,
-    visitSessions,
-    visitsSince,
-  } = useVisitsData({
-    siteVisits,
-    ownVisitorId,
-  });
+    pageStats,
+    visitSourceStats,
+    languageStats,
+    deviceStats,
+  } = useVisitsData({ visitSummary: siteVisitSummary });
 
   const {
     stats,
     sourceStats,
-    visitSourceStats,
-    visitCountryStats,
   } = useAdminStats({
     bookingRequests,
     confirmedReservations,
@@ -635,10 +621,9 @@ export default function Admin() {
     cleaningIssues,
     additionalCharges,
     payments,
-    pageViewVisits,
+    visitSummary: siteVisitSummary,
     stripePayouts,
     stripeBalanceTransactions,
-    visitsSince,
   });
 
   const { paymentRows } = usePaymentData({
@@ -691,20 +676,18 @@ export default function Admin() {
 
   const visitsData = {
     stats,
-    analyticsStats,
-    clickEvents,
     dailyVisitStats,
     visitSourceStats,
     pageStats,
-    clickedLinkStats,
-    visitCountryStats,
     deviceStats,
-    browserStats,
-    screenStats,
     languageStats,
-    sectionStats,
-    visitSessions,
-    visibleSiteVisits,
+    requestsLast30: bookingRequests.filter((request) => {
+      const created = Date.parse(request.created_at || "");
+      const since = new Date();
+      since.setHours(0, 0, 0, 0);
+      since.setDate(since.getDate() - 29);
+      return Number.isFinite(created) && created >= since.getTime();
+    }).length,
   };
 
   const missingForActiveTab = getUnavailableAdminSources(activeTab, dataLoadErrors);
@@ -826,7 +809,6 @@ export default function Admin() {
           stats={stats}
           sourceStats={sourceStats}
           visitSourceStats={visitSourceStats}
-          visitCountryStats={visitCountryStats}
           onNavigate={setActiveTab}
         />
       )}
@@ -944,9 +926,7 @@ export default function Admin() {
       {!loading && !error && !tabUnavailable("visits") && activeTab === "visits" && (
         <VisitsPanel
           data={visitsData}
-          adminTrackingDisabled={adminTrackingDisabled}
           onRefresh={loadAdminData}
-          onToggleAdminTracking={toggleAdminTracking}
         />
       )}
 

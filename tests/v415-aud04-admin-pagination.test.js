@@ -15,6 +15,16 @@ function fakeSupabase(tables = {}, override = () => null) {
   const calls = [];
   return {
     calls,
+    rpc: (name, params) => {
+      calls.push({ table: `rpc:${name}`, params });
+      return Promise.resolve({ data: {
+    period_days: 30, today: 1, last7: 7, last30: 20,
+    daily: Array.from({ length: 30 }, (_, i) => ({ date: `2026-10-${String(i + 1).padStart(2, "0")}`, pages: i === 0 ? 20 : 0 })),
+    sources: [{ label: "direct", count: 20 }],
+    pages: [{ label: "/", count: 20 }],
+    languages: [], devices: [],
+  }, error: null });
+    },
     from: (table) => {
       let countRequested = false;
       let head = false;
@@ -120,17 +130,15 @@ test("AUD-04 : les agrégats financiers et les paiements sont tous chargés sans
   assert.deepEqual(db.calls.filter((c) => c.table === "booking_financial_ledger_aggregates")[0].sorting.map((s) => s.field), ["booking_request_id"]);
 });
 
-test("AUD-04 : les visites restent filtrées sur 180 jours et paginées", async () => {
+test("AUD-04/R18 : les visites utilisent un agrégat SQL et aucune pagination brute", async () => {
   const db = fakeSupabase({
-    site_visits: [
-      ...fixtureRows(750, "recent").map((r) => ({ ...r, created_at: new Date().toISOString() })),
-      { ...fixtureRows(1, "old")[0], created_at: "2024-01-01T00:00:00Z" },
-    ],
+    site_visits: fixtureRows(100001, "event"),
   });
   const result = await fetchAdminData(db);
-  assert.equal(result.siteVisits.length, 750);
-  assert.equal(db.calls.filter((c) => c.table === "site_visits" && !c.head).length, 2);
-  assert.ok(db.calls.some((c) => c.table === "site_visits" && c.head));
+  assert.equal(result.siteVisitSummary.last30, 20);
+  assert.equal(db.calls.filter((c) => c.table === "site_visits").length, 0);
+  assert.equal(db.calls.filter((c) => c.table === "rpc:get_admin_visit_summary").length, 1);
+  assert.deepEqual(db.calls.find((c) => c.table === "rpc:get_admin_visit_summary").params, { p_days: 30 });
 });
 
 test("AUD-04 : les lectures obligatoires s'arrêtent sur un COUNT incohérent", async () => {

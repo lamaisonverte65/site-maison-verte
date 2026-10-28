@@ -28,28 +28,38 @@ function mockSupabase(responses = {}) {
     };
     return query;
   };
-  return { from, called };
+  const rpc = (_name, _params) => {
+    called.push("rpc:get_admin_visit_summary");
+    const response = responses.site_visits_summary ?? { data: {
+    period_days: 30, today: 1, last7: 7, last30: 20,
+    daily: Array.from({ length: 30 }, (_, i) => ({ date: `2026-10-${String(i + 1).padStart(2, "0")}`, pages: i === 0 ? 20 : 0 })),
+    sources: [{ label: "direct", count: 20 }],
+    pages: [{ label: "/", count: 20 }],
+    languages: [], devices: [],
+  }, error: null };
+    return Promise.resolve(response);
+  };
+  return { from, rpc, called };
 }
 
 test("AUD-03 : une liste vide valide ne crée aucune erreur", async () => {
-  const db = mockSupabase({ site_visits: (call) => call === 2 ? { count: 0, error: null } : { data: [], error: null } });
+  const db = mockSupabase();
   const result = await fetchAdminData(db);
   assert.deepEqual(result.loadErrors, {});
   assert.deepEqual(result.payments, []);
   assert.deepEqual(result.customerInvoices, []);
-  assert.equal(result.siteVisitsTotal, 0);
+  assert.equal(result.siteVisitSummary.last30, 20);
 });
 
 test("AUD-03 : échec paiements visible, factures et autres rubriques encore chargées", async () => {
   const db = mockSupabase({
     payments: { data: null, error: { message: "Accès refusé aux paiements" } },
     customer_invoices: { data: [{ id: "invoice-1" }], error: null },
-    site_visits: (call) => call === 2 ? { count: 5, error: null } : { data: [{ id: "visit-1" }], error: null },
   });
   const result = await fetchAdminData(db);
   assert.match(result.loadErrors.payments, /Accès refusé/);
   assert.deepEqual(result.customerInvoices, [{ id: "invoice-1" }]);
-  assert.equal(result.siteVisits.length, 1);
+  assert.equal(result.siteVisitSummary.daily.length, 30);
   assert.ok(db.called.includes("stripe_payouts"), "les autres lectures continuent");
   assert.deepEqual(getUnavailableAdminSources("payments", result.loadErrors), ["payments"]);
   assert.deepEqual(getUnavailableAdminSources("invoices", result.loadErrors), []);
@@ -70,14 +80,15 @@ test("AUD-03 : rejet réseau capturé sans empêcher le chargement des autres ta
   assert.deepEqual(getUnavailableAdminSources("invoices", result.loadErrors), ["customer_credit_notes"]);
 });
 
-test("AUD-03 : erreur sur compteur visites n'invente pas de total", async () => {
-  const result = await fetchAdminData(mockSupabase({ site_visits: (call) => call === 2
-    ? { count: null, error: { message: "COUNT impossible" } }
-    : { data: [], error: null },
+test("AUD-03/R18 : l’échec de l’agrégat de visites masque seulement Statistiques", async () => {
+  const result = await fetchAdminData(mockSupabase({
+    site_visits_summary: { data: null, error: { message: "RPC impossible" } },
   }));
-  assert.equal(result.siteVisitsTotal, null);
-  assert.match(result.loadErrors.site_visits_count, /COUNT impossible/);
-  assert.deepEqual(getUnavailableAdminSources("visits", result.loadErrors), ["site_visits_count"]);
+  assert.equal(result.siteVisitSummary, null);
+  assert.match(result.loadErrors.site_visits_summary, /RPC impossible/);
+  assert.deepEqual(getUnavailableAdminSources("visits", result.loadErrors), ["site_visits_summary"]);
+  assert.deepEqual(getUnavailableAdminSources("home", result.loadErrors), []);
+  assert.deepEqual(getUnavailableAdminSources("summary", result.loadErrors), []);
 });
 
 test("AUD-03 : les lectures obligatoires refusent toujours une erreur", async () => {

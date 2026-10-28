@@ -1,55 +1,49 @@
 import { styles } from "./adminStyles";
 import { MiniBarChart, StatCard, SummaryList } from "./AdminUi";
-import {
-  formatDateTime,
-  formatDurationSeconds,
-  formatPercent,
-  getCountryLabel,
-  getDeviceLabel,
-  getLinkLabel,
-  getVisitEventType,
-  getVisitMetadata,
-  getVisitPageLabel,
-  normalizeSource,
-} from "../../utils/adminFormatters";
 
-export default function VisitsPanel({
-  data,
-  adminTrackingDisabled,
-  onRefresh,
-  onToggleAdminTracking,
-}) {
-  const {
-    stats,
-    analyticsStats,
-    clickEvents,
-    dailyVisitStats,
-    visitSourceStats,
-    pageStats,
-    clickedLinkStats,
-    visitCountryStats,
-    deviceStats,
-    browserStats,
-    screenStats,
-    languageStats,
-    sectionStats,
-    visitSessions,
-    visibleSiteVisits,
-  } = data;
+function ViewsTrend({ days }) {
+  const values = days.map((day) => Number(day.pages || 0));
+  const max = Math.max(1, ...values);
+  const span = Math.max(days.length - 1, 1);
+  const points = values.map((value, index) => {
+    const x = 22 + (index * 660) / span;
+    const y = 130 - (value / max) * 104;
+    return `${x},${y}`;
+  }).join(" ");
+  return (
+    <div style={styles.chartBox}>
+      <strong>Évolution des pages vues sur 30 jours</strong>
+      <svg viewBox="0 0 704 162" role="img" aria-label="Courbe des pages vues quotidiennes sur 30 jours" style={{ width: "100%", height: "auto" }}>
+        <line x1="22" y1="130" x2="682" y2="130" stroke="currentColor" opacity="0.25" />
+        <polyline points={points} fill="none" stroke="#15803d" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        {days.map((day, i) => (
+          <circle key={day.date} cx={22 + (i * 660) / span} cy={130 - (values[i] / max) * 104} r="3" fill="#15803d">
+            <title>{day.label} : {values[i]} pages vues</title>
+          </circle>
+        ))}
+        <text x="22" y="151" fontSize="12" fill="currentColor">{days[0]?.label || ""}</text>
+        <text x="682" y="151" fontSize="12" textAnchor="end" fill="currentColor">{days[days.length - 1]?.label || ""}</text>
+      </svg>
+    </div>
+  );
+}
+
+
+export default function VisitsPanel({ data, onRefresh }) {
+  const { stats, requestsLast30, dailyVisitStats, visitSourceStats,
+    pageStats, languageStats, deviceStats } = data;
   return (
     <section style={styles.panel}>
       <div style={styles.panelHeader}>
         <div>
-          <h2 style={styles.panelTitle}>Statistiques de visite</h2>
+          <h2 style={styles.panelTitle}>Statistiques du site</h2>
           <p style={styles.muted}>
-            Tes visites admin sont ignorées sur ce navigateur. Les pays peuvent être faussés par VPN/proxy ; quand le pays n&apos;est pas disponible, la langue et le fuseau horaire sont plus fiables.
+            Pages vues enregistrées, et non visiteurs uniques. Période : 30 derniers jours.
+            Les événements de défilement et de durée ne sont plus collectés.
           </p>
         </div>
         <div style={styles.headerActions}>
           <button style={styles.smallButton} onClick={onRefresh}>Actualiser</button>
-          <button style={adminTrackingDisabled ? styles.smallButton : styles.warningButton} onClick={onToggleAdminTracking}>
-            {adminTrackingDisabled ? "Ne pas compter mon navigateur" : "Attention : mon navigateur est compté"}
-          </button>
         </div>
       </div>
 
@@ -57,118 +51,23 @@ export default function VisitsPanel({
         <StatCard label="Pages vues aujourd’hui" value={stats.visitsToday} />
         <StatCard label="Pages vues 7 jours" value={stats.visitsWeek} />
         <StatCard label="Pages vues 30 jours" value={stats.visitsMonth} />
-        <StatCard label="Pages vues chargées" value={stats.visitsTotal} />
-        <StatCard label="Visiteurs uniques" value={analyticsStats.uniqueVisitors} />
-        <StatCard label="Sessions" value={analyticsStats.sessions} />
-        <StatCard label="Pages / session" value={analyticsStats.pagesPerSession.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} />
-        <StatCard label="Temps moyen / page" value={formatDurationSeconds(Math.round(analyticsStats.avgDuration))} />
-        <StatCard label="Part mobile" value={formatPercent(analyticsStats.mobileShare)} />
-        <StatCard label="Clics enregistrés" value={clickEvents.length} />
-        <StatCard label="Taux clic / page" value={formatPercent(analyticsStats.clickRate)} />
-        <StatCard label="Visiteurs → demandes" value={formatPercent(stats.conversionVisitorsToRequests)} />
+        <StatCard label="Demandes enregistrées 30 jours" value={requestsLast30} />
       </section>
 
       <div style={styles.analyticsChartsGrid}>
+        <ViewsTrend days={dailyVisitStats} />
         <MiniBarChart
-          title="Pages vues sur 14 jours"
-          rows={dailyVisitStats.map((row) => [row.label, row.pages])}
-          emptyLabel="Aucune page vue"
+          title="Provenance des consultations"
+          rows={visitSourceStats}
         />
-        <MiniBarChart
-          title="Clics sur 14 jours"
-          rows={dailyVisitStats.map((row) => [row.label, row.clicks])}
-          emptyLabel="Aucun clic"
-        />
-        <MiniBarChart title="Origines principales" rows={visitSourceStats.slice(0, 8)} />
-        <MiniBarChart title="Pages les plus vues" rows={pageStats.slice(0, 8)} />
       </div>
 
       <div style={styles.summaryGrid}>
-        <SummaryList title="Pages les plus vues" rows={pageStats} />
-        <SummaryList title="Liens cliqués" rows={clickedLinkStats} />
-        <SummaryList title="Sources" rows={visitSourceStats} />
-        <SummaryList title="Pays / indication pays" rows={visitCountryStats} />
-        <SummaryList title="Appareils" rows={deviceStats} />
-        <SummaryList title="Navigateurs" rows={browserStats} />
-        <SummaryList title="Tailles écran" rows={screenStats} />
+        <SummaryList title="Pages les plus consultées" rows={pageStats} />
+        <SummaryList title="Origines" rows={visitSourceStats} />
         <SummaryList title="Langues" rows={languageStats} />
-        <SummaryList title="Sections vues" rows={sectionStats} />
+        <SummaryList title="Appareils" rows={deviceStats} />
       </div>
-
-      <h3 style={styles.subTitle}>Sessions récentes</h3>
-      {visitSessions.length === 0 ? <p style={styles.empty}>Aucune visite externe enregistrée pour le moment.</p> : (
-        <div style={styles.tableWrapper}>
-          <table style={styles.table}>
-            <thead style={styles.stickyHead}>
-              <tr>
-                <th style={styles.th}>Dernière activité</th>
-                <th style={styles.th}>Source</th>
-                <th style={styles.th}>Appareil</th>
-                <th style={styles.th}>Pays</th>
-                <th style={styles.th}>Pages vues</th>
-                <th style={styles.th}>Durée connue</th>
-                <th style={styles.th}>Scroll max</th>
-                <th style={styles.th}>Visiteur</th>
-              </tr>
-            </thead>
-            <tbody>{visitSessions.slice(0, 80).map((session) => (
-              <tr key={session.sessionId}>
-                <td style={styles.td}>{formatDateTime(session.lastAt)}</td>
-                <td style={styles.td}>{normalizeSource(session.source || session.referrerDomain || "Direct")}</td>
-                <td style={styles.td}>{session.device}</td>
-                <td style={styles.td}>{session.country || "-"}</td>
-                <td style={{...styles.td, whiteSpace: "normal", minWidth: "220px"}}>{[...new Set(session.pages)].join(" → ")}</td>
-                <td style={styles.td}>{formatDurationSeconds(session.duration)}</td>
-                <td style={styles.td}>{session.maxScroll ? `${session.maxScroll} %` : "-"}</td>
-                <td style={styles.td}>{String(session.visitorId || "-").slice(0, 18)}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-      )}
-
-      <h3 style={styles.subTitle}>Événements récents</h3>
-      {visibleSiteVisits.length === 0 ? <p style={styles.empty}>Aucun événement enregistré pour le moment.</p> : (
-        <div style={styles.tableWrapper}>
-          <table style={styles.table}>
-            <thead style={styles.stickyHead}>
-              <tr>
-                <th style={styles.th}>Date</th>
-                <th style={styles.th}>Type</th>
-                <th style={styles.th}>Page</th>
-                <th style={styles.th}>Origine</th>
-                <th style={styles.th}>Détail</th>
-                <th style={styles.th}>Appareil</th>
-                <th style={styles.th}>Pays</th>
-                <th style={styles.th}>Durée / scroll</th>
-                <th style={styles.th}>Visiteur</th>
-              </tr>
-            </thead>
-            <tbody>{visibleSiteVisits.slice(0, 160).map((visit) => {
-              const type = getVisitEventType(visit);
-              const meta = getVisitMetadata(visit);
-              const detail = type === "link_click"
-                ? getLinkLabel(visit)
-                : type === "section_view"
-                  ? (visit.section_id || meta.section_id || "Section")
-                  : (visit.referrer_domain || meta.referrer_domain || "-");
-              const duration = visit.duration_seconds || meta.duration_seconds;
-              const scroll = visit.max_scroll_percent || meta.max_scroll_percent;
-              return <tr key={visit.id}>
-                <td style={styles.td}>{formatDateTime(visit.created_at)}</td>
-                <td style={styles.td}>{type}</td>
-                <td style={styles.td}>{getVisitPageLabel(visit)}</td>
-                <td style={styles.td}>{normalizeSource(visit.source || meta.source || "Direct")}</td>
-                <td style={{...styles.td, whiteSpace: "normal", minWidth: "260px"}}>{detail}</td>
-                <td style={styles.td}>{getDeviceLabel(visit)}</td>
-                <td style={styles.td}>{getCountryLabel(visit)}</td>
-                <td style={styles.td}>{formatDurationSeconds(duration)}{scroll ? ` · ${scroll} %` : ""}</td>
-                <td style={styles.td}>{String(visit.visitor_id || "-").slice(0, 18)}</td>
-              </tr>;
-            })}</tbody>
-          </table>
-        </div>
-      )}
     </section>
   );
 }

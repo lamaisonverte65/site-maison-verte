@@ -1,13 +1,13 @@
-// Dépendances explicites des rubriques de l'admin : une lecture en erreur
-// ne doit pas être présentée comme un tableau vide ou un total fiable.
+// Les anomalies d'une source ne doivent pas être présentées comme des données vides.
+// Une panne des visites ne doit toutefois pas masquer le tableau financier ou l'accueil.
 const TAB_DEPENDENCIES = {
-  home: ["payments", "reservations", "guest_reviews", "booking_cleaning_issues", "booking_additional_charges", "site_visits", "site_visits_count", "stripe_payouts", "stripe_balance_transactions"],
-  summary: ["payments", "reservations", "guest_reviews", "booking_cleaning_issues", "booking_additional_charges", "site_visits", "site_visits_count", "stripe_payouts", "stripe_balance_transactions"],
+  home: ["payments", "reservations", "guest_reviews", "booking_cleaning_issues", "booking_additional_charges", "stripe_payouts", "stripe_balance_transactions"],
+  summary: ["payments", "reservations", "guest_reviews", "booking_cleaning_issues", "booking_additional_charges", "stripe_payouts", "stripe_balance_transactions"],
   payments: ["payments", "stripe_balance_transactions"],
   invoices: ["customer_invoices", "customer_credit_notes"],
   communication: ["booking_events", "email_logs"],
   reviews: ["guest_reviews"],
-  visits: ["site_visits", "site_visits_count"],
+  visits: ["site_visits_summary"],
   stripe_payouts: ["stripe_payouts", "stripe_balance_transactions"],
   reservation_details: [
     "payments", "customer_invoices", "customer_credit_notes",
@@ -29,8 +29,7 @@ const SOURCE_LABELS = {
   booking_events: "Événements de réservation",
   email_logs: "Historique des emails",
   guest_reviews: "Avis clients",
-  site_visits: "Visites du site",
-  site_visits_count: "Total des visites",
+  site_visits_summary: "Statistiques de visite",
   reservations: "Réservations confirmées",
   stripe_payouts: "Virements Stripe",
   stripe_balance_transactions: "Transactions Stripe",

@@ -1,9 +1,7 @@
 import { useMemo } from "react";
 import {
   normalizeSource,
-  uniqueVisitorCount,
   groupCount,
-  getCountryLabel,
   isCancelledFinancialStatus,
   isConfirmedFinancialStatus,
   getRealPaidAmount,
@@ -21,10 +19,9 @@ export function useAdminStats({
   cleaningIssues = [],
   additionalCharges = [],
   payments = [],
-  pageViewVisits,
+  visitSummary,
   stripePayouts,
   stripeBalanceTransactions,
-  visitsSince,
 }) {
   const stats = useMemo(() => {
     const activeRequests = bookingRequests.filter((request) => !isCancelledFinancialStatus(request.status));
@@ -34,8 +31,6 @@ export function useAdminStats({
     const confirmedRequests = activeRequests.filter((request) => isConfirmedFinancialStatus(request.status));
     const requestsCount = bookingRequests.length;
     const confirmedCount = confirmedReservations.length || confirmedRequests.length;
-    const uniqueVisitors30 = uniqueVisitorCount(pageViewVisits);
-    const totalVisitors = pageViewVisits.length;
 
     const depositCollected = activeRequests.reduce((sum, request) => {
       if (!request.deposit_paid_at) return sum;
@@ -46,9 +41,7 @@ export function useAdminStats({
     const totalCollected = activeRequests.reduce((sum, request) => sum + getRealPaidAmount(request), 0);
     const balanceCollected = Math.max(totalCollected - depositCollected, 0);
 
-    // Synthèse bancaire Stripe : toutes les transactions réelles comptent,
-    // y compris les réservations annulées/remboursées, car elles génèrent
-    // des frais et doivent expliquer le montant réellement viré par Stripe.
+    // Ne pas modifier les vérités financières ni les règles de rapprochement Stripe.
     const nonContractStripe = getNonContractStripeFinancials({ payments, stripeBalanceTransactions });
     const stripeGrossPaymentTotal = bookingRequests.reduce((sum, request) => {
       const cents = request.financial_ledger?.gross_paid_cents;
@@ -94,15 +87,15 @@ export function useAdminStats({
       loyal: customers.filter((customer) => Number(customer.booking_count || 0) > 1).length,
       reviewsPending: guestReviews.filter((review) => review.status === "pending").length,
       cleaningIssuesPending: cleaningIssues.filter((issue) => issue.status === "reported" && !additionalCharges.some((charge) => charge.cleaning_issue_id === issue.id && charge.status !== "cancelled")).length,
-      visitsToday: visitsSince(1),
-      visitsWeek: visitsSince(7),
-      visitsMonth: visitsSince(30),
-      visitsTotal: totalVisitors,
-      uniqueVisitors30,
+      visitsToday: visitSummary ? Number(visitSummary.today || 0) : "—",
+      visitsWeek: visitSummary ? Number(visitSummary.last7 || 0) : "—",
+      visitsMonth: visitSummary ? Number(visitSummary.last30 || 0) : "—",
+      visitsTotal: visitSummary ? Number(visitSummary.last30 || 0) : "—", // Ancien champ : désormais fenêtre 30 jours.
+      uniqueVisitors30: null, // Ne pas afficher un faux compteur de personnes distinctes.
       marketingConsent: customers.filter((customer) => customer.marketing_consent).length,
-      conversionVisitorsToRequests: totalVisitors ? (requestsCount / totalVisitors) * 100 : 0,
+      conversionVisitorsToRequests: null,
       conversionRequestsToBookings: requestsCount ? (confirmedCount / requestsCount) * 100 : 0,
-      conversionVisitorsToBookings: totalVisitors ? (confirmedCount / totalVisitors) * 100 : 0,
+      conversionVisitorsToBookings: null,
       depositCollected,
       balanceCollected,
       totalCollected,
@@ -126,10 +119,9 @@ export function useAdminStats({
     cleaningIssues,
     additionalCharges,
     payments,
-    pageViewVisits,
+    visitSummary,
     stripePayouts,
     stripeBalanceTransactions,
-    visitsSince,
   ]);
 
   const sourceStats = useMemo(() => groupCount([
@@ -139,20 +131,5 @@ export function useAdminStats({
     ...confirmedReservations.map((reservation) => ({ source: normalizeSource(reservation.source) })),
   ], (row) => row.source), [bookingRequests, confirmedReservations]);
 
-  const visitSourceStats = useMemo(
-    () => groupCount(pageViewVisits, (visit) => normalizeSource(visit.source || visit.referrer_domain || "Direct")),
-    [pageViewVisits],
-  );
-
-  const visitCountryStats = useMemo(
-    () => groupCount(pageViewVisits, getCountryLabel),
-    [pageViewVisits],
-  );
-
-  return {
-    stats,
-    sourceStats,
-    visitSourceStats,
-    visitCountryStats,
-  };
+  return { stats, sourceStats };
 }

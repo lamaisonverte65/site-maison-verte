@@ -10,6 +10,14 @@ test('analytics does not retain persistent visitor identity, raw user agent or l
  assert.doesNotMatch(s,/localStorage\.setItem\(VISITOR_STORAGE_KEY/);
  assert.match(s,/sessionStorage\.setItem\(VISITOR_STORAGE_KEY/);
  assert.doesNotMatch(s,/user_agent:|platform:|target\.innerText|target\.textContent/);
- assert.match(s,/href = link\.origin/);
- assert.match(s,/referrer: referrerDomain/);
+ // R18 ne collecte plus les clics ni leur URL : vérifier l'absence de collecte,
+ // plutôt qu'exiger l'ancien code anonymisant une URL de clic.
+ assert.match(s,/writePageViewOnce\(/);
+ assert.match(s,/event_type:\s*[\"']page_view[\"']/);
+ assert.doesNotMatch(s,/event_type:\s*[\"'](?:link_click|page_engagement|scroll_depth|section_view|form_start)[\"']/);
+ assert.doesNotMatch(s,/\b(?:href|link_text|element_text):\s*/);
+ // L'origine du trafic ne doit conserver que le domaine, jamais l'URL complète.
+ assert.match(s,/new URL\(document\.referrer\)\.hostname/);
+ assert.match(s,/referrer_domain:\s*referrerDomain\s*\|\|\s*null/);
+ assert.doesNotMatch(s,/referrer:\s*document\.referrer/);
 });
