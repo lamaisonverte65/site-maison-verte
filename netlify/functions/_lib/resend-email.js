@@ -16,7 +16,7 @@ function syntheticFailure(error) {
   };
 }
 
-export async function resendEmail(payload, { fetchImpl = fetch, apiKey = process.env.RESEND_API_KEY, env = process.env } = {}) {
+export async function resendEmail(payload, { fetchImpl = fetch, apiKey = process.env.RESEND_API_KEY, env = process.env, idempotencyKey = null } = {}) {
   const decision = evaluateEmailDelivery(payload, env);
   if (!decision.allowed) {
     return {
@@ -26,12 +26,16 @@ export async function resendEmail(payload, { fetchImpl = fetch, apiKey = process
       async json() { return { error: decision.reason }; },
     };
   }
+  if (idempotencyKey != null && (typeof idempotencyKey !== "string" || idempotencyKey.length < 1 || idempotencyKey.length > 256)) {
+    throw new Error("Clé d’idempotence Resend invalide");
+  }
   try {
     return await fetchImpl(RESEND_ENDPOINT, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       },
       body: JSON.stringify(payload),
     });

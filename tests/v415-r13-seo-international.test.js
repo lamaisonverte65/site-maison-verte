@@ -73,16 +73,17 @@ test("R13.1 : guide garde ses canoniques et alternate deja corrects", () => {
 
 test("R13.1 : livret et page introuvable exclus des moteurs", () => {
   assert.match(booklet, /<meta name="robots" content="noindex,follow"/);
-  const notFound = app.split("function PublicNotFound() {")[1]?.split("export default function App()")[0];
-  assert.match(notFound || "", /<meta name="robots" content="noindex,follow"/);
+  const notFound = app.split(/function PublicNotFound\s*\([^)]*\)\s*\{/)[1]?.split("export default function App()")[0];
+  assert.ok(notFound, "Composant PublicNotFound introuvable");
+  assert.match(notFound, /<meta name="robots" content="noindex,follow"/);
   for (const pathname of ["/livret", "/livret-accueil", "/admin", "/arrival", "/success", "/cancel", "/avis-validation"]) {
     assert.ok(netlify.includes(`for = "${pathname}"\n  [headers.values]\n    X-Robots-Tag = "noindex, follow"`), pathname);
   }
 });
 
-test("R13.1 : donnees structurees n'inventent ni Wi-Fi ni notation non verifiee", () => {
+test("R13.1 : donnees structurees reprennent le Wi-Fi reel sans inventer de notation", () => {
   assert.match(home, /"@type": "VacationRental"/);
-  assert.doesNotMatch(home, /name: "Wi-Fi 7"/);
+  assert.match(home, /name: "Wi-Fi 7"/);
   assert.doesNotMatch(home, /aggregateRating:\s*\{/);
   assert.match(home, /name: "Balcon sud-ouest"/);
 });

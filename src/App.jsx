@@ -14,8 +14,13 @@ const AppelerRedirect = lazy(() => import("./pages/AppelerRedirect"));
 const MentionsLegales = lazy(() => import("./pages/MentionsLegales"));
 const PolitiqueConfidentialite = lazy(() => import("./pages/PolitiqueConfidentialite"));
 import { getArrivalLinkMode } from "./utils/arrivalLink";
+import { requestArrivalRecovery } from "./utils/requestArrivalRecovery.js";
+import { normalizeGuestLanguage } from "../shared/guestLocale.js";
+import { guestFlowTranslations, publicShellTranslations } from "./pages/guestFlowTranslations.js";
 import SiteAnalyticsTracker from "./components/SiteAnalyticsTracker";
-function PaymentSuccess() {
+function PaymentSuccess({ language = "fr" }) {
+  const t = guestFlowTranslations[normalizeGuestLanguage(language)].success;
+  const homeHref = language === "fr" ? "/" : `/${normalizeGuestLanguage(language)}/`;
   return (
     <main
       style={{
@@ -44,7 +49,7 @@ function PaymentSuccess() {
             width: "90px",
             height: "90px",
             borderRadius: "999px",
-            background: "#16a34a",
+            background: "#64748b",
             margin: "0 auto 24px",
             display: "flex",
             alignItems: "center",
@@ -54,17 +59,17 @@ function PaymentSuccess() {
             fontWeight: "bold",
           }}
         >
-          ✓
+          …
         </div>
 
         <h1
           style={{
             marginBottom: "18px",
-            color: "#14532d",
+            color: "#334155",
             fontSize: "clamp(28px, 4vw, 42px)",
           }}
         >
-          Paiement reçu ✅
+          {t.title}
         </h1>
 
         <p
@@ -74,7 +79,7 @@ function PaymentSuccess() {
             color: "#334155",
           }}
         >
-          Votre paiement a bien été enregistré.
+          {t.saved}
         </p>
 
         <p
@@ -84,7 +89,7 @@ function PaymentSuccess() {
             color: "#334155",
           }}
         >
-          Un email de confirmation vient de vous être envoyé.
+          {t.email}
         </p>
 
         <p
@@ -95,8 +100,7 @@ function PaymentSuccess() {
             marginTop: "20px",
           }}
         >
-          Pensez à vérifier vos courriers indésirables / spams
-          si vous ne recevez pas notre email rapidement.
+          {t.spam}
         </p>
 
         <div
@@ -109,7 +113,7 @@ function PaymentSuccess() {
           }}
         >
           <h3 style={{ marginTop: 0 }}>
-            Suite de votre réservation
+            {t.next}
           </h3>
 
           <ul
@@ -119,14 +123,14 @@ function PaymentSuccess() {
               paddingLeft: "20px",
             }}
           >
-            <li>Votre paiement a été pris en compte.</li>
-            <li>Un email de confirmation vient de vous être envoyé.</li>
-            <li>Merci de nous communiquer votre heure d’arrivée estimée si ce n’est pas déjà fait.</li>
+            {t.steps[0] && <li>{t.steps[0]}</li>}
+            {t.steps[1] && <li>{t.steps[1]}</li>}
+            {t.steps[2] && <li>{t.steps[2]}</li>}
           </ul>
         </div>
 
         <a
-          href="/"
+          href={homeHref}
           style={{
             marginTop: "30px",
             display: "inline-block",
@@ -138,14 +142,16 @@ function PaymentSuccess() {
             fontWeight: "bold",
           }}
         >
-          Retour au site
+          {t.home}
         </a>
       </div>
     </main>
   );
 }
 
-function PaymentCancel() {
+function PaymentCancel({ language = "fr" }) {
+  const t = guestFlowTranslations[normalizeGuestLanguage(language)].cancel;
+  const homeHref = language === "fr" ? "/" : `/${normalizeGuestLanguage(language)}/`;
   return (
     <main
       style={{
@@ -175,7 +181,7 @@ function PaymentCancel() {
             color: "#b91c1c",
           }}
         >
-          Paiement annulé
+          {t.title}
         </h1>
 
         <p
@@ -185,7 +191,7 @@ function PaymentCancel() {
             color: "#334155",
           }}
         >
-          Aucun paiement n’a été effectué.
+          {t.notPaid}
         </p>
 
         <p
@@ -195,12 +201,11 @@ function PaymentCancel() {
             color: "#64748b",
           }}
         >
-          Vous pouvez reprendre votre réservation plus tard
-          si les dates sont toujours disponibles.
+          {t.later}
         </p>
 
         <a
-          href="/"
+          href={homeHref}
           style={{
             marginTop: "30px",
             display: "inline-block",
@@ -212,14 +217,16 @@ function PaymentCancel() {
             fontWeight: "bold",
           }}
         >
-          Retour au site
+          {t.home}
         </a>
       </div>
     </main>
   );
 }
 
-function ArrivalTimePage() {
+function ArrivalTimePage({ language = "fr" }) {
+  const t = guestFlowTranslations[normalizeGuestLanguage(language)].arrival;
+  const homeHref = language === "fr" ? "/" : `/${normalizeGuestLanguage(language)}/`;
   const params = new URLSearchParams(window.location.search);
   const bookingId = params.get("booking") || "";
   const token = params.get("token") || "";
@@ -244,7 +251,7 @@ function ArrivalTimePage() {
         const data = await response.json();
         if (active) setArrivalTime(data.arrivalTime || "");
       } catch (_) {
-        if (active) setStatus("Ce lien d’arrivée n’est plus valide. Vous pouvez demander un nouveau lien ou nous contacter directement.");
+        if (active) setStatus(t.invalidSecure);
       } finally {
         if (active) setArrivalLoading(false);
       }
@@ -257,19 +264,15 @@ function ArrivalTimePage() {
   async function requestSecureArrivalLink(event) {
     event.preventDefault();
     if (!recoveryEmail.trim() || !recoveryLastName.trim()) {
-      setRecoveryStatus("Renseignez l’adresse email et le nom utilisés pour la réservation.");
+      setRecoveryStatus(t.fillRecovery);
       return;
     }
     setRecoverySubmitting(true);
     try {
-      await fetch("/.netlify/functions/request-arrival-link", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId, email: recoveryEmail, lastName: recoveryLastName, website: "" }),
-      });
-      setRecoveryStatus("Si les informations correspondent, un nouveau lien sécurisé sera envoyé à l’adresse enregistrée.");
+      await requestArrivalRecovery({ bookingId, email: recoveryEmail, lastName: recoveryLastName });
+      setRecoveryStatus(t.recoverySent);
     } catch (_) {
-      setRecoveryStatus("Le service est momentanément indisponible. Réessayez plus tard ou contactez-nous directement.");
+      setRecoveryStatus(t.recoveryError);
     } finally {
       setRecoverySubmitting(false);
     }
@@ -279,7 +282,7 @@ function ArrivalTimePage() {
     event.preventDefault();
 
     if (!bookingId || !token || !arrivalTime) {
-      setStatus(!token ? "Ce lien d’arrivée est incomplet ou a expiré." : "Merci de renseigner votre heure d’arrivée.");
+      setStatus(!token ? t.invalidLink : t.missingTime);
       return;
     }
 
@@ -296,24 +299,24 @@ function ArrivalTimePage() {
 
       const data = await response.json();
       setArrivalTime(data.arrivalTime || arrivalTime);
-      setStatus("Votre heure d’arrivée a bien été enregistrée ✅");
+      setStatus(t.timeSaved);
     } catch (error) {
-      setStatus("Une erreur est survenue. Vous pouvez aussi nous contacter directement par téléphone ou email.");
+      setStatus(t.saveError);
     }
   }
 
   if (linkMode !== "secure") return (
     <main style={{ minHeight: "100vh", background: "#f3f0e8", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", fontFamily: "Inter, sans-serif" }}>
       <form onSubmit={requestSecureArrivalLink} style={{ background: "white", borderRadius: "28px", padding: "40px", maxWidth: "640px", width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,0.12)", textAlign: "center" }}>
-        <h1 style={{ color: "#14532d", marginTop: 0 }}>Nouveau lien d’arrivée</h1>
+        <h1 style={{ color: "#14532d", marginTop: 0 }}>{t.recoveryTitle}</h1>
         {linkMode === "recovery" ? <>
-          <p style={{ color: "#334155", lineHeight: 1.7 }}>Ce lien ancien ne permet plus de modifier directement votre réservation. Indiquez les informations utilisées lors de la réservation pour recevoir un nouveau lien sécurisé.</p>
-          <input type="email" value={recoveryEmail} onChange={(event) => setRecoveryEmail(event.target.value)} placeholder="Adresse email de la réservation" autoComplete="email" style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "18px" }} />
-          <input type="text" value={recoveryLastName} onChange={(event) => setRecoveryLastName(event.target.value)} placeholder="Nom de famille" autoComplete="family-name" style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "12px" }} />
-          <button type="submit" disabled={recoverySubmitting} style={{ marginTop: "22px", border: "none", background: "#2f4f35", color: "white", padding: "14px 24px", borderRadius: "999px", fontWeight: "bold", cursor: recoverySubmitting ? "wait" : "pointer" }}>{recoverySubmitting ? "Envoi…" : "Recevoir un nouveau lien"}</button>
-        </> : <p style={{ color: "#b91c1c", lineHeight: 1.7 }}>Ce lien d’arrivée est incomplet. Contactez-nous pour obtenir un nouveau lien sécurisé.</p>}
+          <p style={{ color: "#334155", lineHeight: 1.7 }}>{t.recoveryIntro}</p>
+          <input type="email" value={recoveryEmail} onChange={(event) => setRecoveryEmail(event.target.value)} placeholder={t.emailPlaceholder} autoComplete="email" style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "18px" }} />
+          <input type="text" value={recoveryLastName} onChange={(event) => setRecoveryLastName(event.target.value)} placeholder={t.lastNamePlaceholder} autoComplete="family-name" style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "12px" }} />
+          <button type="submit" disabled={recoverySubmitting} style={{ marginTop: "22px", border: "none", background: "#2f4f35", color: "white", padding: "14px 24px", borderRadius: "999px", fontWeight: "bold", cursor: recoverySubmitting ? "wait" : "pointer" }}>{recoverySubmitting ? t.sending : t.sendLink}</button>
+        </> : <p style={{ color: "#b91c1c", lineHeight: 1.7 }}>{t.incompleteLink}</p>}
         {recoveryStatus && <p style={{ marginTop: "22px", color: "#334155" }}>{recoveryStatus}</p>}
-        <a href="/" style={{ marginTop: "24px", display: "inline-block", color: "#2f4f35" }}>Retour au site</a>
+        <a href={homeHref} style={{ marginTop: "24px", display: "inline-block", color: "#2f4f35" }}>{t.home}</a>
       </form>
     </main>
   );
@@ -321,18 +324,18 @@ function ArrivalTimePage() {
   return (
     <main style={{ minHeight: "100vh", background: "#f3f0e8", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", fontFamily: "Inter, sans-serif" }}>
       <form onSubmit={submitArrivalTime} style={{ background: "white", borderRadius: "28px", padding: "40px", maxWidth: "640px", width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,0.12)", textAlign: "center" }}>
-        <h1 style={{ color: "#14532d", marginTop: 0 }}>Heure d’arrivée</h1>
+        <h1 style={{ color: "#14532d", marginTop: 0 }}>{t.title}</h1>
         <p style={{ color: "#334155", lineHeight: 1.7 }}>
           {arrivalLoading
-            ? "Chargement de votre heure d’arrivée…"
+            ? t.loading
             : arrivalTime
-            ? <>Heure d’arrivée actuellement indiquée : <strong>{arrivalTime}</strong>. Vous pouvez la modifier ci-dessous.</>
-            : "Vous n’avez pas encore indiqué votre heure d’arrivée. Vous pouvez la renseigner ci-dessous."}
+            ? <>{t.currentTime} <strong>{arrivalTime}</strong>. {t.changeTime}</>
+            : t.noTime}
         </p>
         <input type="time" value={arrivalTime} onChange={(event) => { setArrivalTime(event.target.value); setStatus(""); }} step="300" disabled={arrivalLoading} style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "18px" }} />
-        <button type="submit" disabled={arrivalLoading} style={{ marginTop: "22px", border: "none", background: "#2f4f35", color: "white", padding: "14px 24px", borderRadius: "999px", fontWeight: "bold", cursor: arrivalLoading ? "wait" : "pointer" }}>{arrivalTime ? "Enregistrer mon heure d’arrivée" : "Indiquer mon heure d’arrivée"}</button>
+        <button type="submit" disabled={arrivalLoading} style={{ marginTop: "22px", border: "none", background: "#2f4f35", color: "white", padding: "14px 24px", borderRadius: "999px", fontWeight: "bold", cursor: arrivalLoading ? "wait" : "pointer" }}>{arrivalTime ? t.saveTime : t.chooseTime}</button>
         {status && <p style={{ marginTop: "22px", color: status.includes("✅") ? "#166534" : "#b91c1c" }}>{status}</p>}
-        <a href="/" style={{ marginTop: "24px", display: "inline-block", color: "#2f4f35" }}>Retour au site</a>
+        <a href={homeHref} style={{ marginTop: "24px", display: "inline-block", color: "#2f4f35" }}>{t.home}</a>
       </form>
     </main>
   );
@@ -345,14 +348,17 @@ function UntranslatedPublicPreview({ language }) {
   return <Helmet><meta name="robots" content="noindex,follow" /></Helmet>;
 }
 
-function PublicNotFound() {
+function PublicNotFound({ language = "fr" }) {
+  const normalizedLanguage = normalizeGuestLanguage(language);
+  const t = publicShellTranslations[normalizedLanguage];
+  const homeHref = normalizedLanguage === "fr" ? "/" : `/${normalizedLanguage}/`;
   return (
     <>
       <Helmet><meta name="robots" content="noindex,follow" /></Helmet>
       <main style={{ minHeight: "100vh", padding: "14vh 24px", textAlign: "center", background: "#f6f3ee", fontFamily: "Inter, sans-serif" }}>
-        <h1>Page introuvable</h1>
-        <p>Cette page n'existe pas.</p>
-        <a href="/">Retour à La Maison Verte</a>
+        <h1>{t.notFoundTitle}</h1>
+        <p>{t.notFoundMessage}</p>
+        <a href={homeHref}>{t.home}</a>
       </main>
     </>
   );
@@ -374,8 +380,9 @@ export default function App() {
   }
 
   function withLazyAnalytics(page) {
+    const loadingText = publicShellTranslations[normalizeGuestLanguage(publicLanguage)].loading;
     return withAnalytics(
-      <Suspense fallback={<main style={{ padding: "24px", fontFamily: "Inter, sans-serif" }}>Chargement…</main>}>
+      <Suspense fallback={<main style={{ padding: "24px", fontFamily: "Inter, sans-serif" }}>{loadingText}</main>}>
         {page}
       </Suspense>,
     );
@@ -390,15 +397,15 @@ export default function App() {
   }
 
   if (path === "/success") {
-    return withAnalytics(<PaymentSuccess />);
+    return withAnalytics(<>{previewMarker}<PaymentSuccess language={publicLanguage} /></>);
   }
 
   if (path === "/cancel") {
-    return withAnalytics(<PaymentCancel />);
+    return withAnalytics(<>{previewMarker}<PaymentCancel language={publicLanguage} /></>);
   }
 
   if (path === "/arrival") {
-    return withAnalytics(<ArrivalTimePage />);
+    return withAnalytics(<>{previewMarker}<ArrivalTimePage language={publicLanguage} /></>);
   }
 
   if (path === "/avis-validation") {
@@ -418,11 +425,11 @@ export default function App() {
     return withLazyAnalytics(<>{previewMarker}<SkiValleesAureLouron /></>);
   }
 
-  if (path === "/mentions-legales") {
+  if (/^\/(?:en\/|es\/)?mentions-legales\/?$/.test(path)) {
     return withLazyAnalytics(<MentionsLegales />);
   }
 
-  if (path === "/politique-confidentialite") {
+  if (/^\/(?:en\/|es\/)?politique-confidentialite\/?$/.test(path)) {
     return withLazyAnalytics(<PolitiqueConfidentialite />);
   }
 
@@ -440,5 +447,5 @@ export default function App() {
 
   // Éviter que les URL inventées soient silencieusement affichées comme l'accueil.
   // Réponse HTTP Netlify encore 200 à cause du fallback SPA : traitement SEO en R13.
-  return withAnalytics(<PublicNotFound />);
+  return withAnalytics(<PublicNotFound language={publicLanguage} />);
 }

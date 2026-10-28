@@ -28,12 +28,14 @@ const ARRIVAL = {
    access: "Access and parking", accessInfo: "The house is located in a pedestrian-only lane. You can check the access and parking map before arriving:", map: "View access and parking map",
    time: "Your arrival time", stated: "Current arrival time", ask: "You can tell us your estimated arrival time.", change: "View or change my arrival time", choose: "Enter my arrival time",
    hours: "Check-in and check-out", checkin: "Check-in", checkout: "Check-out", after: "from 4 pm", before: "before 10 am", adaptable: "These times may be adjusted depending on other guests' arrivals and departures. Please contact us if you have a special request.",
+   wifi: "Wi-Fi 7", network: "Network", wifiPassword: "Password",
    booklet: "Welcome booklet", bookletLink: "Read the welcome booklet", contact: "Any questions before your arrival? Reply to this email or call us at", },
  es: { subject: "Prepare su llegada a La Maison Verte", title: "Su llegada a La Maison Verte", hello: "Hola", upcoming: "Su estancia se acerca. Aquí encontrará toda la información útil para preparar su llegada.",
    address: "Dirección", keys: "Recogida de llaves", keysInfo: "Al llegar, recoja las llaves de la caja de seguridad usando el siguiente código.", code: "Código de la caja de llaves", unavailable: "temporalmente no disponible; póngase en contacto con nosotros antes de llegar.", picture: "Instrucciones ilustradas de la caja de llaves",
    access: "Acceso y aparcamiento", accessInfo: "La casa se encuentra en una calle peatonal sin salida. Puede consultar el plano de acceso y aparcamiento antes de su llegada:", map: "Ver el plano de acceso y aparcamiento",
    time: "Su hora de llegada", stated: "Hora indicada actualmente", ask: "Puede indicarnos su hora aproximada de llegada.", change: "Consultar o modificar mi hora de llegada", choose: "Indicar mi hora de llegada",
    hours: "Horarios de llegada y salida", checkin: "Llegada", checkout: "Salida", after: "a partir de las 16:00", before: "antes de las 10:00", adaptable: "Estos horarios pueden adaptarse según las salidas y llegadas de otros huéspedes. Consúltenos si tiene alguna petición especial.",
+   wifi: "Wi-Fi 7", network: "Red", wifiPassword: "Contraseña",
    booklet: "Guía de bienvenida", bookletLink: "Consultar la guía de bienvenida", contact: "¿Alguna pregunta antes de su llegada? Responda a este correo o llámenos al", },
 };
 const REVIEW = {
@@ -95,6 +97,7 @@ export function buildLocalizedArrivalEmail({ language, booking, keyboxCode, arri
  <h3>${t.access}</h3><p>${t.accessInfo}</p><p><a href="${escapeHtml(mapUrl)}" style="color:#14532d;font-weight:bold;">${t.map}</a></p>
  <h3>${t.time}</h3>${arrivalTime}<p>${button(arrivalUrl, booking.arrival_time ? t.change : t.choose)}</p>
  <h3>${t.hours}</h3><p><strong>${t.checkin}:</strong> ${t.after}<br /><strong>${t.checkout}:</strong> ${t.before}</p><p>${t.adaptable}</p>
+ <h3>${t.wifi}</h3><p><strong>${t.network}:</strong> Freebox-38AFFB<br /><strong>${t.wifiPassword}:</strong> lamaisonverte65</p>
  <h3>${t.booklet}</h3><p><a href="${escapeHtml(bookletUrl)}" style="color:#14532d;font-weight:bold;">${t.bookletLink}</a></p>
  <p style="margin-top:28px;">${t.contact} <a href="tel:+33695938315">06 95 93 83 15</a>.</p>
  <p style="margin-top:26px;">Raphaël &amp; Emmanuelle<br /><a href="tel:+33695938315">06 95 93 83 15</a><br />La Maison Verte — Arreau</p>

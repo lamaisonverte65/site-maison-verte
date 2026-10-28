@@ -4,6 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 import {
   claimMissingAlerts,
   collectExternalCalendarFeeds,
+  externalCalendarRunPolicy,
+  missingActionsFromSuccessfulSources,
   persistExternalOccupancies,
   runIndependentAlertPaths,
 } from "./_lib/external-calendar-alerts.js";
@@ -13,7 +15,6 @@ import {
 } from "./_lib/external-occupancy-conflicts.js";
 import { escapeHtml } from "./_lib/html.js";
 import { resendEmail } from "./_lib/resend-email.js";
-import { emailAutomationAllowed, emailAutomationSkippedResponse } from "./_lib/email-delivery-policy.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -156,7 +157,7 @@ async function sendConflictAlertEmail(email) {
   if (!response.ok) throw new Error("Envoi de l'alerte de chevauchement refusé.");
 }
 
-export async function runExternalCalendarAlerts() {
+export async function runExternalCalendarAlerts({ sendAlertEmails = false } = {}) {
   const current = await getCurrentExternalOccupancies();
   const seenAt = new Date().toISOString();
   await persistExternalOccupancies(
@@ -172,6 +173,7 @@ export async function runExternalCalendarAlerts() {
         current.successfulSources,
         seenAt,
       );
+      if (!sendAlertEmails) return { claimed: 0, sent: 0, failed: 0, skipped: true };
       return await processExternalConflictAlerts({
         repository: conflictRepository,
         ownerEmail: String(process.env.EXTERNAL_CALENDAR_ALERT_EMAIL || "lamaisonverte65@gmail.com").trim().toLowerCase(),
@@ -180,17 +182,14 @@ export async function runExternalCalendarAlerts() {
       });
     },
     async () => {
+      if (!sendAlertEmails) return { checked: 0, missing: 0, skipped: true };
       const { data: actions, error } = await supabase
         .from("external_calendar_actions")
         .select("*")
         .eq("is_active", true)
         .in("action", ["convert", "split"]);
       if (error) throw error;
-      const missing = (actions || []).filter((action) => (
-        action.uid
-        && !current.uids.has(`${action.source}\u0000${action.uid}`)
-        && action.alert_status !== "missing_alerted"
-      ));
+      const missing = missingActionsFromSuccessfulSources(actions, current);
       const repository = alertRepository();
       const claimed = await claimMissingAlerts(repository, missing);
       if (claimed.length) {
@@ -210,13 +209,17 @@ export async function runExternalCalendarAlerts() {
     checked: missingResult.checked,
     missing: missingResult.missing,
     conflictAlertsSent: conflictResult.sent,
+    alertEmailsSkipped: !sendAlertEmails,
   };
 }
 
 export const handler = schedule("*/5 * * * *", async () => {
-  if (!emailAutomationAllowed()) return emailAutomationSkippedResponse();
+  const policy = externalCalendarRunPolicy();
+  if (!policy.syncAllowed) {
+    return { statusCode: 200, body: JSON.stringify({ skipped: true, reason: "calendar_sync_nonproduction_disabled" }) };
+  }
   try {
-    return { statusCode: 200, body: JSON.stringify(await runExternalCalendarAlerts()) };
+    return { statusCode: 200, body: JSON.stringify(await runExternalCalendarAlerts({ sendAlertEmails: policy.alertEmailsAllowed })) };
   } catch (error) {
     console.error("Erreur check-external-calendar-alerts:", error);
     return { statusCode: 500, body: JSON.stringify({ error: "Vérification calendrier impossible." }) };

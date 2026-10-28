@@ -80,41 +80,33 @@ test("V4.14 rejects paginated ledger errors instead of showing understated total
 });
 
 test("V4.14 manual expense stores only a local document reference in metadata", async () => {
-  let inserted;
-  const db = { from(table) {
-    assert.equal(table, "accounting_entries");
-    return {
-      insert(payload) { inserted = payload; return this; },
-      select() { return this; },
-      async single() { return { data: { id: "new", ...inserted }, error: null }; },
-    };
+  let call;
+  const db = { async rpc(name, args) {
+    call = { name, args };
+    return { data: { id: "new", ...args.p_entry }, error: null };
   } };
-  await createManualAccountingEntry(db, { entry_kind: "expense", entry_date: "2026-10-15", label: "EDF", amount_ttc: "125.40", receipt_reference: " 2026-10_EDF.pdf ", metadata: { legacy_field: "keep" } });
-  assert.equal(inserted.source, "manual");
-  assert.deepEqual(inserted.metadata, { legacy_field: "keep", receipt_reference: "2026-10_EDF.pdf" });
-  assert.equal(inserted.amount_ttc, 125.4);
-  assert.ok(!("file" in inserted));
+  const result = await createManualAccountingEntry(db, { entry_kind: "expense", entry_date: "2026-10-15", label: "EDF", amount_ttc: "125.40", receipt_reference: " 2026-10_EDF.pdf ", metadata: { legacy_field: "keep" } });
+  assert.equal(call.name, "save_manual_accounting_entry_atomic");
+  assert.equal(call.args.p_id, null);
+  assert.equal(call.args.p_entry.source, "manual");
+  assert.equal(call.args.p_asset, null);
+  assert.deepEqual(call.args.p_entry.metadata, { legacy_field: "keep", receipt_reference: "2026-10_EDF.pdf" });
+  assert.equal(result.amount_ttc, 125.4);
+  assert.ok(!("file" in call.args.p_entry));
 });
 
 test("V4.14 editing a manual entry clears only its reference and retains the manual guard", async () => {
-  let updated;
-  let assetDeleted = false;
-  const db = { from(table) {
-    if (table === "accounting_fixed_assets") return {
-      delete() { return this; },
-      async eq(key, value) { assert.equal(key, "accounting_entry_id"); assert.equal(value, "old"); assetDeleted = true; return { data: [], error: null }; },
-    };
-    assert.equal(table, "accounting_entries");
-    return {
-      update(payload) { updated = payload; return this; },
-      eq(key, value) { assert.ok(["id", "source"].includes(key)); if (key === "source") assert.equal(value, "manual"); return this; },
-      select() { return this; },
-      async single() { return { data: { id: "old", ...updated }, error: null }; },
-    };
+  let call;
+  const db = { async rpc(name, args) {
+    call = { name, args };
+    return { data: { id: args.p_id, ...args.p_entry }, error: null };
   } };
   await updateManualAccountingEntry(db, "old", { entry_kind: "expense", entry_date: "2026-10-15", label: "EDF", amount_ttc: "125.40", receipt_reference: "", metadata: { receipt_reference: "OLD.pdf", legacy_field: true }, treatment: "current" });
-  assert.deepEqual(updated.metadata, { legacy_field: true });
-  assert.ok(assetDeleted);
+  assert.equal(call.name, "save_manual_accounting_entry_atomic");
+  assert.equal(call.args.p_id, "old");
+  assert.deepEqual(call.args.p_entry.metadata, { legacy_field: true });
+  assert.equal(call.args.p_entry.source, "manual");
+  assert.equal(call.args.p_asset, null);
 });
 
 test("V4.14 UI provides Frais and Dépenses without uploading receipts or writing another ledger", () => {

@@ -47,7 +47,7 @@ const TRANSLATIONS = {
       parkingPlan: "View access and parking map →",
       categories: [
         { title: "The house", items: [
-          { question: "How many guests can stay in the house?", answer: "La Maison Verte can accommodate up to 4 guests. There is one main bedroom with a 140 × 200 cm double bed and one attic bedroom with two 90 × 190 cm single beds." },
+          { question: "How many guests can stay in the house?", answer: "La Maison Verte can accommodate up to 4 guests. There is one main bedroom with a 140 × 200 cm double bed and one attic bedroom with two 80 × 190 cm single beds." },
           { question: "Is La Maison Verte officially rated?", answer: "Yes. La Maison Verte is officially classified as 3-star furnished tourist accommodation." },
           { question: "What is the layout of the house?", answer: "The house has three levels. On the ground floor are the living and dining areas, equipped kitchen, bathroom and separate toilet. The first floor has the main bedroom with balcony access. The second floor has an attic bedroom with two single beds." },
           { question: "Are bed linen and towels provided?", answer: "Bed linen is provided for your stay. Towels are also included: one large 70 × 140 cm towel and one small 33 × 50 cm towel per person." },
@@ -138,7 +138,7 @@ const TRANSLATIONS = {
       parkingPlan: "Ver el plano de acceso y aparcamiento →",
       categories: [
         { title: "La casa", items: [
-          { question: "¿Cuántas personas pueden alojarse en la casa?", answer: "La Maison Verte puede alojar hasta 4 personas. Dispone de un dormitorio principal con cama doble de 140 × 200 cm y de un dormitorio abuhardillado con dos camas individuales de 90 × 190 cm." },
+          { question: "¿Cuántas personas pueden alojarse en la casa?", answer: "La Maison Verte puede alojar hasta 4 personas. Dispone de un dormitorio principal con cama doble de 140 × 200 cm y de un dormitorio abuhardillado con dos camas individuales de 80 × 190 cm." },
           { question: "¿La Maison Verte tiene clasificación oficial?", answer: "Sí. La Maison Verte está clasificada oficialmente como alojamiento turístico amueblado de 3 estrellas." },
           { question: "¿Cómo se distribuye la casa?", answer: "La casa tiene tres plantas. En la planta baja están el salón-comedor, la cocina equipada, el baño y el aseo independiente. En la primera planta está el dormitorio principal con acceso al balcón. En la segunda, el dormitorio abuhardillado con dos camas individuales." },
           { question: "¿Se proporcionan sábanas y toallas?", answer: "Sí. La ropa de cama está incluida. También se proporcionan una toalla grande de 70 × 140 cm y otra pequeña de 33 × 50 cm por persona." },

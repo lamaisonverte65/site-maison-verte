@@ -207,7 +207,7 @@ async function runExpiredBookingsCheck() {
   const processed = [];
   const skipped = [];
 
-  for (const booking of bookings || []) {
+  for (let booking of bookings || []) {
     const amountPaid = Number(booking.amount_paid || 0);
 
     if (amountPaid > 0 || ["paid", "deposit_paid", "fully_paid", "confirmed"].includes(booking.status)) {
@@ -228,7 +228,10 @@ async function runExpiredBookingsCheck() {
       continue;
     }
 
-    const { error: updateError } = await supabase
+    // L'update conditionnel est la seule preuve d'une expiration acquise.
+    // Une lecture ancienne ne doit pas provoquer d'email si un paiement, une
+    // annulation ou une prolongation est intervenu entre-temps.
+    const { data: expiredRows, error: updateError } = await supabase
       .from("booking_requests")
       .update({
         status: "expired",
@@ -238,7 +241,10 @@ async function runExpiredBookingsCheck() {
         updated_at: now,
       })
       .eq("id", booking.id)
-      .eq("status", "accepted");
+      .eq("status", "accepted")
+      .lt("acceptance_expires_at", now)
+      .or("amount_paid.is.null,amount_paid.eq.0")
+      .select("*");
 
     if (updateError) {
       skipped.push({
@@ -248,6 +254,17 @@ async function runExpiredBookingsCheck() {
       continue;
     }
 
+    // Sans RETURNING, PostgREST peut réussir avec zéro ligne modifiée.
+    // Ne jamais considérer une réponse vide/indéfinie comme un succès.
+    if (!Array.isArray(expiredRows) || expiredRows.length !== 1 || expiredRows[0]?.status !== "expired") {
+      skipped.push({
+        bookingId: booking.id,
+        reason: "expiration_not_applied",
+      });
+      continue;
+    }
+
+    booking = expiredRows[0];
     const emailResult = await sendExpiredEmail(booking);
     const ownerEmailResult = await sendOwnerPaymentNotReceivedAlert(booking, emailResult);
 

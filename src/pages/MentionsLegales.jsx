@@ -1,3 +1,5 @@
+import { languageForPublicPage } from "../../shared/publicSiteLocale.js";
+import TranslatedLegalPage from "./TranslatedLegalPage.jsx";
 import { Helmet } from "react-helmet";
 
 const pageStyle = {
@@ -37,6 +39,8 @@ const linkStyle = {
 
 
 export default function MentionsLegales() {
+  const language = typeof window === "undefined" ? "fr" : languageForPublicPage(window.location.href);
+  if (language === "en" || language === "es") return <TranslatedLegalPage type="mentions" language={language} />;
   return (
     <>
       <Helmet>
@@ -133,7 +137,7 @@ export default function MentionsLegales() {
           </p>
 
           <p style={{marginTop: "32px", fontSize: "0.9rem", color: "#64748b"}}>
-            Dernière mise à jour : juin 2026.
+            Dernière mise à jour : octobre 2026.
           </p>
         </article>
       </main>

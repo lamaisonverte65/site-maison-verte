@@ -6,7 +6,7 @@ import { escapeHtml } from "./_lib/html.js";
 import { expireOpenCheckoutSession } from "./_lib/stripe-checkout-session.js";
 import { contractualTotal, recordedPaidAmount } from "./_lib/booking-financial-authority.js";
 import { resendEmail } from "./_lib/resend-email.js";
-import { emailLanguageForAudience } from "../../shared/guestLocale.js";
+import { emailLanguageForAudience, appendGuestLanguage } from "../../shared/guestLocale.js";
 import { buildLocalizedManualPaymentEmail } from "./_lib/guest-secondary-emails.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -234,8 +234,8 @@ export async function handler(event) {
           quantity: 1,
         },
       ],
-      success_url: "https://lamaisonverte65.fr/success?session_id={CHECKOUT_SESSION_ID}",
-      cancel_url: "https://lamaisonverte65.fr/cancel",
+      success_url: appendGuestLanguage("https://lamaisonverte65.fr/success?session_id={CHECKOUT_SESSION_ID}", booking.communication_language),
+      cancel_url: appendGuestLanguage("https://lamaisonverte65.fr/cancel", booking.communication_language),
     });
 
     const { error } = await supabase.from("booking_requests").update({

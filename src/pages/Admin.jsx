@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { fetchAdminData } from "../services/adminDataService";
+import { getAdminSourceLabel, getUnavailableAdminSources } from "../services/adminLoadState";
 import {
   fetchAdminDataForRole,
   fetchHousekeepingData,
@@ -102,6 +103,7 @@ export default function Admin() {
   const [modal, setModal] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [dataLoadErrors, setDataLoadErrors] = useState({});
 
   const adminUsersData = useAdminUsers({ session });
   const permissions = useAdminPermissions(session, adminUsersData.currentAdminUser);
@@ -168,9 +170,11 @@ export default function Admin() {
         loadOwner: () => fetchAdminData(supabase),
       });
       if (isHousekeepingUser) {
+        setDataLoadErrors({});
         setHousekeepingReservations(adminData.reservations || []);
         return;
       }
+      setDataLoadErrors(adminData.loadErrors || {});
       const financialAggregatesByBooking = new Map(
         (adminData.bookingFinancialAggregates || []).map((aggregate) => [aggregate.booking_request_id, aggregate]),
       );
@@ -195,6 +199,7 @@ export default function Admin() {
       setStripeBalanceTransactions(adminData.stripeBalanceTransactions);
       setSelectedRequest((current) => current ? nextRequests.find((request) => request.id === current.id) || current : current);
     } catch (error) {
+      setDataLoadErrors({});
       setError(error.message || "Erreur lors du chargement des données admin.");
     } finally {
       setLoading(false);
@@ -702,6 +707,10 @@ export default function Admin() {
     visibleSiteVisits,
   };
 
+  const missingForActiveTab = getUnavailableAdminSources(activeTab, dataLoadErrors);
+  const tabUnavailable = (tab) => getUnavailableAdminSources(tab, dataLoadErrors).length > 0;
+  const failedSources = Object.entries(dataLoadErrors);
+
   const openedReservation = selectedReservation || selectedRequest;
   const openedReservationId = openedReservation?.id;
   const openedReservationPayments = selectedReservationData?.payments || payments.filter((payment) => payment.booking_request_id === openedReservationId || payment.booking_id === openedReservationId);
@@ -782,7 +791,25 @@ export default function Admin() {
         permissions={permissions}
       />
 
-      {!loading && !error && activeTab === "home" && (
+      {!loading && !error && failedSources.length > 0 && (
+        <section role="alert" style={styles.error}>
+          <strong>Chargement partiel des données de l'administration.</strong>
+          <p>Certaines rubriques ou synthèses sont masquées pour ne pas présenter de chiffres incomplets. Les autres restent accessibles. Utilisez « Actualiser » pour réessayer.</p>
+          <ul>
+            {failedSources.map(([table, message]) => (
+              <li key={table}><strong>{getAdminSourceLabel(table)}</strong> : {message}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {!loading && !error && missingForActiveTab.length > 0 && (
+        <section role="status" style={styles.info}>
+          Données indisponibles pour cette rubrique ({missingForActiveTab.map(getAdminSourceLabel).join(", ")}).
+          Aucun résultat vide ni total partiel n'est affiché.
+        </section>
+      )}
+
+      {!loading && !error && !tabUnavailable("home") && activeTab === "home" && (
         <AdminHomePanel
           bookingRequests={bookingRequests}
           stats={stats}
@@ -794,7 +821,7 @@ export default function Admin() {
         />
       )}
 
-      {!loading && !error && activeTab === "summary" && (
+      {!loading && !error && !tabUnavailable("summary") && activeTab === "summary" && (
         <SummaryPanel
           stats={stats}
           sourceStats={sourceStats}
@@ -875,7 +902,7 @@ export default function Admin() {
       )}
 
 
-      {!loading && !error && activeTab === "communication" && (
+      {!loading && !error && !tabUnavailable("communication") && activeTab === "communication" && (
         <CommunicationPanel
           data={communicationData}
           onOpenReservation={selectReservation}
@@ -906,7 +933,7 @@ export default function Admin() {
         />
       )}
 
-      {!loading && !error && activeTab === "reviews" && (
+      {!loading && !error && !tabUnavailable("reviews") && activeTab === "reviews" && (
         <ReviewsPanel
           guestReviews={guestReviews}
           onUpdateReviewStatus={updateReviewStatus}
@@ -914,7 +941,7 @@ export default function Admin() {
         />
       )}
 
-      {!loading && !error && activeTab === "visits" && (
+      {!loading && !error && !tabUnavailable("visits") && activeTab === "visits" && (
         <VisitsPanel
           data={visitsData}
           adminTrackingDisabled={adminTrackingDisabled}
@@ -923,11 +950,11 @@ export default function Admin() {
         />
       )}
 
-      {!loading && !error && activeTab === "payments" && (
+      {!loading && !error && !tabUnavailable("payments") && activeTab === "payments" && (
         <PaymentsPanel paymentRows={paymentRows} />
       )}
 
-      {!loading && !error && activeTab === "invoices" && (
+      {!loading && !error && !tabUnavailable("invoices") && activeTab === "invoices" && (
         <LazyAdminSection>
           <InvoicesPanel
             invoices={customerInvoices}
@@ -941,7 +968,7 @@ export default function Admin() {
         </LazyAdminSection>
       )}
 
-      {!loading && !error && activeTab === "stripe_payouts" && (
+      {!loading && !error && !tabUnavailable("stripe_payouts") && activeTab === "stripe_payouts" && (
         <StripePayoutsPanel
           stripePayouts={stripePayouts}
           stripeBalanceTransactions={stripeBalanceTransactions}
@@ -949,7 +976,11 @@ export default function Admin() {
         />
       )}
 
-      {!loading && !error && openedReservation && (
+      {!loading && !error && openedReservation && tabUnavailable("reservation_details") && (
+        <p role="status" style={styles.info}>Fiche réservation temporairement masquée : données financières ou historique incomplets.</p>
+      )}
+
+      {!loading && !error && !tabUnavailable("reservation_details") && openedReservation && (
         <section style={{ ...styles.panel, marginTop: "28px" }}>
           <div style={styles.panelHeader}>
             <div>

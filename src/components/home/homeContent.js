@@ -86,7 +86,7 @@ export const faqCategories = [
         {
           question: "Combien de personnes peuvent séjourner dans la maison ?",
           answer:
-            "La Maison Verte peut accueillir jusqu’à 4 personnes. Elle dispose d’une chambre parentale avec un lit double de 140 × 200 cm et d’une chambre sous combles équipée de deux lits simples de 90 × 190 cm.",
+            "La Maison Verte peut accueillir jusqu’à 4 personnes. Elle dispose d’une chambre parentale avec un lit double de 140 × 200 cm et d’une chambre sous combles équipée de deux lits simples de 80 × 190 cm.",
         },
         {
           question: "La Maison Verte est-elle classée ?",

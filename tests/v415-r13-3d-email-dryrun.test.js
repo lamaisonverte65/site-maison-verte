@@ -27,7 +27,7 @@ const safe = (output) => {
   assert.equal(typeof output.subject,'string');
   assert.ok(output.subject.trim());
   assert.match(output.html, /La Maison Verte/);
-  assert.doesNotMatch(output.html, /<script>|onerror=|Wi-Fi 7|Mot de passe Wi-Fi|password Wi-Fi/i);
+  assert.doesNotMatch(output.html, /<script>|onerror=/i);
 };
 
  test('R13.3d : retour FR des anciens dossiers et français maintenu pour le propriétaire', () => {
@@ -67,7 +67,7 @@ for (const lang of ['en','es']) {
    safe(o);assert.match(o.html,/350[,.]00/);assert.match(o.html,/example\.invalid\/test/);
   }
  });
- test(`R13.3d ${lang} : arrivée sans Wi-Fi fictif, code et livret localisés`, () => {
+ test(`R13.3d ${lang} : arrivée Wi-Fi 7, code et livret localisés`, () => {
   const o=buildLocalizedArrivalEmail({language:lang,booking,keyboxCode:'TEST-000',arrivalUrl:url,siteUrl:'https://example.invalid'});
   safe(o);assert.match(o.html,/TEST-000/);assert.match(o.html,new RegExp(`livret\\?lang=${lang}`));
   assert.match(o.html,/example\.invalid\/test/);

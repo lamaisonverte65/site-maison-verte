@@ -1,8 +1,9 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { verifyBalanceToken } from "./_lib/balance-link.js";
+import { appendGuestLanguage } from "../../shared/guestLocale.js";
 import { contractualTotal, recordedPaidAmount } from "./_lib/booking-financial-authority.js";
-import { expireOpenCheckoutSession } from "./_lib/stripe-checkout-session.js";
+import { openBalanceCheckout } from "./_lib/balance-checkout.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -34,29 +35,16 @@ export async function handler(event) {
     if (PAID_STATUSES.includes(normalize(booking.status)) || normalize(booking.balance_status) === "paid" || balance <= 0) {
       return { statusCode: 200, headers: { "Content-Type": "text/html; charset=utf-8" }, body: page("Séjour déjà réglé", "Merci, le séjour est déjà entièrement payé. Aucun nouveau paiement n’est nécessaire.") };
     }
-    if (booking.balance_payment_stripe_session_id) {
-      await expireOpenCheckoutSession(stripe, booking.balance_payment_stripe_session_id);
+    const result = await openBalanceCheckout({
+      stripe, supabase, booking, cents: Math.round(balance * 100), siteUrl: SITE_URL,
+    });
+    if (result.kind === "redirect") {
+      return { statusCode: 303, headers: { Location: result.url, "Cache-Control": "no-store" }, body: "" };
     }
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"], mode: "payment", customer_email: booking.guest_email,
-      metadata: { booking_id: booking.id, payment_type: "balance", balance_amount: String(balance), guest_first_name: booking.guest_first_name || "", guest_last_name: booking.guest_last_name || "", start_date: booking.start_date || "", end_date: booking.end_date || "" },
-      line_items: [{ price_data: { currency: "eur", product_data: { name: "Solde séjour - La Maison Verte" }, unit_amount: Math.round(balance * 100) }, quantity: 1 }],
-      success_url: `${SITE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${SITE_URL}/cancel`,
-    }, { idempotencyKey: `balance-${booking.id}-${Math.round(balance * 100)}-${Math.floor(Date.now() / 300000)}` });
-
-    const { error: sessionStoreError } = await supabase.from("booking_requests").update({
-      balance_payment_stripe_session_id: session.id,
-      balance_amount: balance,
-      updated_at: new Date().toISOString(),
-    }).eq("id", booking.id);
-
-    if (sessionStoreError) {
-      try { await stripe.checkout.sessions.expire(session.id); } catch (expireError) { console.error("Erreur expiration session solde orpheline:", expireError); }
-      throw sessionStoreError;
+    if (result.kind === "verifying") {
+      return { statusCode: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }, body: page("Paiement en cours de vérification", "Un paiement peut être en cours de confirmation. Aucun nouveau paiement n'a été ouvert. Veuillez réessayer après quelques instants ou nous contacter.") };
     }
-
-    return { statusCode: 303, headers: { Location: session.url, "Cache-Control": "no-store" }, body: "" };
+    return { statusCode: 409, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }, body: page("Lien à actualiser", "La réservation vient d'être mise à jour. Merci de rouvrir votre lien de paiement dans quelques instants.") };
   } catch (error) {
     console.error("Erreur pay-balance:", error);
     return { statusCode: 500, headers: { "Content-Type": "text/html; charset=utf-8" }, body: page("Paiement momentanément indisponible", "Le paiement n’a pas pu être ouvert. Réessayez dans quelques instants ou contactez-nous.") };

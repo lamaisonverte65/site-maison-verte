@@ -2,7 +2,9 @@ const CONTRACT_ORIGIN = "https://lamaisonverte65.fr";
 const IMMUTABLE_CONTRACT_PATH = /^\/documents\/contrat-location-V\d+\.\d+\.pdf$/;
 
 export const CURRENT_CONTRACT_VERSION = "v1.5";
-export const CURRENT_CONTRACT_URL = `${CONTRACT_ORIGIN}/documents/contrat-location-V1.5.pdf`;
+// Le contrat courant n'est pas une archive de version ; les anciennes URL
+// immuables restent autorisees uniquement pour les reservations historiques.
+export const CURRENT_CONTRACT_URL = `${CONTRACT_ORIGIN}/documents/contrat-location.pdf`;
 
 export function resolveBookingContractUrl(value) {
   try {
@@ -14,7 +16,7 @@ export function resolveBookingContractUrl(value) {
       && !url.password
       && !url.search
       && !url.hash
-      && IMMUTABLE_CONTRACT_PATH.test(url.pathname);
+      && (url.pathname === "/documents/contrat-location.pdf" || IMMUTABLE_CONTRACT_PATH.test(url.pathname));
 
     return isTrusted ? `${CONTRACT_ORIGIN}${url.pathname}` : CURRENT_CONTRACT_URL;
   } catch {

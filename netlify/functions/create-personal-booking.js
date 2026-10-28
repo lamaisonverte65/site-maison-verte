@@ -6,7 +6,7 @@ import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.
 import { DATE_CONFLICT_MESSAGE, isBookingDateConflictError } from "./_lib/public-booking-request.js";
 import { calculatePublicBookingQuote, quoteToBookingMoney } from "./_lib/booking-quote.js";
 import { resendEmail } from "./_lib/resend-email.js";
-import { normalizeGuestLanguage, emailLanguageForAudience } from "../../shared/guestLocale.js";
+import { normalizeGuestLanguage, emailLanguageForAudience, appendGuestLanguage } from "../../shared/guestLocale.js";
 import { buildLocalizedAdminBookingPaymentEmail } from "./_lib/guest-secondary-emails.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -305,8 +305,8 @@ async function createCheckoutForBooking({ booking }) {
       name: paymentType === "full" ? "Paiement séjour - La Maison Verte" : "Acompte réservation - La Maison Verte",
       description: `${booking.start_date} → ${booking.end_date}`,
     }, unit_amount: Math.round(amountToPay * 100) }, quantity: 1 }],
-    success_url: "https://lamaisonverte65.fr/success?session_id={CHECKOUT_SESSION_ID}",
-    cancel_url: "https://lamaisonverte65.fr/cancel",
+    success_url: appendGuestLanguage("https://lamaisonverte65.fr/success?session_id={CHECKOUT_SESSION_ID}", booking.communication_language),
+    cancel_url: appendGuestLanguage("https://lamaisonverte65.fr/cancel", booking.communication_language),
   });
   return { session, paymentType, amountToPay, depositAmount, balanceAmount, total };
 }

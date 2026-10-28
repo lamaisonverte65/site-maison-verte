@@ -9,11 +9,9 @@ export function normalizeBookletLanguage(candidate) {
 }
 
 export function guideUrlForLanguage(language) {
-  const base = "https://lamaisonverte65.fr/guide-vallees-aure-louron";
   const lang = normalizeBookletLanguage(language);
-  // Le guide demeure français tant que son chantier multilingue n'est pas terminé.
-  // Le paramètre, actuellement sans effet sur le guide, prépare l'évolution future.
-  return lang === "fr" ? base : `${base}?lang=${lang}`;
+  const prefix = lang === "fr" ? "" : `/${lang}`;
+  return `https://lamaisonverte65.fr${prefix}/guide-vallees-aure-louron`;
 }
 
 // Les deux plans de stationnement sont des documents géographiques :
@@ -36,7 +34,9 @@ function sourceImageName(src) {
 export function bookletImageSrc(src, language) {
   const lang = normalizeBookletLanguage(language);
   const name = sourceImageName(src);
-  if (name === "qr-guide.svg" && lang !== "fr") return `/livret/qr-guide-${lang}.svg`;
+  if (lang !== "fr" && ["qr-guide.svg", "qr-site.svg", "qr-site-avis.svg"].includes(name)) {
+    return `/livret/${name.replace(/\.svg$/, `-${lang}.svg`)}`;
+  }
   if (!name || !sourceImages.has(name)) return src;
   if (lang === "fr" && name !== "banniere-contacts.webp") return src;
   return `/livret/${name.replace(/\.webp$/, `-${lang}.webp`)}`;
@@ -101,8 +101,14 @@ export function localizeBookletTree(node, language) {
     }
   }
 
-  if (elementType === "a" && props.href === guideUrlForLanguage("fr")) {
-    replacementProps.href = guideUrlForLanguage(lang);
+  if (elementType === "a") {
+    if (props.href === guideUrlForLanguage("fr")) {
+      replacementProps.href = guideUrlForLanguage(lang);
+    } else if (props.href === "https://lamaisonverte65.fr/" && lang !== "fr") {
+      replacementProps.href = `https://lamaisonverte65.fr/${lang}/`;
+    } else if (props.href === "https://lamaisonverte65.fr/?review=1#laisser-un-avis" && lang !== "fr") {
+      replacementProps.href = `https://lamaisonverte65.fr/${lang}/?review=1#laisser-un-avis`;
+    }
   }
 
   // Les <li><span>quantité</span>libellé</li> préservent impérativement la quantité.
@@ -120,7 +126,7 @@ export function localizeBookletTree(node, language) {
 
   const french = normalizeText(textOf(props.children));
   const match = bookletText[lang]?.[french];
-  if (lang !== "fr" && match !== undefined && ["h1", "h2", "h3", "p", "li", "span", "strong", "div"].includes(elementType) &&
+  if (lang !== "fr" && match !== undefined && ["h1", "h2", "h3", "p", "li", "span", "strong", "div", "a"].includes(elementType) &&
       (elementType !== "div" || !Children.toArray(props.children).some(isValidElement))) {
     // Conserve les deux lignes de la couverture si la traduction le demande.
     if (elementType === "h1" && props.className === "livret-cover-title") {

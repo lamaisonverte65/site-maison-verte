@@ -44,7 +44,7 @@ test("a normal anonymous booking request remains valid", () => {
   assert.equal(result.booking.guest_city, "Arreau");
   assert.equal(result.booking.guest_country, "France");
   assert.equal(result.booking.contract_version, "v1.5");
-  assert.equal(result.booking.contract_url, "https://lamaisonverte65.fr/documents/contrat-location-V1.5.pdf");
+  assert.equal(result.booking.contract_url, "https://lamaisonverte65.fr/documents/contrat-location.pdf");
 });
 
 test("postal coordinates are mandatory and bounded", () => {

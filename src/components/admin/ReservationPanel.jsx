@@ -25,6 +25,7 @@ import HistoryBlock from "./reservation/HistoryBlock";
 import CommunicationActions from "./communication/CommunicationActions";
 import PermissionGate from "./common/PermissionGate";
 import { ADMIN_PERMISSIONS } from "../../utils/adminPermissions";
+import "./reservation/reservationSheet.css";
 
 const STATUS_OPTIONS = [
   ["pending", "À confirmer"],
@@ -94,51 +95,20 @@ function EditableReservationForm({ request, form, onChange, onCancel, onPreview,
   const bookingKindLabel = { site: "Réservation client / site", booking: "Réservation Booking", airbnb: "Réservation Airbnb", personal: "Réservation personnelle" }[form.bookingKind] || form.bookingKind || "-";
 
   return (
-    <section style={{ ...styles.panel, marginBottom: 18, border: "2px solid #0f766e" }}>
-      <div style={styles.panelHeader}>
+    <section className="reservation-edit-panel" aria-label="Modifier la réservation">
+      <div className="reservation-edit-intro">
         <div>
-          <h3 style={styles.subTitle}>Modification de la fiche réservation</h3>
-          <p style={styles.muted}>Modifie les champs. Pour une réservation V4.10, calcule d’abord les conséquences avant de confirmer.</p>
+          <h3 style={{ ...styles.subTitle, margin: 0 }}>Modifier la réservation</h3>
+          <p style={styles.muted}>Les modifications ne seront appliquées qu'après validation.</p>
         </div>
-        <div style={styles.headerActions}>
-          <button type="button" style={styles.smallButton} onClick={onCancel} disabled={saving}>Annuler</button>
-          {isV410 ? (
-            preview ? <button type="button" style={styles.addButton} onClick={onSave} disabled={saving}>{saving ? "Enregistrement..." : "Confirmer les modifications"}</button>
-              : <button type="button" style={styles.addButton} onClick={onPreview} disabled={saving}>{saving ? "Calcul..." : "Calculer les modifications"}</button>
-          ) : (
-            <button type="button" style={styles.addButton} onClick={onSave} disabled={saving}>{saving ? "Enregistrement..." : "Enregistrer les modifications"}</button>
-          )}
-        </div>
+        <span className="reservation-edit-pill">Mode modification</span>
       </div>
 
-      {saveMessage && <p style={saveMessage.startsWith("Erreur") ? styles.error : styles.info}>{saveMessage}</p>}
+      {saveMessage && <p role="alert" style={saveMessage.startsWith("Erreur") ? styles.error : styles.info}>{saveMessage}</p>}
 
-      {preview && (
-        <div style={{ ...styles.panel, marginBottom: 16, background: "#f8fafc" }}>
-          <h4 style={styles.subTitle}>Conséquences financières — Avant / Après</h4>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead><tr><th style={{ textAlign: "left" }}></th><th>Avant</th><th>Après</th></tr></thead>
-              <tbody>
-                {[
-                  ["Nuits", preview.before.nights, preview.after.nights],
-                  ["Hébergement", `${preview.before.accommodationNet.toFixed(2)} €`, `${preview.after.accommodationNet.toFixed(2)} €`],
-                  ["Ménage", `${preview.before.cleaningFee.toFixed(2)} €`, `${preview.after.cleaningFee.toFixed(2)} €`],
-                  ["Taxe de séjour", `${preview.before.touristTax.toFixed(2)} €`, `${preview.after.touristTax.toFixed(2)} €`],
-                  ["Total contrat", `${preview.before.contractTotal.toFixed(2)} €`, `${preview.after.contractTotal.toFixed(2)} €`],
-                ].map(([label, before, after]) => <tr key={label}><td style={{ padding: "6px 0", fontWeight: 700 }}>{label}</td><td style={{ textAlign: "center" }}>{before}</td><td style={{ textAlign: "center" }}>{after}</td></tr>)}
-              </tbody>
-            </table>
-          </div>
-          <p><strong>Déjà payé :</strong> {preview.paidAmount.toFixed(2)} €</p>
-          {preview.remainingDue > 0 && <p><strong>Reste à payer après modification :</strong> {preview.remainingDue.toFixed(2)} €</p>}
-          {preview.overpayment > 0 && <p><strong>Trop-perçu après modification :</strong> {preview.overpayment.toFixed(2)} €</p>}
-          {preview.touristTaxRefund > 0 && <p><strong>Dont taxe de séjour à rembourser :</strong> {preview.touristTaxRefund.toFixed(2)} €</p>}
-          <p style={styles.muted}>Aucun paiement ni remboursement n’est déclenché automatiquement.</p>
-        </div>
-      )}
-
-      <div style={{ display: "grid", gap: "18px" }}>
+      <div className="reservation-edit-fields">
+        <section className="reservation-edit-group" aria-label="Statut et dates du séjour">
+          <h4>Statut et dates</h4>
         <div style={styles.detailGrid}>
           <label style={fieldStyle}><span style={labelStyle}>Statut</span>
             {isV410 ? (
@@ -164,12 +134,14 @@ function EditableReservationForm({ request, form, onChange, onCancel, onPreview,
           <label style={fieldStyle}><span style={labelStyle}>Arrivée</span><input style={inputStyle} type="date" value={form.startDate} onChange={(event) => update("startDate", event.target.value)} /></label>
           <label style={fieldStyle}><span style={labelStyle}>Départ</span><input style={inputStyle} type="date" value={form.endDate} onChange={(event) => update("endDate", event.target.value)} /></label>
         </div>
+        </section>
 
+        <section className="reservation-edit-group" aria-label="Informations client">
+          <h4>{isPersonal ? "Réservation personnelle" : "Coordonnées du client"}</h4>
         {isPersonal ? (
           <label style={fieldStyle}><span style={labelStyle}>Nom affiché</span><input style={inputStyle} value={form.displayName} onChange={(event) => update("displayName", event.target.value)} placeholder="Famille, amis, blocage perso..." /></label>
         ) : (
           <>
-            <h4 style={styles.subTitle}>Fiche client liée</h4>
             <div style={styles.detailGrid}>
               <label style={fieldStyle}><span style={labelStyle}>Prénom</span><input style={inputStyle} value={form.firstName} onChange={(event) => update("firstName", event.target.value)} /></label>
               <label style={fieldStyle}><span style={labelStyle}>Nom</span><input style={inputStyle} value={form.lastName} onChange={(event) => update("lastName", event.target.value)} /></label>
@@ -181,8 +153,10 @@ function EditableReservationForm({ request, form, onChange, onCancel, onPreview,
             <label style={fieldStyle}><span style={labelStyle}>Infos utiles fiche client</span><textarea style={textareaStyle} value={form.customerNotes} onChange={(event) => update("customerNotes", event.target.value)} placeholder="Informations permanentes liées au client..." /></label>
           </>
         )}
+        </section>
 
-        <h4 style={styles.subTitle}>Fiche réservation</h4>
+        <section className="reservation-edit-group" aria-label="Voyageurs et informations du séjour">
+          <h4>Voyageurs et séjour</h4>
         <div style={styles.detailGrid}>
           <label style={fieldStyle}><span style={labelStyle}>Adultes</span><input style={inputStyle} type="number" min="0" value={form.adults} onChange={(event) => update("adults", event.target.value)} /></label>
           <label style={fieldStyle}><span style={labelStyle}>Enfants</span><input style={inputStyle} type="number" min="0" value={form.children} onChange={(event) => update("children", event.target.value)} /></label>
@@ -191,9 +165,57 @@ function EditableReservationForm({ request, form, onChange, onCancel, onPreview,
           {isSite && !isV410 && <label style={fieldStyle}><span style={labelStyle}>Montant séjour (€) — legacy</span><input style={inputStyle} value={form.total} onChange={(event) => update("total", event.target.value)} /></label>}
           {isV410 && <div style={fieldStyle}><span style={labelStyle}>Total contractuel</span><strong>{Number(request.contract_total || 0).toFixed(2)} €</strong><span style={styles.muted}>Recalcul automatique si les dates ou les voyageurs changent.</span></div>}
         </div>
+        </section>
+
+        <section className="reservation-edit-group" aria-label="Messages et notes">
+          <h4>Messages et notes</h4>
         <label style={fieldStyle}><span style={labelStyle}>Message client</span><textarea style={textareaStyle} value={form.clientMessage} onChange={(event) => update("clientMessage", event.target.value)} /></label>
-        <label style={fieldStyle}><span style={labelStyle}>Notes admin</span><textarea style={textareaStyle} value={form.housekeepingNotes} onChange={(event) => update("housekeepingNotes", event.target.value)} placeholder="Consignes propriétaire / administration visibles par le ménage, modifiables seulement par l’admin..." /></label>
+        <label style={fieldStyle}><span style={labelStyle}>Notes admin visibles par le ménage</span><textarea style={textareaStyle} value={form.housekeepingNotes} onChange={(event) => update("housekeepingNotes", event.target.value)} placeholder="Consignes propriétaire / administration visibles par le ménage, modifiables seulement par l’admin..." /></label>
         <label style={fieldStyle}><span style={labelStyle}>Notes internes admin</span><textarea style={textareaStyle} value={form.internalNotes} onChange={(event) => update("internalNotes", event.target.value)} placeholder="Notes internes à la réservation, non envoyées au client et non visibles par le ménage..." /></label>
+        </section>
+      </div>
+
+      <div className="reservation-edit-preview">
+      {preview && (
+        <div className="reservation-edit-financial-preview">
+          <h4 style={styles.subTitle}>Conséquences financières — Avant / Après</h4>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr><th style={{ textAlign: "left" }}></th><th>Avant</th><th>Après</th></tr></thead>
+              <tbody>
+                {[
+                  ["Nuits", preview.before.nights, preview.after.nights],
+                  ["Hébergement", `${preview.before.accommodationNet.toFixed(2)} €`, `${preview.after.accommodationNet.toFixed(2)} €`],
+                  ["Ménage", `${preview.before.cleaningFee.toFixed(2)} €`, `${preview.after.cleaningFee.toFixed(2)} €`],
+                  ["Taxe de séjour", `${preview.before.touristTax.toFixed(2)} €`, `${preview.after.touristTax.toFixed(2)} €`],
+                  ["Total contrat", `${preview.before.contractTotal.toFixed(2)} €`, `${preview.after.contractTotal.toFixed(2)} €`],
+                ].map(([label, before, after]) => <tr key={label}><td style={{ padding: "6px 0", fontWeight: 700 }}>{label}</td><td style={{ textAlign: "center" }}>{before}</td><td style={{ textAlign: "center" }}>{after}</td></tr>)}
+              </tbody>
+            </table>
+          </div>
+          <p><strong>Déjà payé :</strong> {preview.paidAmount.toFixed(2)} €</p>
+          {preview.remainingDue > 0 && <p><strong>Reste à payer après modification :</strong> {preview.remainingDue.toFixed(2)} €</p>}
+          {preview.overpayment > 0 && <p><strong>Trop-perçu après modification :</strong> {preview.overpayment.toFixed(2)} €</p>}
+          {preview.touristTaxRefund > 0 && <p><strong>Dont taxe de séjour à rembourser :</strong> {preview.touristTaxRefund.toFixed(2)} €</p>}
+          <p style={styles.muted}>Aucun paiement ni remboursement n’est déclenché automatiquement.</p>
+        </div>
+      )}
+
+      </div>
+      <div className="reservation-edit-actionbar" role="group" aria-label="Enregistrement des modifications">
+        <div className="reservation-edit-action-caption">
+          <strong>{preview ? "Calcul effectué" : "Modifications non enregistrées"}</strong>
+          <span>{isV410 ? (preview ? "Vérifie les montants avant de confirmer." : "Calcul financier requis avant enregistrement.") : "Enregistrer ou annuler les changements."}</span>
+        </div>
+        <div className="reservation-edit-actions">
+          <button type="button" className="reservation-edit-secondary" onClick={onCancel} disabled={saving}>Annuler</button>
+          {isV410 ? (
+            preview ? <button type="button" className="reservation-edit-primary" onClick={onSave} disabled={saving}>{saving ? "Enregistrement..." : "Confirmer les modifications"}</button>
+              : <button type="button" className="reservation-edit-primary" onClick={onPreview} disabled={saving}>{saving ? "Calcul..." : "Calculer les modifications"}</button>
+          ) : (
+            <button type="button" className="reservation-edit-primary" onClick={onSave} disabled={saving}>{saving ? "Enregistrement..." : "Enregistrer les modifications"}</button>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -324,7 +346,22 @@ export default function ReservationPanel({
 
   return (
     <div style={styles.reservationSheet}>
-      <ReservationHeader request={reservation} status={status} />
+      <div className="reservation-sheet-heading">
+        <ReservationHeader request={reservation} status={status} />
+        {!isReadOnly && !isEditing && onEdit && (
+          <button
+            type="button"
+            className="reservation-sheet-edit-button"
+            onClick={() => { onEdit(request); setEditForm(makeEditForm(request)); setIsEditing(true); }}
+          >
+            Modifier la réservation
+          </button>
+        )}
+      </div>
+
+      {!isEditing && editMessage && (
+        <p role="status" style={editMessage.startsWith("Erreur") ? styles.error : styles.info}>{editMessage}</p>
+      )}
 
       {isEditing ? (
         <EditableReservationForm
@@ -342,21 +379,10 @@ export default function ReservationPanel({
         <ReservationSummaryBlock reservation={reservation} status={status} amounts={amounts} />
       )}
 
+      {!isEditing && (
+        <>
       {!isReadOnly && !isEditing && permissions?.isOwner && request?.id && !request?.uid && getBookingKind(request) !== "personal" && (
         <GuestLanguagePreference booking={reservation} onUpdated={onReservationUpdated} />
-      )}
-
-      {!isReadOnly && onEdit && (
-        <section style={{ marginTop: "18px", padding: "14px", border: "1px solid #e5e7eb", borderRadius: "16px", background: "#f8fafc" }}>
-          <h3 style={{ margin: "0 0 10px", fontSize: "1rem", color: "#334155" }}>Gestion de la fiche</h3>
-          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-            {!isEditing && (
-              <button type="button" style={styles.primaryButton || styles.actionButton} onClick={() => { onEdit(request); setEditForm(makeEditForm(request)); setIsEditing(true); }}>
-                Modifier la réservation
-              </button>
-            )}
-          </div>
-        </section>
       )}
 
       {!isReadOnly && !isEditing && (
@@ -375,6 +401,7 @@ export default function ReservationPanel({
         </section>
       )}
 
+      <section className="reservation-sheet-group" aria-label="Client et séjour">
       <ReservationContactLinks
         request={reservation}
         onEmail={onEmail}
@@ -386,8 +413,13 @@ export default function ReservationPanel({
         onOpenCustomer={onOpenCustomer}
         mode={mode}
       />
-      <OccupancyBlock request={reservation} />
-      <StayBlock request={reservation} />
+      <div className="reservation-sheet-stay-grid">
+        <section className="reservation-sheet-stay-card"><OccupancyBlock request={reservation} /></section>
+        <section className="reservation-sheet-stay-card"><StayBlock request={reservation} /></section>
+      </div>
+      </section>
+
+      <section className="reservation-sheet-group" aria-label="Paiements et facturation">
       <PaymentBlock request={reservation} status={status} amounts={amounts} />
       <StripeHistoryBlock request={reservation} payments={payments} />
 
@@ -421,6 +453,9 @@ export default function ReservationPanel({
 
       <DocumentsBlock request={reservation} />
       {!isReadOnly && <InvoiceBlock request={request} invoice={invoice} onRefresh={onInvoiceRefresh} onOpenInvoices={onOpenInvoices} />}
+      </section>
+
+      <section className="reservation-sheet-group" aria-label="Messages et historique">
       <MessagesBlock request={reservation} housekeepingNotes={housekeepingNotes} />
 
       {!isReadOnly && (
@@ -441,6 +476,9 @@ export default function ReservationPanel({
         events={events}
         emailLogs={emailLogs}
       />
+      </section>
+        </>
+      )}
     </div>
   );
 }

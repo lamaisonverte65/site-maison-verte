@@ -126,14 +126,19 @@ test("R13.3e : aucune fonction n'accède directement à l'API Resend sauf la pas
   }
 });
 
-test("R13.3e : les six handlers planifiés coupent l'exécution avant la lecture ou mutation des réservations", () => {
+test("R13.3e : cinq crons métier sont bloqués hors production et iCal dispose d'un garde indépendant", () => {
   const files=[
     "check-balance-payments", "check-expired-bookings", "send-arrival-reminder",
-    "send-stay-review-request", "retry-failed-emails", "check-external-calendar-alerts",
+    "send-stay-review-request", "retry-failed-emails",
   ];
   for (const name of files) {
     const code=readFileSync(`netlify/functions/${name}.js`, "utf8");
     assert.match(code,/import \{ emailAutomationAllowed, emailAutomationSkippedResponse \}/,name);
     assert.match(code,/export const handler = schedule\([\s\S]*?if \(!emailAutomationAllowed\(\)\) return emailAutomationSkippedResponse\(\);/,name);
   }
+  const ical = readFileSync("netlify/functions/check-external-calendar-alerts.js", "utf8");
+  assert.match(ical, /const policy = externalCalendarRunPolicy\(\)/);
+  assert.match(ical, /if \(!policy\.syncAllowed\)/);
+  assert.match(ical, /sendAlertEmails: policy\.alertEmailsAllowed/);
+  assert.doesNotMatch(ical, /if \(!emailAutomationAllowed\(\)\)/);
 });

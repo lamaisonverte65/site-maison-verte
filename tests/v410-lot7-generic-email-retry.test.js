@@ -18,13 +18,13 @@ test("Lot 7 migration adds durable retry fields to email_logs", () => {
 
 test("generic retry cron only resends stored email payloads and never replays business actions", () => {
   const source = read("netlify/functions/retry-failed-emails.js");
-  assert.match(source, /schedule\("\*\/15 \* \* \* \*"/);
-  assert.match(source, /\.from\("email_logs"\)/);
-  assert.match(source, /\.eq\("status", "error"\)/);
-  assert.match(source, /retry_payload/);
-  assert.match(source, /retry_attempts/);
-  assert.match(source, /retry_exhausted_at/);
-  assert.match(source, /resendEmail\(row\.retry_payload\)/);
+  const core = read("netlify/functions/_lib/email-retry-core.js");
+  assert.match(source, /schedule\(["']\*\/15 \* \* \* \*["']/);
+  assert.match(core, /\.from\('email_logs'\)/);
+  assert.match(core, /retry_payload/);
+  assert.match(core, /retry_attempts/);
+  assert.match(core, /retry_exhausted_at/);
+  assert.match(core, /sendEmail\(row\.retry_payload/);
   assert.match(read("netlify/functions/_lib/resend-email.js"), /api\.resend\.com\/emails/);
   assert.doesNotMatch(source, /booking_requests/);
   assert.doesNotMatch(source, /payments/);
@@ -33,12 +33,12 @@ test("generic retry cron only resends stored email payloads and never replays bu
 });
 
 test("retry cron deduplicates a failed log when an equivalent later email was sent", () => {
-  const source = read("netlify/functions/retry-failed-emails.js");
-  assert.match(source, /\.eq\("booking_request_id", row\.booking_request_id\)/);
-  assert.match(source, /\.eq\("email_type", row\.email_type\)/);
-  assert.match(source, /\.eq\("to_email", row\.to_email\)/);
-  assert.match(source, /\.eq\("status", "sent"\)/);
-  assert.match(source, /\.gt\("created_at", row\.created_at\)/);
+  const core = read("netlify/functions/_lib/email-retry-core.js");
+  assert.match(core, /\.eq\('booking_request_id', row\.booking_request_id\)/);
+  assert.match(core, /\.eq\('email_type', row\.email_type\)/);
+  assert.match(core, /\.eq\('to_email', row\.to_email\)/);
+  assert.match(core, /\.eq\('status', 'sent'\)/);
+  assert.match(core, /\.gt\('created_at', row\.created_at\)/);
 });
 
 test("critical payment and refund email errors persist an exact retry payload", () => {

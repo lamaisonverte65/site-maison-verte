@@ -32,10 +32,12 @@ test("manual payment has one server-side writer and persists the Stripe session 
 
 test("balance payment persists its Stripe session id and RPC validates the exact current session", () => {
   const payBalance = source("netlify/functions/pay-balance.js");
+  const checkout = source("netlify/functions/_lib/balance-checkout.js");
   const migration = source("supabase/migrations/202610030001_v410_payment_flow_hardening.sql");
 
-  assert.match(payBalance, /balance_payment_stripe_session_id:\s*session\.id/);
-  assert.ok(payBalance.indexOf('balance_payment_stripe_session_id: session.id') < payBalance.indexOf('statusCode: 303'));
+  assert.match(checkout, /balance_payment_stripe_session_id:\s*session\.id/);
+  assert.match(checkout, /stored\?\.data\?\.length === 1[\s\S]*kind: "redirect", url: session\.url/);
+  assert.match(payBalance, /openBalanceCheckout\(/);
 
   assert.match(migration, /add column if not exists balance_payment_stripe_session_id text/i);
   assert.match(migration, /v_booking\.balance_payment_stripe_session_id\s+is distinct from\s+p_checkout_session_id/i);
@@ -65,7 +67,7 @@ test("Lot 4 restores tourist tax collection and rejects V4.10 manual overpayment
 
 test("obsolete Checkout sessions are expired before replacement and on booking termination", () => {
   const manual = source("netlify/functions/create-manual-payment-session.js");
-  const balance = source("netlify/functions/pay-balance.js");
+  const balance = source("netlify/functions/_lib/balance-checkout.js");
   const expired = source("netlify/functions/check-expired-bookings.js");
   const deleted = source("netlify/functions/delete-booking-request.js");
   const refund = source("netlify/functions/refund-booking-payment.js");

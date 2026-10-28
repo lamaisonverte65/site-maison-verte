@@ -51,3 +51,17 @@ export function formatGuestMoney(amount, language = "fr") {
     style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2,
   }).format(numericAmount);
 }
+
+// Les anciennes URL Stripe et d'arrivee restent valides : seul un parametre
+// facultatif indique la langue aux pages publiques (/success, /cancel, /arrival).
+// Ne pas passer par URLSearchParams : Stripe attend le jeton literal
+// {CHECKOUT_SESSION_ID} dans success_url.
+export function appendGuestLanguage(url, language) {
+  const input = String(url || "");
+  const lang = normalizeGuestLanguage(language);
+  if (lang === "fr" || !input || /(?:[?&])lang=/.test(input)) return input;
+  const fragmentIndex = input.indexOf("#");
+  const beforeHash = fragmentIndex === -1 ? input : input.slice(0, fragmentIndex);
+  const afterHash = fragmentIndex === -1 ? "" : input.slice(fragmentIndex);
+  return `${beforeHash}${beforeHash.includes("?") ? "&" : "?"}lang=${lang}${afterHash}`;
+}

@@ -93,48 +93,32 @@ function assetPayload(entryId, values) {
   };
 }
 
-export async function createManualAccountingEntry(supabase, values) {
-  const payload = entryPayload(values);
-  if (!payload.entry_date || !payload.label || !Number.isFinite(payload.amount_ttc) || payload.amount_ttc < 0) {
+// Une seule RPC PostgreSQL garantit l'atomicité entre l'écriture manuelle et
+// sa fiche immobilisation. Sans la migration AUD-12, aucune écriture partielle
+// n'est tentée : l'erreur de la RPC doit rester visible dans l'interface.
+async function saveManualAccountingEntryAtomic(supabase, id, values) {
+  const entry = entryPayload(values);
+  if (!entry.entry_date || !entry.label || !Number.isFinite(entry.amount_ttc) || entry.amount_ttc < 0) {
     throw new Error("Date, libellé et montant valide sont obligatoires.");
   }
-  const inserted = assertSupabase(
-    await supabase.from("accounting_entries").insert(payload).select("*").single(),
-    "Impossible de créer l'écriture comptable.",
-  );
-  try {
-    if (payload.treatment === "fixed_asset") {
-      assertSupabase(
-        await supabase.from("accounting_fixed_assets").insert(assetPayload(inserted.id, values)).select("*").single(),
-        "Impossible de créer la fiche immobilisation.",
-      );
-    }
-  } catch (error) {
-    await supabase.from("accounting_entries").delete().eq("id", inserted.id).eq("source", "manual");
-    throw error;
-  }
-  return inserted;
+  const asset = entry.treatment === "fixed_asset" ? assetPayload(id, values) : null;
+  // accounting_entry_id est imposé par le serveur : jamais transmis par le client.
+  if (asset) delete asset.accounting_entry_id;
+  const result = await supabase.rpc("save_manual_accounting_entry_atomic", {
+    p_id: id,
+    p_entry: entry,
+    p_asset: asset,
+  });
+  return assertSupabase(result, "Impossible d'enregistrer l'écriture et son immobilisation.");
+}
+
+export async function createManualAccountingEntry(supabase, values) {
+  return saveManualAccountingEntryAtomic(supabase, null, values);
 }
 
 export async function updateManualAccountingEntry(supabase, id, values) {
-  const payload = { ...entryPayload(values), updated_at: new Date().toISOString() };
-  const updated = assertSupabase(
-    await supabase.from("accounting_entries").update(payload).eq("id", id).eq("source", "manual").select("*").single(),
-    "Impossible de modifier l'écriture comptable.",
-  );
-  if (payload.treatment === "fixed_asset") {
-    const asset = assetPayload(id, values);
-    assertSupabase(
-      await supabase.from("accounting_fixed_assets").upsert(asset, { onConflict: "accounting_entry_id" }).select("*").single(),
-      "Impossible de mettre à jour la fiche immobilisation.",
-    );
-  } else {
-    assertSupabase(
-      await supabase.from("accounting_fixed_assets").delete().eq("accounting_entry_id", id),
-      "Impossible de retirer la fiche immobilisation.",
-    );
-  }
-  return updated;
+  if (!id) throw new Error("Identifiant de l'écriture manquant.");
+  return saveManualAccountingEntryAtomic(supabase, id, values);
 }
 
 export async function deleteManualAccountingEntry(supabase, id) {

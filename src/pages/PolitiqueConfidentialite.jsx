@@ -1,3 +1,5 @@
+import { languageForPublicPage } from "../../shared/publicSiteLocale.js";
+import TranslatedLegalPage from "./TranslatedLegalPage.jsx";
 import { Helmet } from "react-helmet";
 
 const pageStyle = {
@@ -37,6 +39,8 @@ const linkStyle = {
 
 
 export default function PolitiqueConfidentialite() {
+  const language = typeof window === "undefined" ? "fr" : languageForPublicPage(window.location.href);
+  if (language === "en" || language === "es") return <TranslatedLegalPage type="privacy" language={language} />;
   return (
     <>
       <Helmet>
@@ -77,6 +81,9 @@ export default function PolitiqueConfidentialite() {
           </p>
           <ul>
             <li>nom, prénom, adresse email et numéro de téléphone ;</li>
+            <li>adresse postale (rue, code postal, ville et pays) du réservant ;</li>
+            <li>coordonnées et informations facultatives des contacts supplémentaires indiqués par le réservant ;</li>
+            <li>langue de communication choisie pour les échanges liés au séjour ;</li>
             <li>dates de séjour demandées, nombre de voyageurs, âge des enfants le cas échéant ;</li>
             <li>message libre envoyé avec une demande de réservation ;</li>
             <li>préférences liées au séjour, comme la demande d’un lit bébé ;</li>
@@ -167,7 +174,7 @@ export default function PolitiqueConfidentialite() {
           </p>
 
           <p style={{marginTop: "32px", fontSize: "0.9rem", color: "#64748b"}}>
-            Dernière mise à jour : juin 2026.
+            Dernière mise à jour : octobre 2026.
           </p>
         </article>
       </main>

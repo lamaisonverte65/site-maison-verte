@@ -31,6 +31,17 @@ for (const lang of ["en", "es"]) {
   assert.ok(out.html.includes(`procedure-boite-a-cles-${lang}.webp`));
   assert.ok(out.html.includes(`/livret?lang=${lang}`));
   assert.match(out.html,/17:30/);
+  assert.match(out.html, /Wi-Fi 7/);
+  assert.match(out.html, /Freebox-38AFFB/);
+  assert.doesNotMatch(out.html, /<strong>(Network|Red):<\/strong> La Maison Verte/);
+  assert.match(out.html, /lamaisonverte65/);
+  if (lang === "en") {
+   assert.match(out.html, /<strong>Network:<\/strong>/);
+   assert.match(out.html, /<strong>Password:<\/strong>/);
+  } else {
+   assert.match(out.html, /<strong>Red:<\/strong>/);
+   assert.match(out.html, /<strong>Contraseña:<\/strong>/);
+  }
   assert.doesNotMatch(out.html, /Bonjour|Récupération des clés/);
  });
  test(`R4 ${lang} review: working links, 10% offer, both formats`, () => {

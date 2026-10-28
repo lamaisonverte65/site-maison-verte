@@ -19,7 +19,7 @@ import PublicNavigation from "../components/PublicNavigation";
 import { guestLanguageFromUrl } from "../../shared/guestLocale.js";
 import { localizePublicHref } from "../../shared/publicSiteLocale.js";
 
-const createEmptyAdditionalContact = () => ({
+const createEmptyAdditionalContact = (language = "fr") => ({
   firstName: "",
   lastName: "",
   email: "",
@@ -27,7 +27,7 @@ const createEmptyAdditionalContact = () => ({
   address: "",
   postalCode: "",
   city: "",
-  country: "France",
+  country: language === "fr" ? "France" : "",
 });
 
 function normalizeContactPhone(value) {
@@ -44,6 +44,12 @@ export default function MaisonVerte() {
   const reviewCopy = getHomeSecondaryCopy(siteLanguage)?.reviews;
   const homeSeo = getHomeSeo(siteLanguage);
   const bookingCopy = getBookingFormCopy(siteLanguage);
+  // PDFs publics traduits ; les contrats versionnés déjà attachés aux réservations restent inchangés.
+  const contractPdfHref = siteLanguage === "en"
+    ? "/documents/contrat-location-en.pdf"
+    : siteLanguage === "es"
+      ? "/documents/contrat-location-es.pdf"
+      : "/documents/contrat-location.pdf";
   const bookingText = (template, values) => interpolateBookingCopy(template, values);
   const bookingMoney = (amount) => formatBookingMoney(amount, siteLanguage);
   const bookingCalendarMoney = (amount) => formatBookingCalendarMoney(amount, siteLanguage);
@@ -73,7 +79,7 @@ export default function MaisonVerte() {
   const [guestAddress, setGuestAddress] = useState("");
   const [guestPostalCode, setGuestPostalCode] = useState("");
   const [guestCity, setGuestCity] = useState("");
-  const [guestCountry, setGuestCountry] = useState("France");
+  const [guestCountry, setGuestCountry] = useState(() => siteLanguage === "fr" ? "France" : "");
   const [additionalContacts, setAdditionalContacts] = useState([]);
   const [guestAdults, setGuestAdults] = useState("2");
   const [guestChildren, setGuestChildren] = useState("0");
@@ -550,7 +556,7 @@ export default function MaisonVerte() {
 
   function addAdditionalContact() {
     setAdditionalContacts((contacts) => (
-      contacts.length >= 4 ? contacts : [...contacts, createEmptyAdditionalContact()]
+      contacts.length >= 4 ? contacts : [...contacts, createEmptyAdditionalContact(siteLanguage)]
     ));
   }
 
@@ -722,7 +728,7 @@ export default function MaisonVerte() {
       setGuestAddress("");
       setGuestPostalCode("");
       setGuestCity("");
-      setGuestCountry("France");
+      setGuestCountry(siteLanguage === "fr" ? "France" : "");
       setAdditionalContacts([]);
       setGuestAdults("2");
       setGuestChildren("0");
@@ -926,6 +932,11 @@ export default function MaisonVerte() {
                 },
               ],
               amenityFeature: [
+                {
+                  "@type": "LocationFeatureSpecification",
+                  name: "Wi-Fi 7",
+                  value: true,
+                },
                 {
                   "@type": "LocationFeatureSpecification",
                   name: "Cuisine équipée",
@@ -2339,7 +2350,7 @@ export default function MaisonVerte() {
                     <span className="contract-acceptance-text">
                       {bookingCopy.contractPrefix}{" "}
                       <a
-                        href="/documents/contrat-location.pdf"
+                        href={contractPdfHref}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="contract-link"
@@ -2610,15 +2621,27 @@ export default function MaisonVerte() {
               background: "transparent",
             }}
           >
-            {[
+            {(siteLanguage === "en" ? [
+              ["Welcome booklet", "/livret"],
+              ["Rental agreement & booking terms", contractPdfHref],
+              ["Legal notice", "/mentions-legales"],
+              ["Privacy policy", "/politique-confidentialite"],
+            ] : siteLanguage === "es" ? [
+              ["Guía de bienvenida", "/livret"],
+              ["Contrato y condiciones de reserva", contractPdfHref],
+              ["Aviso legal", "/mentions-legales"],
+              ["Política de privacidad", "/politique-confidentialite"],
+            ] : [
               ["Livret d'accueil", "/livret"],
-              ["Contrat & conditions de réservation", "/documents/contrat-location.pdf"],
+              ["Contrat & conditions de réservation", contractPdfHref],
               ["Mentions légales", "/mentions-legales"],
               ["Politique de confidentialité", "/politique-confidentialite"],
-            ].map(([label, href]) => (
+            ]).map(([label, href]) => (
               <a
                 key={href}
-                href={localizePublicHref(href, siteLanguage)}
+                href={siteLanguage !== "fr" && ["/mentions-legales", "/politique-confidentialite"].includes(href)
+                  ? `/${siteLanguage}${href}`
+                  : localizePublicHref(href, siteLanguage)}
                 target={href.endsWith(".pdf") ? "_blank" : undefined}
                 rel={href.endsWith(".pdf") ? "noopener noreferrer" : undefined}
                 style={{

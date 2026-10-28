@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { authorizeAdminRequest, authorizationResponse } from "./_lib/admin-auth.js";
 import { expireOpenCheckoutSession } from "./_lib/stripe-checkout-session.js";
 import { sendAdditionalChargeEmail } from "./_lib/additional-charge-email.js";
+import { appendGuestLanguage } from "../../shared/guestLocale.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(
@@ -65,8 +66,8 @@ export async function handler(event) {
         },
         quantity: 1,
       }],
-      success_url: "https://lamaisonverte65.fr/success?session_id={CHECKOUT_SESSION_ID}",
-      cancel_url: "https://lamaisonverte65.fr/cancel",
+      success_url: appendGuestLanguage("https://lamaisonverte65.fr/success?session_id={CHECKOUT_SESSION_ID}", booking.communication_language),
+      cancel_url: appendGuestLanguage("https://lamaisonverte65.fr/cancel", booking.communication_language),
     });
 
     const now = new Date().toISOString();

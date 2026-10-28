@@ -1,101 +1,88 @@
+import { readAllAdminRows } from "./adminPaginatedRead.js";
+
+// Une erreur de lecture ne doit jamais devenir silencieusement une liste vide.
+// Les erreurs partielles sont retournées à l'administration afin de masquer les vues concernées.
+async function readOptionalRows(query, table, loadErrors) {
+  try {
+    return await query;
+  } catch (error) {
+    loadErrors[table] = error?.message || "Lecture indisponible";
+    return [];
+  }
+}
+
+async function readVisitCount(query, loadErrors) {
+  try {
+    const { count, error } = await query;
+    if (error) throw error;
+    if (!Number.isSafeInteger(count) || count < 0) {
+      throw new Error("Compteur Supabase indisponible.");
+    }
+    return count;
+  } catch (error) {
+    loadErrors.site_visits_count = error?.message || "Compteur indisponible";
+    return null;
+  }
+}
+
 export async function fetchAdminData(supabase) {
-  const { data: requestsData, error: requestsError } = await supabase
-    .from("booking_requests")
-    .select("*")
-    .order("created_at", { ascending: false });
+  const loadErrors = {};
+  // Toutes les listes doivent etre completes avant de produire des totaux.
+  // Ordre secondaire par identifiant pour stabiliser les lignes de meme date.
+  const requestsData = await readAllAdminRows(supabase, {
+    table: "booking_requests", orderBy: "created_at",
+  });
+  const customersData = await readAllAdminRows(supabase, {
+    table: "customers", orderBy: "created_at",
+  });
 
-  if (requestsError) {
-    throw requestsError;
-  }
-
-  const { data: customersData, error: customersError } = await supabase
-    .from("customers")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (customersError) {
-    throw customersError;
-  }
-
-  const { data: paymentsData } = await supabase
-    .from("payments")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  const { data: customerInvoicesData } = await supabase
-    .from("customer_invoices")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  const { data: cleaningIssuesData, error: cleaningIssuesError } = await supabase
-    .from("booking_cleaning_issues")
-    .select("*")
-    .order("reported_at", { ascending: false });
-
-  if (cleaningIssuesError) throw cleaningIssuesError;
-
-  const { data: additionalChargesData, error: additionalChargesError } = await supabase
-    .from("booking_additional_charges")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (additionalChargesError) throw additionalChargesError;
-
-  const { data: customerCreditNotesData } = await supabase
-    .from("customer_credit_notes")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  const { data: eventsData } = await supabase
-    .from("booking_events")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  const { data: emailLogsData } = await supabase
-    .from("email_logs")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  const { data: guestReviewsData } = await supabase
-    .from("guest_reviews")
-    .select("*")
-    .order("created_at", { ascending: false });
+  const paymentsData = await readOptionalRows(readAllAdminRows(supabase, {
+    table: "payments", orderBy: "created_at",
+  }), "payments", loadErrors);
+  const customerInvoicesData = await readOptionalRows(readAllAdminRows(supabase, {
+    table: "customer_invoices", orderBy: "created_at",
+  }), "customer_invoices", loadErrors);
+  const cleaningIssuesData = await readOptionalRows(readAllAdminRows(supabase, {
+    table: "booking_cleaning_issues", orderBy: "reported_at",
+  }), "booking_cleaning_issues", loadErrors);
+  const additionalChargesData = await readOptionalRows(readAllAdminRows(supabase, {
+    table: "booking_additional_charges", orderBy: "created_at",
+  }), "booking_additional_charges", loadErrors);
+  const customerCreditNotesData = await readOptionalRows(readAllAdminRows(supabase, {
+    table: "customer_credit_notes", orderBy: "created_at",
+  }), "customer_credit_notes", loadErrors);
+  const eventsData = await readOptionalRows(readAllAdminRows(supabase, {
+    table: "booking_events", orderBy: "created_at",
+  }), "booking_events", loadErrors);
+  const emailLogsData = await readOptionalRows(readAllAdminRows(supabase, {
+    table: "email_logs", orderBy: "created_at",
+  }), "email_logs", loadErrors);
+  const guestReviewsData = await readOptionalRows(readAllAdminRows(supabase, {
+    table: "guest_reviews", orderBy: "created_at",
+  }), "guest_reviews", loadErrors);
 
   const sinceVisits = new Date();
   sinceVisits.setDate(sinceVisits.getDate() - 180);
+  const siteVisitsData = await readOptionalRows(readAllAdminRows(supabase, {
+    table: "site_visits", orderBy: "created_at", since: sinceVisits.toISOString(),
+  }), "site_visits", loadErrors);
 
-  const { data: siteVisitsData } = await supabase
+  const siteVisitsTotalCount = await readVisitCount(supabase
     .from("site_visits")
-    .select("*")
-    .gte("created_at", sinceVisits.toISOString())
-    .order("created_at", { ascending: false });
+    .select("id", { count: "exact", head: true }), loadErrors);
 
-  const { count: siteVisitsTotalCount } = await supabase
-    .from("site_visits")
-    .select("id", { count: "exact", head: true });
-
-  const { data: reservationsData } = await supabase
-    .from("reservations")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  const { data: stripePayoutsData } = await supabase
-    .from("stripe_payouts")
-    .select("*")
-    .order("arrival_date", { ascending: false });
-
-  const { data: stripeBalanceTransactionsData } = await supabase
-    .from("stripe_balance_transactions")
-    .select("*")
-    .order("created_at_stripe", { ascending: false });
-
-  const { data: bookingFinancialAggregatesData, error: bookingFinancialAggregatesError } = await supabase
-    .from("booking_financial_ledger_aggregates")
-    .select("*");
-
-  if (bookingFinancialAggregatesError) {
-    throw bookingFinancialAggregatesError;
-  }
+  const reservationsData = await readOptionalRows(readAllAdminRows(supabase, {
+    table: "reservations", orderBy: "created_at",
+  }), "reservations", loadErrors);
+  const stripePayoutsData = await readOptionalRows(readAllAdminRows(supabase, {
+    table: "stripe_payouts", orderBy: "arrival_date",
+  }), "stripe_payouts", loadErrors);
+  const stripeBalanceTransactionsData = await readOptionalRows(readAllAdminRows(supabase, {
+    table: "stripe_balance_transactions", orderBy: "created_at_stripe",
+  }), "stripe_balance_transactions", loadErrors);
+  const bookingFinancialAggregatesData = await readAllAdminRows(supabase, {
+    table: "booking_financial_ledger_aggregates", orderBy: "booking_request_id", uniqueBy: "booking_request_id",
+  });
 
   return {
     bookingRequests: requestsData || [],
@@ -109,10 +96,11 @@ export async function fetchAdminData(supabase) {
     emailLogs: emailLogsData || [],
     guestReviews: guestReviewsData || [],
     siteVisits: siteVisitsData || [],
-    siteVisitsTotal: siteVisitsTotalCount || (siteVisitsData || []).length,
+    siteVisitsTotal: siteVisitsTotalCount,
     confirmedReservations: reservationsData || [],
     stripePayouts: stripePayoutsData || [],
     stripeBalanceTransactions: stripeBalanceTransactionsData || [],
     bookingFinancialAggregates: bookingFinancialAggregatesData || [],
+    loadErrors,
   };
 }

@@ -1,3 +1,28 @@
+import { emailAutomationAllowed, isKnownLiveDeployment } from "./email-delivery-policy.js";
+
+// La mise à jour des occupations est réservée au déploiement public canonique.
+// La permission de synchroniser est indépendante de celle d'envoyer des emails.
+export function externalCalendarRunPolicy(env = process.env) {
+  const syncAllowed = isKnownLiveDeployment(env);
+  return {
+    syncAllowed,
+    alertEmailsAllowed: syncAllowed && emailAutomationAllowed(env),
+  };
+}
+
+// Une source indisponible ne peut jamais prouver la disparition d'un UID.
+export function missingActionsFromSuccessfulSources(actions, { uids, successfulSources }) {
+  const checked = new Set((successfulSources || []).map((value) => String(value || "").toLowerCase()));
+  const present = uids || new Set();
+  return (actions || []).filter((action) => {
+    const source = String(action?.source || "").toLowerCase();
+    return checked.has(source)
+      && action.uid
+      && !present.has(`${source}\u0000${action.uid}`)
+      && action.alert_status !== "missing_alerted";
+  });
+}
+
 export async function claimMissingAlerts(repository, actions) {
   const results = await Promise.all((actions || []).map(async (action) => (
     await repository.claim(action) ? action : null

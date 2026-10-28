@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { escapeHtml } from "./_lib/html.js";
-import { emailLanguageForAudience } from "../../shared/guestLocale.js";
+import { emailLanguageForAudience, appendGuestLanguage } from "../../shared/guestLocale.js";
 import { buildLocalizedPaymentConfirmation } from "./_lib/guest-payment-confirmation.js";
 import { processCheckoutSessionCompleted } from "./_lib/stripe-checkout-completed.js";
 import { listAllBalanceTransactions } from "./_lib/stripe-balance-transactions.js";
@@ -300,7 +300,7 @@ async function sendPaymentConfirmationEmail(booking, paymentType, extra = {}) {
   const deposit = contractualDeposit(booking);
   const balance = remainingContractualDue(booking);
   const arrivalUrl = extra.arrivalToken && booking?.id
-    ? `https://lamaisonverte65.fr/arrival?booking=${encodeURIComponent(booking.id)}&token=${encodeURIComponent(extra.arrivalToken)}`
+    ? appendGuestLanguage(`https://lamaisonverte65.fr/arrival?booking=${encodeURIComponent(booking.id)}&token=${encodeURIComponent(extra.arrivalToken)}`, booking.communication_language)
     : null;
 
   const isFull = paymentType === "full";

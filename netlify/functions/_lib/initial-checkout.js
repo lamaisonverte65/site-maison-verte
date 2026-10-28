@@ -1,4 +1,5 @@
 import { contractualDeposit, contractualTotal, hasV410FinancialSnapshot, LEGACY_PAYMENT_DEFAULTS } from "./booking-financial-authority.js";
+import { appendGuestLanguage } from "../../../shared/guestLocale.js";
 
 const ACCEPTANCE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const PAID_BOOKING_STATUSES = new Set(["deposit_paid", "paid", "fully_paid", "confirmed"]);
@@ -146,8 +147,8 @@ function checkoutParameters(booking, payment) {
       },
       quantity: 1,
     }],
-    success_url: "https://lamaisonverte65.fr/success?session_id={CHECKOUT_SESSION_ID}",
-    cancel_url: "https://lamaisonverte65.fr/cancel",
+    success_url: appendGuestLanguage("https://lamaisonverte65.fr/success?session_id={CHECKOUT_SESSION_ID}", booking.communication_language),
+    cancel_url: appendGuestLanguage("https://lamaisonverte65.fr/cancel", booking.communication_language),
   };
 }
 
@@ -180,27 +181,48 @@ export async function createInitialCheckout({ bookingId, now = new Date(), depen
     ? booking.acceptance_expires_at
     : new Date(now.getTime() + ACCEPTANCE_WINDOW_MS).toISOString();
 
-  if (booking.status === "accepted"
-    && isStripeCheckoutUrl(booking.payment_link, booking.stripe_checkout_session_id)) {
-    return responseFor({ id: booking.stripe_checkout_session_id, url: booking.payment_link }, payment, acceptanceExpiresAt, true);
-  }
-
   if (booking.status === "accepted" && booking.stripe_checkout_session_id) {
+    // The locally stored URL is not proof that Stripe still accepts this payment.
+    // Always inspect the actual session, including when payment_link is populated.
     const currentSession = await stripeGateway.retrieveSession(booking.stripe_checkout_session_id);
+
+    if (currentSession && currentSession.id !== booking.stripe_checkout_session_id) {
+      throw new InitialCheckoutError("stripe_session_mismatch", "La session Stripe retournée ne correspond pas à la réservation.", 502);
+    }
+
+    // Checkout may have completed while our webhook is still running. A new
+    // Checkout in this state could collect the same initial payment twice.
+    if (currentSession?.status === "complete" || currentSession?.payment_status === "paid") {
+      throw new InitialCheckoutError("checkout_payment_pending", "Le paiement a déjà été effectué ou est en cours de confirmation. Actualisez la réservation.", 409);
+    }
+
     if (isUsableRetrievedSession(currentSession, booking.stripe_checkout_session_id, now)) {
-      await repository.saveCurrentSession({
-        bookingId: booking.id,
-        expectedStatus: booking.status,
-        expectedUpdatedAt: booking.updated_at,
-        values: persistenceValues(
-          booking,
-          currentSession,
-          payment,
-          acceptanceExpiresAt,
-          booking.accepted_at || now.toISOString(),
-        ),
-      });
+      // Recover a missing/outdated local URL, without extending the existing
+      // acceptance deadline or updating a booking whose state has changed.
+      if (booking.payment_link !== currentSession.url) {
+        await repository.saveCurrentSession({
+          bookingId: booking.id,
+          expectedStatus: booking.status,
+          expectedUpdatedAt: booking.updated_at,
+          values: persistenceValues(
+            booking,
+            currentSession,
+            payment,
+            acceptanceExpiresAt,
+            booking.accepted_at || now.toISOString(),
+          ),
+        });
+      }
       return responseFor(currentSession, payment, acceptanceExpiresAt, true);
+    }
+
+    // An open but unusable session (invalid URL or conflicting expiration)
+    // may still accept a charge. Fail closed rather than opening a second one.
+    if (currentSession?.status === "open") {
+      throw new InitialCheckoutError("checkout_session_unavailable", "La session Stripe actuelle ne peut pas être réutilisée. Vérifiez son état avant de recréer un lien.", 409);
+    }
+    if (currentSession && currentSession.status !== "expired") {
+      throw new InitialCheckoutError("checkout_status_unknown", "État de la session Stripe non reconnu. Aucun nouveau paiement n’a été créé.", 502);
     }
   }
 

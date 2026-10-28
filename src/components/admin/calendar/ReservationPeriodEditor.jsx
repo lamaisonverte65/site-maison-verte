@@ -50,7 +50,8 @@ function CustomerSuggestionList({ results = [], activeIndex = 0, loading = false
           key={customer.id}
           type="button"
           style={index === activeIndex ? suggestionStyles.activeItem : suggestionStyles.item}
-          onMouseDown={(event) => {
+          onPointerDown={(event) => {
+            // Mouse and touch: choose before the text field loses focus.
             event.preventDefault();
             onSelect(customer);
           }}
@@ -64,6 +65,8 @@ function CustomerSuggestionList({ results = [], activeIndex = 0, loading = false
 
 function ImportReservationFields({ item, index, updateItem }) {
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
+  const [focusedIdentityField, setFocusedIdentityField] = useState(null);
+  const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
   const { results, loading } = useCustomerSearch({
     firstName: item.firstName,
     lastName: item.lastName,
@@ -71,7 +74,8 @@ function ImportReservationFields({ item, index, updateItem }) {
   });
 
   const selectedName = item.selectedCustomer ? getCustomerDisplayName(item.selectedCustomer) : "";
-  const showSuggestions = !item.customerId && (String(item.firstName || "").trim().length >= 2 || String(item.lastName || "").trim().length >= 2);
+  const showSuggestions = Boolean(focusedIdentityField) && !suggestionsDismissed && !item.customerId
+    && (String(item.firstName || "").trim().length >= 2 || String(item.lastName || "").trim().length >= 2);
 
   function updateIdentityField(key, value) {
     const patch = { [key]: value };
@@ -86,6 +90,7 @@ function ImportReservationFields({ item, index, updateItem }) {
 
     updateItem(index, patch);
     setActiveSuggestionIndex(0);
+    setSuggestionsDismissed(false);
   }
 
   function selectCustomer(customer) {
@@ -98,6 +103,8 @@ function ImportReservationFields({ item, index, updateItem }) {
       email: customer.email || "",
     });
     setActiveSuggestionIndex(0);
+    setFocusedIdentityField(null);
+    setSuggestionsDismissed(true);
   }
 
   function handleSuggestionKeyDown(event) {
@@ -113,7 +120,14 @@ function ImportReservationFields({ item, index, updateItem }) {
       setActiveSuggestionIndex((current) => Math.max(current - 1, 0));
     }
 
-    if (event.key === "Enter" || event.key === "Tab") {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setSuggestionsDismissed(true);
+      return;
+    }
+
+    // Tab must keep the normal path to the next field (not auto-select a client).
+    if (event.key === "Enter") {
       event.preventDefault();
       selectCustomer(results[activeSuggestionIndex] || results[0]);
     }
@@ -122,7 +136,7 @@ function ImportReservationFields({ item, index, updateItem }) {
   return (
     <>
       <div style={styles.formGridTwoCols}>
-        <label style={{ ...styles.label, position: "relative" }}>
+        <label style={styles.label}>
           Prénom
           <input
             style={styles.input}
@@ -130,19 +144,13 @@ function ImportReservationFields({ item, index, updateItem }) {
             value={item.firstName}
             onChange={(changeEvent) => updateIdentityField("firstName", changeEvent.target.value)}
             onKeyDown={handleSuggestionKeyDown}
+            onFocus={() => { setFocusedIdentityField("firstName"); setSuggestionsDismissed(false); }}
+            onBlur={() => setFocusedIdentityField(null)}
             autoComplete="off"
           />
-          {showSuggestions && (
-            <CustomerSuggestionList
-              results={results}
-              activeIndex={activeSuggestionIndex}
-              loading={loading}
-              onSelect={selectCustomer}
-            />
-          )}
         </label>
 
-        <label style={{ ...styles.label, position: "relative" }}>
+        <label style={styles.label}>
           Nom
           <input
             style={styles.input}
@@ -150,9 +158,22 @@ function ImportReservationFields({ item, index, updateItem }) {
             value={item.lastName}
             onChange={(changeEvent) => updateIdentityField("lastName", changeEvent.target.value)}
             onKeyDown={handleSuggestionKeyDown}
+            onFocus={() => { setFocusedIdentityField("lastName"); setSuggestionsDismissed(false); }}
+            onBlur={() => setFocusedIdentityField(null)}
             autoComplete="off"
           />
         </label>
+
+        {showSuggestions && (
+          <div style={{ gridColumn: "1 / -1" }} aria-label="Suggestions de clients existants">
+            <CustomerSuggestionList
+              results={results}
+              activeIndex={activeSuggestionIndex}
+              loading={loading}
+              onSelect={selectCustomer}
+            />
+          </div>
+        )}
 
         <input style={styles.input} placeholder="Téléphone" value={item.phone} onChange={(changeEvent) => updateItem(index, { phone: changeEvent.target.value })} />
         <input style={styles.input} placeholder="Email" type="email" value={item.email} onChange={(changeEvent) => updateItem(index, { email: changeEvent.target.value })} />
@@ -311,12 +332,8 @@ export default function ReservationPeriodEditor({ event, onApplyExternalAction }
 
 const suggestionStyles = {
   box: {
-    position: "absolute",
-    top: "100%",
-    left: 0,
-    right: 0,
-    zIndex: 20,
-    marginTop: "4px",
+    position: "relative",
+    marginTop: "2px",
     background: "white",
     border: "1px solid #d1d5db",
     borderRadius: "14px",

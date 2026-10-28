@@ -42,8 +42,8 @@ test("ski showcase has its route existing content and conversion links", () => {
   assert.match(ski, /Peyragudes/);
   assert.match(ski, /moniteur de ski diplômé/i);
   assert.match(ski, /jusqu’à 15% de réduction/);
-  assert.match(ski, /href="\/#reservation"/);
-  assert.match(ski, /href="\/#contact"/);
+  assert.ok(ski.includes('localizePublicHref("/#reservation", language)'));
+  assert.ok(ski.includes('localizePublicHref("/#contact", language)'));
 });
 
 test("3-star plaque is in presentation without adding a gallery image", () => {

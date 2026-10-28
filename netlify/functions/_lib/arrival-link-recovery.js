@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { createArrivalToken } from "./arrival-token.js";
 import { normalizeEmail } from "./normalize.js";
+import { appendGuestLanguage } from "../../../shared/guestLocale.js";
 
 const ELIGIBLE_STATUSES = new Set(["deposit_paid", "paid", "fully_paid", "confirmed"]);
 const PUBLIC_MESSAGE = "Si les informations correspondent, un nouveau lien sécurisé sera envoyé à l’adresse enregistrée.";
@@ -85,7 +86,7 @@ export async function recoverArrivalLink(input, {
     if (!claimed) return publicResult();
     tokenSaved = true;
 
-    const url = `${String(siteUrl || "").replace(/\/$/, "")}/arrival?booking=${encodeURIComponent(booking.id)}&token=${encodeURIComponent(capability.token)}`;
+    const url = appendGuestLanguage(`${String(siteUrl || "").replace(/\/$/, "")}/arrival?booking=${encodeURIComponent(booking.id)}&token=${encodeURIComponent(capability.token)}`, booking.communication_language);
     const delivery = await mailer.sendArrivalLink({ to: booking.guest_email, url, booking });
     delivered = true;
     await repository.appendEmailLog({

@@ -6,30 +6,26 @@ import { getHomeCopy } from '../src/components/home/homeTranslations.js';
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
 
 const expected = {
-  fr: { noWifi: /Sans Wi-Fi/i, balcony: /sud-ouest/i },
-  en: { noWifi: /No Wi-Fi/i, balcony: /south-west/i },
-  es: { noWifi: /Sin Wi-Fi/i, balcony: /suroeste/i },
+  fr: { wifi: /Wi-Fi 7/i, balcony: /sud-ouest/i },
+  en: { wifi: /Wi-Fi 7/i, balcony: /south-west/i },
+  es: { wifi: /Wi-Fi 7/i, balcony: /suroeste/i },
 };
 
 for (const language of ['fr', 'en', 'es']) {
-  test(`R13.3 ${language}: l'accueil ne promet pas de Wi-Fi et décrit le balcon sud-ouest`, () => {
+  test(`R13.3 ${language}: l'accueil mentionne le Wi-Fi réel et le balcon sud-ouest`, () => {
     const benefits = getHomeCopy(language).presentation.benefits;
     assert.equal(benefits.length, 11, 'Conserver la structure de la présentation');
-    assert.ok(benefits.some((benefit) => expected[language].noWifi.test(benefit)));
+    assert.ok(benefits.some((benefit) => expected[language].wifi.test(benefit)));
     assert.ok(benefits.some((benefit) => expected[language].balcony.test(benefit)));
-    assert.ok(!benefits.some((benefit) => /Wi-Fi 7/i.test(benefit)));
+    assert.ok(!benefits.some((benefit) => /Sans Wi-Fi|No Wi-Fi|Sin Wi-Fi/i.test(benefit)));
   });
 }
 
-test('R13.3: aucun des emails d’arrivée FR/EN/ES ne communique un réseau ou mot de passe inexistant', () => {
-  const french = read('netlify/functions/send-arrival-reminder.js');
-  const localized = read('netlify/functions/_lib/guest-scheduled-emails.js');
-  for (const [label, source] of [['FR', french], ['EN/ES', localized]]) {
-    assert.doesNotMatch(source, /lamaisonverte65(?!\.fr)/i, `${label} : ancien mot de passe fictif`);
-    assert.doesNotMatch(source, /<h3>Wi-Fi<\/h3>|\$\{t\.wifi\}/, `${label} : bloc Wi-Fi à supprimer`);
-  }
-  assert.doesNotMatch(localized, /wifi:\s*"Wi-Fi"|password:\s*"Password"|password:\s*"Contraseña"/);
-  assert.doesNotMatch(french, /Mot de passe\s*:/);
+test('R13.3: les informations Wi-Fi du livret ne doivent pas être contredites par le site', () => {
+  const booklet = read('src/components/booklet/BookletHouseRules.jsx');
+  const home = getHomeCopy('fr').presentation.benefits.join(' ');
+  assert.match(booklet, /Wi-Fi/i);
+  assert.match(home, /Wi-Fi 7/);
 });
 
 test('R13.3: le correctif ne supprime ni code boîte à clés, ni lien arrivée, ni livret', () => {

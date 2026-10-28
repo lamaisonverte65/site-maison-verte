@@ -67,7 +67,8 @@ test("R7 : résumé affiche la langue sauvegardée, FR si réservation historiqu
   const adapter = read("../src/adapters/reservationViewAdapter.js");
   assert.match(adapter, /\.\.\.request/);
   const service = read("../src/services/adminDataService.js");
-  assert.match(service, /\.from\("booking_requests"\)\s*\.select\("\*"\)/);
+  assert.match(service, /table: "booking_requests", orderBy: "created_at"/);
+  assert.match(read("../src/services/adminPaginatedRead.js"), /\.select\("\*", \{ count: "exact" \}\)/);
 });
 
 test("R7 : réutilise la migration R2 existante sans migration financière", () => {

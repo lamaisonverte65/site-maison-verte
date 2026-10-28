@@ -79,8 +79,11 @@ test('R11.1: règles de prix, taxe, sélection et requête serveur non modifiée
   ]) assert.ok(page.includes(required), `invariant absent: ${required}`);
 });
 
-test('R11.1: aucune modification des endpoints ou du contrat de référence', () => {
-  assert.match(page, /href="\/documents\/contrat-location\.pdf"/);
+test('R11.1/R4: endpoints et référence contractuelle conservés, PDF public selon la langue', () => {
+  assert.match(page, /href=\{contractPdfHref\}/);
+  assert.match(page, /\/documents\/contrat-location-en\.pdf/);
+  assert.match(page, /\/documents\/contrat-location-es\.pdf/);
+  assert.match(page, /\/documents\/contrat-location\.pdf/);
   assert.match(page, /localizePublicHref\("\/livret", siteLanguage\)/);
   assert.match(page, /bookingCopy\.contractFrenchNotice/);
   assert.match(page, /const canSubmitRequest =/);

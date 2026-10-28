@@ -5,7 +5,7 @@ import { createArrivalToken, shouldSendSecureArrivalReminder } from "./_lib/arri
 import { escapeHtml } from "./_lib/html.js";
 import { resendEmail } from "./_lib/resend-email.js";
 import { buildLocalizedArrivalEmail } from "./_lib/guest-scheduled-emails.js";
-import { emailLanguageForAudience } from "../../shared/guestLocale.js";
+import { emailLanguageForAudience, appendGuestLanguage } from "../../shared/guestLocale.js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -136,7 +136,7 @@ async function sendArrivalReminderEmail(booking) {
   const { data: claimedBooking, error: tokenError } = await tokenClaim.select("id").maybeSingle();
   if (tokenError) throw new Error("Migration des jetons d'arrivée absente ou écriture impossible.");
   if (!claimedBooking?.id) return { sent: false, reason: "concurrent_secure_link_claim" };
-  const arrivalUrl = `${SITE_URL}/arrival?booking=${encodeURIComponent(booking.id)}&token=${encodeURIComponent(capability.token)}`;
+  const arrivalUrl = appendGuestLanguage(`${SITE_URL}/arrival?booking=${encodeURIComponent(booking.id)}&token=${encodeURIComponent(capability.token)}`, booking.communication_language);
 
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color:#1f2933;">
@@ -163,6 +163,9 @@ async function sendArrivalReminderEmail(booking) {
       <h3>Horaires</h3>
       <p><strong>Arrivée :</strong> à partir de 16 h.<br /><strong>Départ :</strong> avant 10 h.</p>
       <p>Ces horaires peuvent éventuellement être adaptés selon les départs et arrivées précédant ou suivant votre séjour. N’hésitez pas à nous contacter pour une demande particulière.</p>
+
+      <h3>Wi-Fi 7</h3>
+      <p><strong>Réseau :</strong> Freebox-38AFFB<br /><strong>Mot de passe :</strong> lamaisonverte65</p>
 
       <h3>Livret d'accueil</h3>
       <p><a href="${SITE_URL}/livret" style="color:#14532d;font-weight:bold;">Consulter le livret d’accueil</a></p>

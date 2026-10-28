@@ -280,6 +280,7 @@ test("an accepted retry returns the usable current link without Stripe creation 
       stripe_checkout_session_id: "cs_test_current",
       payment_link: currentUrl,
     }),
+    retrievedSession: { id: "cs_test_current", url: currentUrl, status: "open", expires_at: 1788256800 },
   });
 
   const result = await createInitialCheckout({ bookingId: BOOKING_ID, now: NOW, dependencies: deps });
@@ -287,7 +288,7 @@ test("an accepted retry returns the usable current link without Stripe creation 
   assert.equal(result.url, currentUrl);
   assert.equal(result.acceptanceExpiresAt, expiry);
   assert.equal(state.creates.length, 0);
-  assert.equal(state.retrieves.length, 0);
+  assert.deepEqual(state.retrieves, ["cs_test_current"]);
   assert.equal(state.saves.length, 0);
 });
 
@@ -305,6 +306,7 @@ test("an accepted retry preserves the payment terms fixed when the current Sessi
       balance_amount: 224,
       deposit_status: "à payer",
     }),
+    retrievedSession: { id: "cs_test_current", url: currentUrl, status: "open", expires_at: 1788260400 },
   });
 
   const result = await createInitialCheckout({
@@ -329,6 +331,7 @@ test("an accepted retry announces the server total instead of a different fronte
       stripe_checkout_session_id: "cs_test_current",
       payment_link: currentUrl,
     }),
+    retrievedSession: { id: "cs_test_current", url: currentUrl, status: "open", expires_at: 1788256800 },
   });
 
   const checkoutSession = await createInitialCheckout({ bookingId: BOOKING_ID, now: NOW, dependencies: deps });
