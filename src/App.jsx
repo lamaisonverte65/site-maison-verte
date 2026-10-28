@@ -311,8 +311,10 @@ function ArrivalTimePage({ language = "fr" }) {
         <h1 style={{ color: "#14532d", marginTop: 0 }}>{t.recoveryTitle}</h1>
         {linkMode === "recovery" ? <>
           <p style={{ color: "#334155", lineHeight: 1.7 }}>{t.recoveryIntro}</p>
-          <input type="email" value={recoveryEmail} onChange={(event) => setRecoveryEmail(event.target.value)} placeholder={t.emailPlaceholder} autoComplete="email" style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "18px" }} />
-          <input type="text" value={recoveryLastName} onChange={(event) => setRecoveryLastName(event.target.value)} placeholder={t.lastNamePlaceholder} autoComplete="family-name" style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "12px" }} />
+          <label htmlFor="arrival-recovery-email" style={{ display: "block", textAlign: "left", marginTop: "18px", color: "#334155", fontWeight: 600 }}>{t.emailPlaceholder}</label>
+          <input id="arrival-recovery-email" type="email" value={recoveryEmail} onChange={(event) => setRecoveryEmail(event.target.value)} placeholder={t.emailPlaceholder} autoComplete="email" style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "18px" }} />
+          <label htmlFor="arrival-recovery-surname" style={{ display: "block", textAlign: "left", marginTop: "12px", color: "#334155", fontWeight: 600 }}>{t.lastNamePlaceholder}</label>
+          <input id="arrival-recovery-surname" type="text" value={recoveryLastName} onChange={(event) => setRecoveryLastName(event.target.value)} placeholder={t.lastNamePlaceholder} autoComplete="family-name" style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "12px" }} />
           <button type="submit" disabled={recoverySubmitting} style={{ marginTop: "22px", border: "none", background: "#2f4f35", color: "white", padding: "14px 24px", borderRadius: "999px", fontWeight: "bold", cursor: recoverySubmitting ? "wait" : "pointer" }}>{recoverySubmitting ? t.sending : t.sendLink}</button>
         </> : <p style={{ color: "#b91c1c", lineHeight: 1.7 }}>{t.incompleteLink}</p>}
         {recoveryStatus && <p style={{ marginTop: "22px", color: "#334155" }}>{recoveryStatus}</p>}
@@ -332,7 +334,8 @@ function ArrivalTimePage({ language = "fr" }) {
             ? <>{t.currentTime} <strong>{arrivalTime}</strong>. {t.changeTime}</>
             : t.noTime}
         </p>
-        <input type="time" value={arrivalTime} onChange={(event) => { setArrivalTime(event.target.value); setStatus(""); }} step="300" disabled={arrivalLoading} style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "18px" }} />
+        <label htmlFor="arrival-time-input" style={{ display: "block", textAlign: "left", marginTop: "18px", color: "#334155", fontWeight: 600 }}>{t.timeInputLabel}</label>
+        <input id="arrival-time-input" type="time" value={arrivalTime} onChange={(event) => { setArrivalTime(event.target.value); setStatus(""); }} step="300" disabled={arrivalLoading} style={{ width: "100%", padding: "16px", borderRadius: "16px", border: "1px solid #d1d5db", fontSize: "16px", marginTop: "18px" }} />
         <button type="submit" disabled={arrivalLoading} style={{ marginTop: "22px", border: "none", background: "#2f4f35", color: "white", padding: "14px 24px", borderRadius: "999px", fontWeight: "bold", cursor: arrivalLoading ? "wait" : "pointer" }}>{arrivalTime ? t.saveTime : t.chooseTime}</button>
         {status && <p style={{ marginTop: "22px", color: status.includes("✅") ? "#166534" : "#b91c1c" }}>{status}</p>}
         <a href={homeHref} style={{ marginTop: "24px", display: "inline-block", color: "#2f4f35" }}>{t.home}</a>

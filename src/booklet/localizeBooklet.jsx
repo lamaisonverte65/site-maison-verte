@@ -42,6 +42,71 @@ export function bookletImageSrc(src, language) {
   return `/livret/${name.replace(/\.webp$/, `-${lang}.webp`)}`;
 }
 
+// Traduction des descriptions destinées aux lecteurs d'écran.
+// Les attributs français proviennent des pages JSX FR, qui restent la source.
+const accessibilityText = Object.freeze({
+  en: {
+    "Informations pratiques": "Practical information",
+    "Accès et stationnement à La Maison Verte": "Directions and parking at La Maison Verte",
+    "Plan général d'accès à Arreau et aux vallées environnantes": "Overview map of access to Arreau and the surrounding valleys",
+    "Plan détaillé des accès et des parkings autour de La Maison Verte": "Detailed map of access routes and parking near La Maison Verte",
+    "Fonctionnement du logement": "House information",
+    "Avant votre départ": "Before you leave",
+    "Couverture du livret d'accueil": "Welcome booklet cover",
+    "La Maison Verte - Email : lamaisonverte65@gmail.com - Adresse : 3 Impasse Trassens, 65240 Arreau": "La Maison Verte – Email: lamaisonverte65@gmail.com – Address: 3 Impasse Trassens, 65240 Arreau",
+    "Bienvenue à La Maison Verte": "Welcome to La Maison Verte",
+    "Sommaire du livret": "Booklet contents",
+    "QR codes utiles": "Useful QR codes",
+    "QR code vers le site officiel La Maison Verte": "QR code for the official La Maison Verte website",
+    "QR code pour écrire à La Maison Verte": "QR code to email La Maison Verte",
+    "QR code pour appeler La Maison Verte": "QR code to call La Maison Verte",
+    "QR code de connexion au Wi-Fi de La Maison Verte": "QR code to connect to the La Maison Verte Wi-Fi",
+    "QR code vers le guide des vallées d'Aure et du Louron": "QR code for the Aure and Louron valleys guide",
+    "QR code WhatsApp de La Maison Verte": "QR code for La Maison Verte WhatsApp",
+    "Découvrir les vallées d'Aure et du Louron": "Explore the Aure and Louron valleys",
+    "Votre avis compte beaucoup": "Your feedback matters",
+    "QR Code vers les avis Google": "QR code for Google reviews",
+    "QR Code vers les avis du site": "QR code for reviews on our website",
+    "Inventaire — rez-de-chaussée": "Inventory – ground floor",
+    "Inventaire — étages": "Inventory – upper floors",
+    "Arrivée et boîte à clés": "Arrival and key safe",
+    "Procédure d’ouverture et de fermeture de la boîte à clés": "Instructions for opening and closing the key safe",
+  },
+  es: {
+    "Informations pratiques": "Información práctica",
+    "Accès et stationnement à La Maison Verte": "Acceso y aparcamiento en La Maison Verte",
+    "Plan général d'accès à Arreau et aux vallées environnantes": "Mapa general de acceso a Arreau y a los valles cercanos",
+    "Plan détaillé des accès et des parkings autour de La Maison Verte": "Mapa detallado de los accesos y aparcamientos cerca de La Maison Verte",
+    "Fonctionnement du logement": "Funcionamiento del alojamiento",
+    "Avant votre départ": "Antes de salir",
+    "Couverture du livret d'accueil": "Portada de la guía de bienvenida",
+    "La Maison Verte - Email : lamaisonverte65@gmail.com - Adresse : 3 Impasse Trassens, 65240 Arreau": "La Maison Verte – Correo electrónico: lamaisonverte65@gmail.com – Dirección: 3 Impasse Trassens, 65240 Arreau",
+    "Bienvenue à La Maison Verte": "Bienvenidos a La Maison Verte",
+    "Sommaire du livret": "Índice de la guía",
+    "QR codes utiles": "Códigos QR útiles",
+    "QR code vers le site officiel La Maison Verte": "Código QR del sitio web oficial de La Maison Verte",
+    "QR code pour écrire à La Maison Verte": "Código QR para escribir a La Maison Verte",
+    "QR code pour appeler La Maison Verte": "Código QR para llamar a La Maison Verte",
+    "QR code de connexion au Wi-Fi de La Maison Verte": "Código QR para conectarse al Wi-Fi de La Maison Verte",
+    "QR code vers le guide des vallées d'Aure et du Louron": "Código QR de la guía de los valles de Aure y Louron",
+    "QR code WhatsApp de La Maison Verte": "Código QR del WhatsApp de La Maison Verte",
+    "Découvrir les vallées d'Aure et du Louron": "Descubrir los valles de Aure y Louron",
+    "Votre avis compte beaucoup": "Su opinión es muy importante",
+    "QR Code vers les avis Google": "Código QR para las reseñas de Google",
+    "QR Code vers les avis du site": "Código QR para las reseñas de nuestra web",
+    "Inventaire — rez-de-chaussée": "Inventario – planta baja",
+    "Inventaire — étages": "Inventario – plantas superiores",
+    "Arrivée et boîte à clés": "Llegada y caja de llaves",
+    "Procédure d’ouverture et de fermeture de la boîte à clés": "Instrucciones para abrir y cerrar la caja de llaves",
+  },
+});
+
+export function localizeBookletAccessibility(value, language) {
+  const lang = normalizeBookletLanguage(language);
+  // Ne jamais modifier les chaînes vides (images décoratives) ni les identifiants.
+  return lang === "fr" || !value ? value : accessibilityText[lang]?.[value] ?? value;
+}
+
 function textOf(children) {
   if (children === null || children === undefined || typeof children === "boolean") return "";
   if (typeof children === "string" || typeof children === "number") return String(children);
@@ -79,6 +144,13 @@ export function localizeBookletTree(node, language) {
   const props = node.props || {};
   const replacementProps = {};
   const elementType = typeof node.type === "string" ? node.type : "";
+  if (lang !== "fr") {
+    for (const attribute of ["alt", "aria-label", "title"]) {
+      if (typeof props[attribute] !== "string") continue;
+      const translated = localizeBookletAccessibility(props[attribute], lang);
+      if (translated !== props[attribute]) replacementProps[attribute] = translated;
+    }
+  }
 
   if (elementType === "img") {
     const source = props.src;
@@ -89,7 +161,8 @@ export function localizeBookletTree(node, language) {
       replacementProps.role = "link";
       replacementProps.tabIndex = 0;
       replacementProps.title = lang === "en" ? "Open image in a new tab" : lang === "es" ? "Abrir imagen en una pestaña nueva" : "Ouvrir l’image dans un nouvel onglet";
-      replacementProps["aria-label"] = replacementProps.title;
+      const description = replacementProps.alt || props.alt;
+      replacementProps["aria-label"] = description ? `${description} — ${replacementProps.title}` : replacementProps.title;
       replacementProps.style = { ...props.style, cursor: "zoom-in" };
       replacementProps.onClick = () => window.open(resolvedSrc, "_blank", "noopener,noreferrer");
       replacementProps.onKeyDown = (event) => {

@@ -259,7 +259,7 @@ export const handler = schedule("0 8 * * *", async (event) => {
         continue;
       }
 
-      const paymentLink = createBalancePaymentUrl(process.env.URL || "https://lamaisonverte65.fr", booking.id);
+      const paymentLink = createBalancePaymentUrl(process.env.URL || "https://lamaisonverte65.fr", booking.id, emailLanguageForAudience(booking));
       const now = new Date().toISOString();
       const updatePayload = {
         balance_amount: balance,

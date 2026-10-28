@@ -125,7 +125,7 @@ export async function handler(event) {
 
     if (!balance || balance <= 0) return { statusCode: 400, body: JSON.stringify({ error: "Aucun solde à payer" }) };
 
-    const paymentLink = createBalancePaymentUrl(process.env.URL || "https://lamaisonverte65.fr", booking.id);
+    const paymentLink = createBalancePaymentUrl(process.env.URL || "https://lamaisonverte65.fr", booking.id, emailLanguageForAudience(booking));
     const now = new Date().toISOString();
     const updatePayload = {
       balance_amount: balance,
