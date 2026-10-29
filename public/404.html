@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,follow">
+  <title>Page introuvable | La Maison Verte</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; background: #f6f3ee; color: #23412e; font-family: system-ui, Arial, sans-serif; }
+    main { min-height: 100vh; padding: 12vh 24px 48px; display: flex; justify-content: center; align-items: flex-start; }
+    article { max-width: 650px; width: 100%; text-align: center; background: white; padding: clamp(28px,6vw,56px); border-radius: 22px; box-shadow: 0 12px 40px rgba(0,0,0,.08); }
+    h1 { font-size: clamp(1.8rem,4vw,2.7rem); margin: .3em 0 .6em; }
+    p { line-height: 1.65; color: #475569; }
+    a { display: inline-block; margin-top: 14px; background: #2f4f35; color: white; text-decoration: none; padding: 13px 22px; border-radius: 999px; font-weight: 700; }
+    a:focus-visible { outline: 3px solid #b6d38b; outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <main>
+    <article id="fr"><h1>Page introuvable</h1><p>Cette adresse n'existe pas ou n'est plus disponible.</p><a href="/">Retour à l'accueil</a></article>
+    <article id="en" hidden><h1>Page not found</h1><p>This address does not exist or is no longer available.</p><a href="/en/">Back to home</a></article>
+    <article id="es" hidden><h1>Página no encontrada</h1><p>Esta dirección no existe o ya no está disponible.</p><a href="/es/">Volver al inicio</a></article>
+  </main>
+  <script>
+    (function () {
+      var match = /^\/(en|es)(?:\/|$)/.exec(window.location.pathname);
+      var lang = match ? match[1] : 'fr';
+      document.documentElement.lang = lang;
+      var titles = { fr: 'Page introuvable', en: 'Page not found', es: 'Página no encontrada' };
+      document.title = titles[lang] + ' | La Maison Verte';
+      ['fr', 'en', 'es'].forEach(function (key) {
+        document.getElementById(key).hidden = key !== lang;
+      });
+    }());
+  </script>
+</body>
+</html>

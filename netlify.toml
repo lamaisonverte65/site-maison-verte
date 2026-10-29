@@ -2,15 +2,8 @@
   publish = "dist"
   functions = "netlify/functions"
 
-[[redirects]]
-  from = "/calendar.ics"
-  to = "/.netlify/functions/export-ical"
-  status = 200
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+# Routes Netlify uniquement dans public/_redirects (R19).
+# Aucun fallback global en HTTP 200 : public/404.html gere les URL inconnues.
 
 [functions]
   node_bundler = "esbuild"

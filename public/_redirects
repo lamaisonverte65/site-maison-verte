@@ -1,2 +1,61 @@
-/calendar.ics   /.netlify/functions/export-ical   200
-/*              /index.html                       200
+# V4.15 R19 - un seul fichier de routage Netlify, sans fallback SPA global.
+# Les routes React connues recoivent index.html (200); toute autre URL
+# doit etre traitee par public/404.html avec un vrai statut HTTP 404.
+# Ne pas ajouter de regle /* /index.html 200.
+/calendar.ics                     /.netlify/functions/export-ical 200
+
+# Accueil FR : / est servi naturellement par index.html.
+# Accueils traduits
+/en                              /index.html 200
+/en/                             /index.html 200
+/es                              /index.html 200
+/es/                             /index.html 200
+
+# Parcours clients et administration (URLs historiques exactes)
+/admin                            /index.html 200
+/success                          /index.html 200
+/cancel                           /index.html 200
+/arrival                          /index.html 200
+/avis-validation                  /index.html 200
+/contact                          /index.html 200
+/appeler                          /index.html 200
+
+# Pages publiques et anciennes variantes de livret
+/guide-vallees-aure-louron        /index.html 200
+/guide-vallees-aure-louron/       /index.html 200
+/ski-vallees-aure-louron          /index.html 200
+/ski-vallees-aure-louron/         /index.html 200
+/livret                           /index.html 200
+/livret/                          /index.html 200
+/livret-accueil                   /index.html 200
+/livret-accueil/                  /index.html 200
+/mentions-legales                 /index.html 200
+/mentions-legales/                /index.html 200
+/politique-confidentialite        /index.html 200
+/politique-confidentialite/       /index.html 200
+/en/guide-vallees-aure-louron     /index.html 200
+/en/guide-vallees-aure-louron/    /index.html 200
+/en/ski-vallees-aure-louron       /index.html 200
+/en/ski-vallees-aure-louron/      /index.html 200
+/en/livret                        /index.html 200
+/en/livret/                       /index.html 200
+/en/livret-accueil                /index.html 200
+/en/livret-accueil/               /index.html 200
+/en/mentions-legales              /index.html 200
+/en/mentions-legales/             /index.html 200
+/en/politique-confidentialite     /index.html 200
+/en/politique-confidentialite/    /index.html 200
+/es/guide-vallees-aure-louron     /index.html 200
+/es/guide-vallees-aure-louron/    /index.html 200
+/es/ski-vallees-aure-louron       /index.html 200
+/es/ski-vallees-aure-louron/      /index.html 200
+/es/livret                        /index.html 200
+/es/livret/                       /index.html 200
+/es/livret-accueil                /index.html 200
+/es/livret-accueil/               /index.html 200
+/es/mentions-legales              /index.html 200
+/es/mentions-legales/             /index.html 200
+/es/politique-confidentialite     /index.html 200
+/es/politique-confidentialite/    /index.html 200
+
+# Fichiers statiques et URL inconnues : Netlify sert /404.html en 404.

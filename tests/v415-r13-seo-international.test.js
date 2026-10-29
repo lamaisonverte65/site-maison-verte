@@ -88,9 +88,11 @@ test("R13.1 : donnees structurees reprennent le Wi-Fi reel sans inventer de nota
   assert.match(home, /name: "Balcon sud-ouest"/);
 });
 
-test("R13.1 : aucun changement des regles de reservation ou des routes Netlify", () => {
-  assert.match(netlify, /from = "\/calendar\.ics"/);
-  assert.match(netlify, /from = "\/\*"/);
+test("R19 : calendrier iCal et automatisations preserves malgre la correction des 404", () => {
+  const redirects = read("public/_redirects");
+  assert.match(redirects, /^\/calendar\.ics\s+\/\.netlify\/functions\/export-ical\s+200\s*$/m);
+  assert.doesNotMatch(netlify, /\[\[redirects\]\]/);
+  assert.doesNotMatch(redirects, /^\/\*\s+\/index\.html\s+200\b/m);
   assert.match(netlify, /schedule = "0 8 \* \* \*"/);
   assert.match(home, /submitPublicBooking/);
   assert.match(home, /booking-quote/);
