@@ -132,14 +132,16 @@ export default function PolitiqueConfidentialite() {
 
           <h2 style={h2Style}>Cookies et statistiques</h2>
           <p>
-            Le site utilise un identifiant limité à la session de navigation pour mesurer les visites,
-            les pages et sections consultées, la durée de consultation, le défilement, les clics et
-            le début d’utilisation des formulaires. Le contenu saisi dans les formulaires n’est pas collecté.
-            Les statistiques comprennent le type d’appareil, le navigateur, le système, la langue,
-            le fuseau horaire, les dimensions d’affichage et les paramètres de campagne.
-            Pour les liens et les sites d’origine, seuls les domaines sont conservés, sans paramètres
-            ni jetons d’accès. Le texte des boutons et liens n’est pas enregistré.
-            Aucun suivi publicitaire n’est mis en place par La Maison Verte.
+            Pour les statistiques internes, le site enregistre actuellement les pages vues,
+            et non le nombre de visiteurs uniques. Un identifiant de visiteur et un identifiant
+            de session sont conservés uniquement pendant la session de navigation. Chaque page vue
+            peut comprendre le chemin de la page, le type d’appareil, la langue indiquée par le
+            navigateur et la provenance de la consultation (domaine du site référent ou source
+            de campagne « utm_source »). Les données saisies dans les formulaires ne sont pas
+            collectées à cette fin. Le suivi actuel n’enregistre plus les clics, le défilement,
+            les sections consultées, le temps passé sur les pages ni les débuts de formulaire.
+            Les événements collectés avant cette simplification restent conservés dans
+            l’historique technique. La Maison Verte ne met pas en place de suivi publicitaire.
           </p>
 
           <h2 style={h2Style}>Services externes</h2>

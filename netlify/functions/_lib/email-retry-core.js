@@ -52,6 +52,13 @@ export function retryRelevance(row, booking) {
   }
   if (type.startsWith('booking_decision:')) return { allowed: false, reason: 'type de décision inconnu' };
 
+  // Une reprise de lien manuel doit toujours interroger Stripe. Le cron de
+  // retry ne dispose pas de cette vérification : renvoi uniquement via l'action
+  // admin sécurisée, jamais à partir d'un ancien HTML stocké.
+  if (type.startsWith('manual_payment:') || type === 'manual_payment_stored_link') {
+    return { allowed: false, reason: 'lien de paiement manuel à revérifier sur Stripe avant renvoi' };
+  }
+
   if (TERMINAL_STATUSES.has(status)) {
     // Les notifications de remboursements disposent de leur propre outbox ;
     // les autres messages de réservation ne doivent pas être rejoués après clôture.

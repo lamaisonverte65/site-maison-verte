@@ -32,12 +32,14 @@ test("V4.10 deposit payment keeps the contractual deposit and balance split", ()
   assert.equal(amounts.balance, 169.28);
 });
 
-test("reservation summary labels a full-payment booking without an active deposit", () => {
-  const source = read("src/components/admin/reservation/ReservationSummaryBlock.jsx");
-  assert.match(source, /payment_preference\s*===\s*["']full["']/);
-  assert.match(source, /Acompte/);
-  assert.match(source, /non applicable/);
-  assert.match(source, /Paiement total/);
+test("reservation summary delegates to payment adapter and the financial panel labels a full payment", () => {
+  const summary = read("src/components/admin/reservation/ReservationSummaryBlock.jsx");
+  const paymentBlock = read("src/components/admin/reservation/PaymentBlock.jsx");
+  assert.match(summary, /toPaymentView\(reservation, amounts\)/);
+  assert.match(paymentBlock, /request\?\.payment_preference === "full"/);
+  assert.match(paymentBlock, /!fullPayment && \(/); // No active deposit section for full payment.
+  assert.match(paymentBlock, /fullPayment \? "Paiement total" : "Solde"/);
+  assert.match(paymentBlock, /fullPayment \? "Montant paiement total" : "Montant solde"/);
 });
 
 

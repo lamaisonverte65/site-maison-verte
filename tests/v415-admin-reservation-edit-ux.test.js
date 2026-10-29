@@ -29,7 +29,11 @@ test("Reservation sheet: edit action is alongside header and editing is a focuse
   assert.match(reservation, /\{!isEditing && \([\s\S]*?<ReservationContactLinks/);
   assert.match(reservation, /className="reservation-sheet-group" aria-label="Client et séjour"/);
   assert.match(reservation, /className="reservation-sheet-group" aria-label="Paiements et facturation"/);
-  assert.match(reservation, /className="reservation-sheet-group" aria-label="Messages et historique"/);
+  assert.match(reservation, /className="reservation-sheet-group reservation-sheet-communication" aria-label="Communication et messages voyageurs"/);
+  assert.match(reservation, /<MessagesBlock request=\{reservation\}/);
+  assert.match(reservation, /className="reservation-sheet-group reservation-sheet-history" aria-label="Historique du dossier"/);
+  assert.match(reservation, /<TimelineBlock items=\{timelineItems\}/);
+  assert.match(reservation, /<HistoryBlock payments=\{payments\} events=\{events\} emailLogs=\{emailLogs\}/);
 });
 
 test("Reservation edit: save/cancel remain together after fields and financial preview", () => {

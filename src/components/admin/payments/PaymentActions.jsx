@@ -15,7 +15,12 @@ function buildCsv(rows) {
     formatMoney(row.confirmedAmount),
     formatMoney(row.paidClientAmount),
     formatMoney(row.stripeFeeAmount),
-    row.stripeNetAmount ? formatMoney(row.stripeNetAmount) : "",
+    row.stripeFinancialsComplete === true
+      && row.stripeNetAmount !== null
+      && row.stripeNetAmount !== undefined
+      && row.stripeNetAmount !== ""
+      && Number.isFinite(Number(row.stripeNetAmount))
+      ? formatMoney(row.stripeNetAmount) : "",
     (row.payoutIds || []).join(", "),
   ].map(csvEscape).join(";"));
 

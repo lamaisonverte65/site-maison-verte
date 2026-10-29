@@ -40,6 +40,9 @@ test("la fiche réservation affiche le snapshot postal", () => {
   assert.match(summary, /guest_postal_code/);
   assert.match(summary, /guest_city/);
   assert.match(summary, /guest_country/);
+  assert.match(summary, /\["Adresse", postalAddress\]/);
+  assert.match(summary, /\.filter\(Boolean\)\.join\(", "\) \|\| "–"/);
+  assert.doesNotMatch(summary, /customer\.address|customer\.postal_code/);
 });
 
 test("un client existant n'est enrichi que lorsque ses champs postaux sont vides", () => {

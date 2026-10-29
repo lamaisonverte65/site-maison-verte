@@ -65,7 +65,7 @@ export default function VisitsPanel({ data, onRefresh }) {
       <div style={styles.summaryGrid}>
         <SummaryList title="Pages les plus consultées" rows={pageStats} />
         <SummaryList title="Origines" rows={visitSourceStats} />
-        <SummaryList title="Langues" rows={languageStats} />
+        <SummaryList title="Langues des navigateurs" rows={languageStats} />
         <SummaryList title="Appareils" rows={deviceStats} />
       </div>
     </section>

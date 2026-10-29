@@ -2,6 +2,7 @@ import { styles } from "../adminStyles";
 import { Info } from "../AdminUi";
 import { formatDateTime, formatMoney } from "../../../utils/adminFormatters";
 import { toPaymentView } from "../../../utils/paymentViewAdapter";
+import { getReservationPriceBreakdown } from "../../../utils/reservationPriceBreakdown";
 
 const STATUS_LABELS = {
   pending: "À confirmer",
@@ -23,10 +24,33 @@ function formatManualPayment(manualPayment) {
 export default function PaymentBlock({ request, status, amounts }) {
   const payment = toPaymentView(request, amounts);
   const fullPayment = request?.payment_preference === "full";
+  const priceDetails = getReservationPriceBreakdown(request);
 
   return (
     <>
-      <h3 style={styles.subTitle}>Paiement du séjour</h3>
+      <h3 className="reservation-sheet-section-title">Composition du prix du séjour</h3>
+      {priceDetails ? (
+        <div className="reservation-price-grid" aria-label="Détail du prix contractuel">
+          {[
+            ["Hébergement", priceDetails.accommodation],
+            ["Forfait ménage", priceDetails.cleaning],
+            ["Taxe de séjour", priceDetails.touristTax],
+            ["Total contractuel", priceDetails.total],
+          ].map(([label, value]) => (
+            <div className="reservation-price-item" key={label}>
+              <span>{label}</span>
+              <strong>{formatMoney(value)}</strong>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="reservation-price-unavailable">
+          Ventilation contractuelle indisponible pour ce dossier (ancien format ou données incomplètes).
+          Le total affiché ci-dessous reste celui enregistré dans la réservation.
+        </p>
+      )}
+
+      <h3 className="reservation-sheet-section-title">Paiement du séjour</h3>
       <div style={styles.detailGrid}>
         <Info label="Statut demande" value={STATUS_LABELS[status] || status} />
         <Info label="Total séjour" value={formatMoney(payment.total)} />

@@ -1,65 +1,46 @@
-import { styles } from "../adminStyles";
-import { Info } from "../AdminUi";
 import { normalizeGuestLanguage } from "../../../../shared/guestLocale.js";
-import {
-  formatDate,
-  formatMoney,
-  getBalanceStatus,
-  getDepositStatus,
-  getRealPaidAmount,
-  getRequestName,
-} from "../../../utils/adminFormatters";
+import { formatDate, formatMoney, normalizeSource } from "../../../utils/adminFormatters";
+import { toPaymentView } from "../../../utils/paymentViewAdapter";
 
-const STATUS_LABELS = {
-  pending: "À confirmer",
-  accepted: "Acceptée",
-  deposit_paid: "Acompte payé",
-  paid: "Payée",
-  fully_paid: "Séjour soldé",
-  confirmed: "Confirmée",
-  refused: "Refusée",
-  cancelled: "Annulée",
-  expired: "Expirée",
-};
+const LANGUAGE_LABELS = { fr: "Français", en: "English", es: "Español" };
 
-export default function ReservationSummaryBlock({ reservation, status, amounts }) {
-  const fullPayment = reservation?.payment_preference === "full";
-  const cancelled = status === "cancelled";
+function bookingSourceLabel(reservation) {
+  const source = String(reservation?.source || "").toLowerCase();
+  if (source === "admin_personal") return "Personnelle";
+  if (source === "admin_client") return "Directe · admin";
+  return normalizeSource(reservation?.source || "site");
+}
+
+export default function ReservationSummaryBlock({ reservation, amounts }) {
+  const payment = toPaymentView(reservation, amounts);
+  // Snapshot postal de la réservation : ne pas le remplacer par l'adresse CRM actuelle.
+  const postalAddress = [
+    reservation.guest_address,
+    reservation.guest_postal_code,
+    reservation.guest_city,
+    reservation.guest_country,
+  ].map((value) => String(value ?? "").trim()).filter(Boolean).join(", ") || "–";
+  const items = [
+    ["Origine", bookingSourceLabel(reservation)],
+    ["Arrivée", formatDate(reservation.start_date)],
+    ["Départ", formatDate(reservation.end_date)],
+    ["Nuits", reservation.nights ?? "–"],
+    ["Adresse", postalAddress],
+    ["Total séjour", formatMoney(payment.total)],
+    ["Payé", formatMoney(payment.paid)],
+    ["Reste à encaisser", formatMoney(payment.remaining)],
+    ["Langue des emails", LANGUAGE_LABELS[normalizeGuestLanguage(reservation.communication_language)]],
+  ];
 
   return (
-    <section style={{ ...styles.panel, marginBottom: 18 }}>
-      <h3 style={styles.subTitle}>Résumé du dossier</h3>
-      <div style={styles.summaryGrid || styles.detailGrid}>
-        <Info label="Client" value={getRequestName(reservation)} />
-        <Info label="Téléphone" value={reservation.guest_phone || "-"} />
-        <Info label="Email" value={reservation.guest_email || "-"} />
-        <Info label="Langue emails" value={{ fr: "Français (FR)", en: "English (EN)", es: "Español (ES)" }[normalizeGuestLanguage(reservation.communication_language)]} />
-        <Info label="Adresse" value={[reservation.guest_address, reservation.guest_postal_code, reservation.guest_city, reservation.guest_country].filter(Boolean).join(", ") || "-"} />
-        <Info label="Statut" value={STATUS_LABELS[status] || status} />
-        <Info label="Arrivée" value={formatDate(reservation.start_date)} />
-        <Info label="Départ" value={formatDate(reservation.end_date)} />
-        <Info label="Nuits" value={reservation.nights ?? "-"} />
-        <Info label="Total séjour" value={formatMoney(amounts.total)} />
-        <Info
-          label="Acompte"
-          value={
-            cancelled
-              ? `non applicable — ${formatMoney(0)}`
-              : fullPayment
-                ? "non applicable"
-                : `${getDepositStatus(reservation)} — ${formatMoney(amounts.deposit)}`
-          }
-        />
-        <Info
-          label={fullPayment ? "Paiement total" : "Solde"}
-          value={
-            cancelled
-              ? `non applicable — ${formatMoney(0)}`
-              : `${getBalanceStatus(reservation)} — ${formatMoney(amounts.balance)}`
-          }
-        />
-        <Info label="Total payé" value={formatMoney(amounts.paid)} />
-        <Info label="Payé client réel" value={formatMoney(getRealPaidAmount(reservation))} />
+    <section className="reservation-sheet-summary" aria-label="Synthèse de la réservation">
+      <div className="reservation-summary-grid">
+        {items.map(([label, value]) => (
+          <div className="reservation-summary-item" key={label}>
+            <span>{label}</span>
+            <strong>{value ?? "–"}</strong>
+          </div>
+        ))}
       </div>
     </section>
   );

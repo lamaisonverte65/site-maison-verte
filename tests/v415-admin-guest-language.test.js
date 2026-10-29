@@ -47,7 +47,8 @@ test("R7 : endpoint propriétaire, POST uniquement, validation avant mutation", 
 test("R7 : sélection de langue indépendante de l'éditeur de réservation", () => {
   const panel = read("../src/components/admin/ReservationPanel.jsx");
   assert.match(panel, /GuestLanguagePreference booking=\{reservation\} onUpdated=\{onReservationUpdated\}/);
-  assert.match(panel, /!isEditing && permissions\?\.isOwner && request\?\.id && !request\?\.uid/);
+  assert.match(panel, /\{!isEditing && \(\s*<>[\s\S]*?<GuestLanguagePreference/);
+  assert.match(panel, /!isReadOnly && permissions\?\.isOwner && request\?\.id && !request\?\.uid/);
   assert.match(panel, /getBookingKind\(request\) !== "personal"/);
 });
 
@@ -62,7 +63,7 @@ test("R7 : interface n'envoie que identifiant et langue via la session Supabase"
 
 test("R7 : résumé affiche la langue sauvegardée, FR si réservation historique", () => {
   const summary = read("../src/components/admin/reservation/ReservationSummaryBlock.jsx");
-  assert.match(summary, /Langue emails/);
+  assert.match(summary, /Langue des emails/);
   assert.match(summary, /normalizeGuestLanguage\(reservation\.communication_language\)/);
   const adapter = read("../src/adapters/reservationViewAdapter.js");
   assert.match(adapter, /\.\.\.request/);

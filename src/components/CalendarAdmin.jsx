@@ -42,7 +42,7 @@ const COLORS = {
   airbnb: "#dc2626",          // Airbnb : rouge
   booking: "#2563eb",         // Booking : bleu
   pending: "#eab308",         // Demande en attente : jaune
-  accepted: "#dcfce7",        // Acceptée, attente paiement : vert très pâle
+  accepted: "#86efac",        // Directe acceptée, acompte en attente : vert clair opaque
   deposit_paid: "#22c55e",    // Acompte payé : vert clair / normal
   fully_paid: "#14532d",      // Solde payé / confirmé : vert foncé
   confirmed: "#14532d",
@@ -324,6 +324,11 @@ export default function CalendarAdmin({
           const isBooking = reservationSource.includes("booking");
           const isAirbnb = reservationSource.includes("airbnb");
           const color = isAdminPersonal ? COLORS.personal : isBooking ? COLORS.booking : isAirbnb ? COLORS.airbnb : getColor(status);
+          // Les demandes directes en attente de paiement utilisent un vert clair
+          // opaque avec un texte foncé. Ne jamais modifier Booking/Airbnb ni
+          // les statuts déjà payés.
+          const isAwaitingDirectPayment = !isAdminPersonal && !isBooking && !isAirbnb
+            && ["accepted", "deposit_pending", "payment_pending", "awaiting_payment"].includes(String(status).toLowerCase());
           const price = reservation.contract_total ?? reservation.owner_price ?? reservation.estimated_total;
           const prefix = isAdminPersonal
             ? "Perso"
@@ -342,6 +347,7 @@ export default function CalendarAdmin({
             end: reservation.end_date,
             backgroundColor: color,
             borderColor: color,
+            textColor: isAwaitingDirectPayment ? "#14532d" : undefined,
             extendedProps: {
               type: "booking_request",
               reservation,

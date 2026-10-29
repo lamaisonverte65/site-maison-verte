@@ -55,6 +55,7 @@ import { useCommunicationData } from "../hooks/useCommunicationData";
 import { useCrmData } from "../hooks/useCrmData";
 import { useAdminPermissions } from "../hooks/useAdminPermissions";
 import { useAdminUsers } from "../hooks/useAdminUsers";
+import { applyManualBookingDecision } from "../../shared/bookingDecisionGuards.js";
 
 
 const CalendarAdmin = lazy(() => import("../components/CalendarAdmin"));
@@ -401,25 +402,14 @@ export default function Admin() {
       }
 
       if (modal.type === "refuse") {
-        const { error } = await supabase.from("booking_requests").update({
-          status: "refused",
-          refused_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }).eq("id", request.id);
-        if (error) throw error;
+        await applyManualBookingDecision(supabase, request, "refused");
         await sendDecisionEmail(supabase, request, "refused", values.message);
         await logBookingEvent(supabase, request.id, "booking_refused", "Demande refusée", values.message, {});
         alert("Demande refusée et email envoyé.");
       }
 
       if (modal.type === "confirm") {
-        const { error } = await supabase.from("booking_requests").update({
-          status: "confirmed",
-          payment_status: request.payment_status || "manual_confirmed",
-          confirmed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }).eq("id", request.id);
-        if (error) throw error;
+        await applyManualBookingDecision(supabase, request, "confirmed");
         await supabase.from("booking_requests").update({ status: "expired", updated_at: new Date().toISOString() })
           .neq("id", request.id)
           .in("status", ["pending", "accepted"])
@@ -450,8 +440,10 @@ export default function Admin() {
         const amount = Number(values.price || 0);
         if (!amount || amount <= 0) return alert("Montant invalide.");
 
-        await createManualPayment(supabase, request, amount, values.reason || "solde", values.message);
-        alert("Lien de paiement créé, enregistré et email envoyé au client.");
+        const paymentResult = await createManualPayment(supabase, request, amount, values.reason || "solde", values.message);
+        alert(paymentResult.reused
+          ? "Ce lien Stripe est déjà actif. Aucun nouvel email n’a été envoyé ; utilise le renvoi vérifié si nécessaire."
+          : "Lien de paiement créé, enregistré et email envoyé au client.");
       }
 
       setModal(null);

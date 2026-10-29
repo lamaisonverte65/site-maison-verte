@@ -345,7 +345,7 @@ export default function ReservationPanel({
 
 
   return (
-    <div style={styles.reservationSheet}>
+    <div className="reservation-sheet" style={styles.reservationSheet}>
       <div className="reservation-sheet-heading">
         <ReservationHeader request={reservation} status={status} />
         {!isReadOnly && !isEditing && onEdit && (
@@ -381,13 +381,9 @@ export default function ReservationPanel({
 
       {!isEditing && (
         <>
-      {!isReadOnly && !isEditing && permissions?.isOwner && request?.id && !request?.uid && getBookingKind(request) !== "personal" && (
-        <GuestLanguagePreference booking={reservation} onUpdated={onReservationUpdated} />
-      )}
-
       {!isReadOnly && !isEditing && (
-        <section style={{ marginTop: "18px", padding: "14px", border: "1px solid #e5e7eb", borderRadius: "16px", background: "#ffffff" }}>
-          <h3 style={{ margin: "0 0 10px", fontSize: "1rem", color: "#334155" }}>Statut de la réservation</h3>
+        <section className="reservation-sheet-status" style={{ marginTop: "8px", padding: "12px", border: "1px solid #e5e7eb", borderRadius: "14px", background: "#ffffff" }}>
+          <h3 style={{ margin: "0 0 8px", fontSize: "0.95rem", color: "#334155" }}>Statut de la réservation</h3>
           <PermissionGate permissions={permissions} permission={ADMIN_PERMISSIONS.manageReservations}>
             <ReservationActionsBlock
               request={reservation}
@@ -401,13 +397,26 @@ export default function ReservationPanel({
         </section>
       )}
 
+      <section className="reservation-sheet-group reservation-sheet-communication" aria-label="Communication et messages voyageurs">
+        <h3 className="reservation-sheet-section-title">Communication et messages</h3>
+        <ReservationContactLinks request={reservation} onEmail={onEmail} onPhone={onPhone} onSms={onSms} />
+        {!isReadOnly && (
+          <PermissionGate permissions={permissions} permission={ADMIN_PERMISSIONS.viewCommunication}>
+            <CommunicationActions
+              context="reservation"
+              target={reservation}
+              onOpenCommunication={onOpenCommunication}
+              onEmail={() => onEmail?.(reservation.guest_email)}
+            />
+          </PermissionGate>
+        )}
+        <MessagesBlock request={reservation} housekeepingNotes={housekeepingNotes} />
+        {!isReadOnly && permissions?.isOwner && request?.id && !request?.uid && getBookingKind(request) !== "personal" && (
+          <GuestLanguagePreference booking={reservation} onUpdated={onReservationUpdated} />
+        )}
+      </section>
+
       <section className="reservation-sheet-group" aria-label="Client et séjour">
-      <ReservationContactLinks
-        request={reservation}
-        onEmail={onEmail}
-        onPhone={onPhone}
-        onSms={onSms}
-      />
       <CustomerBlock
         request={reservation}
         onOpenCustomer={onOpenCustomer}
@@ -455,27 +464,10 @@ export default function ReservationPanel({
       {!isReadOnly && <InvoiceBlock request={request} invoice={invoice} onRefresh={onInvoiceRefresh} onOpenInvoices={onOpenInvoices} />}
       </section>
 
-      <section className="reservation-sheet-group" aria-label="Messages et historique">
-      <MessagesBlock request={reservation} housekeepingNotes={housekeepingNotes} />
-
-      {!isReadOnly && (
-        <PermissionGate permissions={permissions} permission={ADMIN_PERMISSIONS.viewCommunication}>
-          <CommunicationActions
-            context="reservation"
-            target={reservation}
-            onOpenCommunication={onOpenCommunication}
-            onEmail={() => onEmail?.(reservation.guest_email)}
-          />
-        </PermissionGate>
-      )}
-
-      <TimelineBlock items={timelineItems} />
-
-      <HistoryBlock
-        payments={payments}
-        events={events}
-        emailLogs={emailLogs}
-      />
+      <section className="reservation-sheet-group reservation-sheet-history" aria-label="Historique du dossier">
+        <h3 className="reservation-sheet-section-title">Historique du dossier</h3>
+        <TimelineBlock items={timelineItems} />
+        <HistoryBlock payments={payments} events={events} emailLogs={emailLogs} />
       </section>
         </>
       )}

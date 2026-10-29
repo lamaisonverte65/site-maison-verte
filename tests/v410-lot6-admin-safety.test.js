@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { validateManualPaymentRequest } from "../netlify/functions/_lib/manual-payment-checkout.js";
 
 function source(path) {
   return readFileSync(path, "utf8");
@@ -44,10 +45,16 @@ test("Lot 6 shows manual payment actions only for payable statuses", () => {
 
 test("Lot 6 backend refuses manual Checkout creation for non-payable booking statuses", () => {
   const fn = source("netlify/functions/create-manual-payment-session.js");
-
-  assert.match(fn, /PAYABLE_MANUAL_STATUSES\s*=\s*new Set\(\["accepted",\s*"deposit_paid",\s*"paid"\]\)/);
-  const guard = fn.indexOf("PAYABLE_MANUAL_STATUSES.has");
-  const create = fn.indexOf("stripe.checkout.sessions.create(");
-  assert.ok(guard >= 0 && create > guard, "status guard must run before Stripe Checkout creation");
-  assert.match(fn, /n’est pas dans un état permettant de demander un paiement|n'est pas dans un état permettant de demander un paiement/);
+  const helper = source("netlify/functions/_lib/manual-payment-checkout.js");
+  assert.match(fn, /openManualPaymentCheckout\(\{/);
+  assert.match(helper, /const PAYABLE_STATUSES = new Set\(\["accepted", "deposit_paid", "paid"\]\)/);
+  assert.match(helper, /const amountCents = validateManualPaymentRequest\(booking, amount, reason\)/);
+  assert.ok(helper.indexOf("validateManualPaymentRequest(booking, amount, reason)") < helper.indexOf("stripe.checkout.sessions.create("));
+  for (const current of ["pending", "cancelled", "expired", "refused", "fully_paid", "confirmed"]) {
+    assert.throws(() => validateManualPaymentRequest({ status: current, contract_total: 100, deposit_rate: 0.30, deposit_basis: 100, deposit_amount: 30, amount_paid: 0 }, 10, "solde"),
+      /n’est pas dans un état permettant de demander un paiement/, current);
+  }
+  for (const current of ["accepted", "deposit_paid", "paid"]) {
+    assert.equal(validateManualPaymentRequest({ status: current, contract_total: 100, deposit_rate: 0.30, deposit_basis: 100, deposit_amount: 30, amount_paid: 0 }, 10, "solde"), 1000);
+  }
 });

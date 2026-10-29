@@ -20,6 +20,7 @@ test("manual payment has one server-side writer and persists the Stripe session 
   const admin = source("src/pages/Admin.jsx");
   const service = source("src/services/bookingActionsService.js");
   const fn = source("netlify/functions/create-manual-payment-session.js");
+  const helper = source("netlify/functions/_lib/manual-payment-checkout.js");
 
   const adminBlock = admin.slice(admin.indexOf('if (modal.type === "manual_payment")'), admin.indexOf('setModal(null)'));
   assert.doesNotMatch(adminBlock, /supabase\.from\("booking_requests"\)\.update/);
@@ -27,7 +28,15 @@ test("manual payment has one server-side writer and persists the Stripe session 
   const serviceBlock = service.slice(service.indexOf("export async function createManualPayment"), service.indexOf("export async function refundBookingPayment"));
   assert.doesNotMatch(serviceBlock, /guestEmail|guestFirstName|guestLastName|startDate|endDate/);
 
-  assert.ok(fn.indexOf('manual_payment_stripe_session_id: session.id') < fn.indexOf('await sendManualPaymentEmail({'));
+  assert.match(fn, /openManualPaymentCheckout\(\{/);
+  assert.match(fn, /sendEmail: \(latest, session\) => sendManualPaymentEmail\(\{/);
+  assert.match(helper, /manual_payment_stripe_session_id: session\.id/);
+  const store = helper.indexOf('const saved = await saveSessionIfUnchanged(');
+  const verify = helper.indexOf('const latest = await validateStoredManualPaymentForEmail(', store);
+  const send = helper.indexOf('await sendEmail(latest, session)', store);
+  assert.ok(store >= 0 && verify > store && send > verify, "save, verify, then send");
+  assert.match(helper, /\.eq\("status", booking\.status\)/);
+  assert.match(helper, /\.eq\("updated_at", booking\.updated_at\)/);
 });
 
 test("balance payment persists its Stripe session id and RPC validates the exact current session", () => {
@@ -66,15 +75,17 @@ test("Lot 4 restores tourist tax collection and rejects V4.10 manual overpayment
 });
 
 test("obsolete Checkout sessions are expired before replacement and on booking termination", () => {
-  const manual = source("netlify/functions/create-manual-payment-session.js");
+  const manual = source("netlify/functions/_lib/manual-payment-checkout.js");
   const balance = source("netlify/functions/_lib/balance-checkout.js");
   const expired = source("netlify/functions/check-expired-bookings.js");
   const deleted = source("netlify/functions/delete-booking-request.js");
   const refund = source("netlify/functions/refund-booking-payment.js");
 
-  assert.match(manual, /toCents\(numericAmount\) > toCents\(remainingDue\)/);
-  assert.ok(manual.indexOf("toCents(numericAmount) > toCents(remainingDue)") < manual.indexOf("stripe.checkout.sessions.create("));
-  assert.ok(manual.indexOf("expireOpenCheckoutSession(") < manual.indexOf("stripe.checkout.sessions.create("));
+  assert.match(manual, /amountCents > remainingCents/);
+  assert.ok(manual.indexOf("const amountCents = validateManualPaymentRequest(") < manual.indexOf("stripe.checkout.sessions.create("));
+  assert.ok(manual.indexOf("await expireOpen(stripe, oldSession)") < manual.indexOf("stripe.checkout.sessions.create("));
+  assert.match(manual, /await discardOrphan\(stripe, session\)/);
+  assert.match(manual, /if \(oldSession\?\.status === "complete" \|\| oldSession\?\.payment_status === "paid"\)/);
   assert.ok(balance.indexOf("expireOpenCheckoutSession(") < balance.indexOf("stripe.checkout.sessions.create("));
   assert.match(expired, /expireBookingOpenCheckoutSessions\(stripe, booking\)/);
   assert.ok(expired.indexOf("expireBookingOpenCheckoutSessions(stripe, booking)") < expired.indexOf(".update({"));

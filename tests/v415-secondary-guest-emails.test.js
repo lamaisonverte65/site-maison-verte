@@ -84,7 +84,9 @@ test('R8 integrations use booking language; no changes to Stripe checkout, mail 
   assert.match(arrival,/recoverArrivalLink\(input/);
   assert.match(arrival,/const opaqueKey/);
   assert.match(read('check-expired-bookings.js'),/sendOwner/);
-  assert.match(read('create-manual-payment-session.js'),/stripe\.checkout\.sessions\.create/);
+  assert.match(read('create-manual-payment-session.js'),/openManualPaymentCheckout\(\{/);
+  assert.match(read('_lib/manual-payment-checkout.js'),/stripe\.checkout\.sessions\.create/);
+  assert.doesNotMatch(read('create-manual-payment-session.js'),/stripe\.checkout\.sessions\.create/);
   assert.match(read('create-cleaning-payment-session.js'),/stripe\.checkout\.sessions\.create/);
   assert.match(read('_lib/additional-charge-email.js'),/retry_payload:/);
 });

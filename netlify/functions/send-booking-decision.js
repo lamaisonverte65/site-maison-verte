@@ -7,6 +7,7 @@ import { resendEmail } from "./_lib/resend-email.js";
 import { resolveBookingContractUrl } from "./_lib/contract-version.js";
 import { buildLocalizedBookingDecision } from "./_lib/guest-booking-decision.js";
 import { emailLanguageForAudience } from "../../shared/guestLocale.js";
+import { isKnownBookingDecision, isCurrentBookingDecision, isDecisionStillCurrent } from "../../shared/bookingDecisionGuards.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -133,8 +134,12 @@ export async function handler(event) {
     const { bookingId, type, ownerMessage } = data;
 
     if (!bookingId) return { statusCode: 400, body: JSON.stringify({ error: "bookingId obligatoire." }) };
+    if (!isKnownBookingDecision(type)) return { statusCode: 400, body: JSON.stringify({ error: "Type de message invalide." }) };
     const { data: storedBooking, error: bookingError } = await supabase.from("booking_requests").select("*").eq("id", bookingId).single();
     if (bookingError || !storedBooking?.guest_email) return { statusCode: 404, body: JSON.stringify({ error: "Réservation introuvable." }) };
+    if (!isCurrentBookingDecision(type, storedBooking)) {
+      return { statusCode: 409, body: JSON.stringify({ error: "Le statut de la réservation a changé. Email non envoyé ; actualisez la fiche." }) };
+    }
     const recipientEmail = storedBooking.guest_email;
     const safeOwnerMessage = escapeHtml(ownerMessage || "").replace(/\r?\n/g, "<br />");
     const contractUrl = resolveBookingContractUrl(storedBooking.contract_url);
@@ -457,6 +462,12 @@ export async function handler(event) {
         subject,
         html,
       };
+    // Relecture juste avant l'envoi : un paiement, une annulation ou un
+    // changement de destinataire/lien Stripe intervenu pendant la préparation
+    // ne doit pas déclencher un email de décision périmé.
+    if (!await isDecisionStillCurrent(supabase, type, storedBooking)) {
+      return { statusCode: 409, body: JSON.stringify({ error: "Réservation modifiée pendant la préparation. Email non envoyé ; actualisez la fiche." }) };
+    }
     const response = await resendEmail(retryPayload);
 
     if (!response.ok) {

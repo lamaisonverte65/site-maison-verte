@@ -3,12 +3,19 @@ import { createClient } from "@supabase/supabase-js";
 import { ADMIN_PERMISSIONS } from "../../shared/adminPermissions.js";
 import { authorizationResponse, authorizeAdminRequest } from "./_lib/admin-auth.js";
 import { createBalancePaymentUrl } from "./_lib/balance-link.js";
-import { contractualTotal, recordedPaidAmount, remainingContractualDue } from "./_lib/booking-financial-authority.js";
+import { remainingContractualDue } from "./_lib/booking-financial-authority.js";
 import { resendEmail } from "./_lib/resend-email.js";
 import { emailLanguageForAudience } from "../../shared/guestLocale.js";
 import { buildLocalizedBalanceEmail } from "./_lib/guest-scheduled-emails.js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+// Meme perimetre que les relances automatiques : aucun email de solde pour
+// une demande non confirmee, un sejour termine/annule ou un solde deja paye.
+const BALANCE_REMINDER_STATUSES = new Set(["deposit_paid", "paid"]);
+const STOP_BALANCE_STATUSES = new Set(["paid", "remboursé", "rembourse", "annulé", "annule", "cancelled"]);
+const BALANCE_REMINDER_STEPS = new Set(["request", "reminder_1", "reminder_2", "urgent"]);
+const normalizeStatus = (value) => String(value || "").trim().toLowerCase();
 
 function formatDate(value) {
   if (!value) return "-";
@@ -115,12 +122,17 @@ export async function handler(event) {
   try {
     const { bookingId, step = "request" } = JSON.parse(event.body || "{}");
     if (!bookingId) return { statusCode: 400, body: JSON.stringify({ error: "bookingId manquant" }) };
+    if (!BALANCE_REMINDER_STEPS.has(step)) {
+      return { statusCode: 400, body: JSON.stringify({ error: "Etape de relance invalide." }) };
+    }
 
     const { data: booking, error } = await supabase.from("booking_requests").select("*").eq("id", bookingId).single();
     if (error) throw error;
+    if (!booking || !BALANCE_REMINDER_STATUSES.has(normalizeStatus(booking.status))
+        || STOP_BALANCE_STATUSES.has(normalizeStatus(booking.balance_status))) {
+      return { statusCode: 409, body: JSON.stringify({ error: "Ce dossier ne permet plus d'envoyer une relance de solde." }) };
+    }
 
-    const total = contractualTotal(booking);
-    const alreadyPaid = recordedPaidAmount(booking);
     const balance = remainingContractualDue(booking);
 
     if (!balance || balance <= 0) return { statusCode: 400, body: JSON.stringify({ error: "Aucun solde à payer" }) };
@@ -139,8 +151,20 @@ export async function handler(event) {
     if (step === "reminder_2") updatePayload.balance_reminder_2_sent_at = now;
     if (step === "urgent") updatePayload.balance_alert_sent_at = now;
 
-    const { error: updateError } = await supabase.from("booking_requests").update(updatePayload).eq("id", booking.id);
+    // Lecture concurrente : une annulation/un paiement peut intervenir pendant
+    // la preparation. Sans ecriture effective, ne jamais envoyer l'email.
+    let update = supabase.from("booking_requests").update(updatePayload)
+      .eq("id", booking.id)
+      .eq("status", booking.status);
+    update = booking.balance_status == null
+      ? update.is("balance_status", null)
+      : update.eq("balance_status", booking.balance_status);
+    update = booking.updated_at == null
+      ? update.is("updated_at", null)
+      : update.eq("updated_at", booking.updated_at);
+    const { data: updated, error: updateError } = await update.select("id").maybeSingle();
     if (updateError) throw updateError;
+    if (!updated) return { statusCode: 409, body: JSON.stringify({ error: "Le dossier a changé ; relance non envoyée." }) };
 
     await sendBalanceEmail(booking, paymentLink, balance, step);
 
