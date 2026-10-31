@@ -1,9 +1,9 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { authorizeAdminRequest, authorizationResponse } from "./_lib/admin-auth.js";
-import { expireOpenCheckoutSession } from "./_lib/stripe-checkout-session.js";
 import { sendAdditionalChargeEmail } from "./_lib/additional-charge-email.js";
 import { appendGuestLanguage } from "../../shared/guestLocale.js";
+import { openSpecialPaymentCheckout, SpecialPaymentCheckoutError } from "./_lib/special-payment-checkout.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(
@@ -40,57 +40,50 @@ export async function handler(event) {
       return json(409, { error: "Aucune adresse email client n’est renseignée pour cette réservation." });
     }
 
-    if (charge.stripe_session_id) await expireOpenCheckoutSession(stripe, charge.stripe_session_id);
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      mode: "payment",
-      customer_email: guestEmail,
-      metadata: {
-        booking_id: booking.id,
-        payment_type: "manual",
-        manual_reason: "additional_charge",
-        additional_charge_id: charge.id,
-        additional_charge_category: charge.category,
-        additional_charge_reason: charge.reason_label,
-        manual_amount: String(charge.amount),
-      },
-      line_items: [{
-        price_data: {
-          currency: "eur",
-          product_data: {
-            name: `${charge.reason_label} - La Maison Verte`,
-            description: `${dateFr(booking.start_date)} → ${dateFr(booking.end_date)}`,
-          },
-          unit_amount: Math.round(Number(charge.amount) * 100),
+    const result = await openSpecialPaymentCheckout({
+      kind: "additional_charge", record: charge, booking, stripe, supabase,
+      createParameters: () => ({
+        payment_method_types: ["card"],
+        mode: "payment",
+        customer_email: guestEmail,
+        metadata: {
+          booking_id: booking.id,
+          payment_type: "manual",
+          manual_reason: "additional_charge",
+          additional_charge_id: charge.id,
+          additional_charge_category: charge.category,
+          additional_charge_reason: charge.reason_label,
+          manual_amount: String(charge.amount),
         },
-        quantity: 1,
-      }],
-      success_url: appendGuestLanguage("https://lamaisonverte65.fr/success?session_id={CHECKOUT_SESSION_ID}", booking.communication_language),
-      cancel_url: appendGuestLanguage("https://lamaisonverte65.fr/cancel", booking.communication_language),
+        line_items: [{
+          price_data: {
+            currency: "eur",
+            product_data: {
+              name: `${charge.reason_label} - La Maison Verte`,
+              description: `${dateFr(booking.start_date)} → ${dateFr(booking.end_date)}`,
+            },
+            unit_amount: Math.round(Number(charge.amount) * 100),
+          },
+          quantity: 1,
+        }],
+        success_url: appendGuestLanguage("https://lamaisonverte65.fr/success?session_id={CHECKOUT_SESSION_ID}", booking.communication_language),
+        cancel_url: appendGuestLanguage("https://lamaisonverte65.fr/cancel", booking.communication_language),
+      }),
+      sendEmail: ({ record: currentCharge, booking: currentBooking, session }) =>
+        sendAdditionalChargeEmail({
+          booking: currentBooking, charge: currentCharge, paymentLink: session.url, supabase,
+          idempotencyKey: `lmv:additional:${currentCharge.id}:${session.id}`,
+        }),
     });
-
-    const now = new Date().toISOString();
-    const { data: updated, error: updateError } = await supabase.from("booking_additional_charges").update({
-      status: "payment_requested",
-      stripe_session_id: session.id,
-      payment_link: session.url,
-      payment_requested_at: now,
-      cancelled_at: null,
-      updated_at: now,
-    }).eq("id", charge.id).in("status", ["draft", "payment_requested"]).select("*").single();
-    if (updateError) {
-      try { await stripe.checkout.sessions.expire(session.id); } catch (_) {}
-      throw updateError;
-    }
-
-    const emailResult = await sendAdditionalChargeEmail({ booking: { ...booking, guest_email: guestEmail }, charge: updated, paymentLink: session.url, supabase });
+    const emailResult = result.emailResult;
+    const updated = result.record;
+    const session = result.session;
     await supabase.from("booking_events").insert([{
       booking_request_id: booking.id,
       event_type: "additional_charge_payment_requested",
       label: "Paiement complémentaire demandé",
       message: `${updated.reason_label} — ${Number(updated.amount).toFixed(2)} €`,
-      metadata: { additionalChargeId: updated.id, category: updated.category, amount: Number(updated.amount), sessionId: session.id },
+      metadata: { additionalChargeId: updated.id, category: updated.category, amount: Number(updated.amount), sessionId: session.id, reused: result.reused },
     }]);
 
     return json(emailResult.sent ? 200 : 202, {
@@ -99,8 +92,10 @@ export async function handler(event) {
       url: session.url,
       sessionId: session.id,
       notificationPending: !emailResult.sent,
+      reused: result.reused,
     });
   } catch (error) {
+    if (error instanceof SpecialPaymentCheckoutError) return json(error.statusCode, { error: error.message });
     console.error("Erreur create-additional-charge-session:", error);
     return json(500, { error: "Impossible de créer le paiement complémentaire." });
   }

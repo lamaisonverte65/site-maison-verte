@@ -1125,22 +1125,6 @@ export default function MaisonVerte() {
                   <p style={{ color: "#555", lineHeight: "1.7", marginTop: 0 }}>
                     {reviewCopy?.noReviews || "Les premiers avis directs seront bientôt affichés ici."}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => setShowReviewForm(true)}
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      color: "#1f6f3d",
-                      fontWeight: "700",
-                      textDecoration: "none",
-                      cursor: "pointer",
-                      padding: 0,
-                      fontSize: "1rem",
-                    }}
-                  >
-                    {reviewCopy?.leave || "Laisser un avis →"}
-                  </button>
                 </div>
               ) : (
                 publishedReviews.slice(0, 3).map((review) => {
@@ -1194,6 +1178,27 @@ export default function MaisonVerte() {
               )}
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              setShowReviewForm(true);
+              setTimeout(() => document.getElementById("laisser-un-avis")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+            }}
+            style={{
+              display: "inline-block",
+              marginTop: "20px",
+              padding: "12px 20px",
+              border: "none",
+              borderRadius: "999px",
+              background: "#1f6f3d",
+              color: "white",
+              fontSize: "1rem",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            {reviewCopy?.leaveOnSite || "Laisser un avis sur notre site →"}
+          </button>
         </div>
         )}
 
@@ -1428,7 +1433,7 @@ export default function MaisonVerte() {
               </div>
 
               <p>
-                <strong>{reviewCopy?.googleCount || "5,0/5 · 2 avis Google"}</strong>
+                <strong>{reviewCopy?.googleCount || "5,0/5 · 3 avis Google"}</strong>
                 <br />
                 {reviewCopy?.googleThanks || "Merci aux voyageurs qui ont déjà partagé leur expérience."}
               </p>

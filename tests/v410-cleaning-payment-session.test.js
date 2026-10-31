@@ -15,5 +15,7 @@ test('cleaning payment session is owner-only and derives amount from cleaning is
 
 test('cleaning payment session does not write manual payment fields on booking_requests', () => {
   assert.doesNotMatch(source, /manual_payment_amount|manual_payment_link|manual_payment_reason|manual_payment_status|manual_payment_stripe_session_id/);
-  assert.match(source, /status:\s*"payment_requested"/);
+  const checkout = fs.readFileSync('netlify/functions/_lib/special-payment-checkout.js', 'utf8');
+  assert.match(checkout, /status:\s*"payment_requested"/);
+  assert.match(source, /openSpecialPaymentCheckout/);
 });

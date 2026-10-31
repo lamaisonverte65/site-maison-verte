@@ -25,7 +25,7 @@ export function buildAdditionalChargeEmail({ booking, charge, paymentLink }) {
     : buildLocalizedAdditionalChargeEmail({ language, booking, charge, paymentLink });
 }
 
-export async function sendAdditionalChargeEmail({ booking, charge, paymentLink, supabase }) {
+export async function sendAdditionalChargeEmail({ booking, charge, paymentLink, supabase, idempotencyKey = null }) {
   const { subject, html } = buildAdditionalChargeEmail({ booking, charge, paymentLink });
   const retryPayload = {
     from: "La Maison Verte <contact@lamaisonverte65.fr>",
@@ -34,7 +34,7 @@ export async function sendAdditionalChargeEmail({ booking, charge, paymentLink, 
     subject,
     html,
   };
-  const response = await resendEmail(retryPayload);
+  const response = await resendEmail(retryPayload, { idempotencyKey });
   let providerId = null;
   let errorMessage = null;
   if (response.ok) {

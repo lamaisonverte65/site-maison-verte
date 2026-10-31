@@ -55,6 +55,13 @@ export function retryRelevance(row, booking) {
   // Une reprise de lien manuel doit toujours interroger Stripe. Le cron de
   // retry ne dispose pas de cette vérification : renvoi uniquement via l'action
   // admin sécurisée, jamais à partir d'un ancien HTML stocké.
+  // Les liens Stripe de ménage et de frais complémentaires doivent également
+  // être revérifiés auprès de Stripe avant tout renvoi : jamais de replay du
+  // HTML sauvegardé dans email_logs après remplacement ou paiement.
+  if (type === 'post_stay_cleaning_payment' || type === 'additional_charge_payment') {
+    return { allowed: false, reason: 'lien Stripe complémentaire à revérifier avant renvoi' };
+  }
+
   if (type.startsWith('manual_payment:') || type === 'manual_payment_stored_link') {
     return { allowed: false, reason: 'lien de paiement manuel à revérifier sur Stripe avant renvoi' };
   }

@@ -9,6 +9,20 @@ export async function handler(event) {
   if (event.httpMethod !== "POST") return json(405, { error: "Method Not Allowed" });
   try {
     const input = JSON.parse(event.body || "{}");
+    const allowed = new Set(["startDate", "endDate", "adultsCount", "childrenCount", "cleaningOption", "promotionCode"]);
+    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(key => !allowed.has(key))) {
+      return json(400, { error: "Paramètres du devis invalides." });
+    }
+    // Ne jamais laisser un appel public utiliser financialContext : il est
+    // réservé aux recalculs de réservation effectués côté serveur.
+    // Vérifier la borne AVANT de générer les nuits (protection contre un
+    // intervalle de plusieurs années soumis par un robot).
+    const from = Date.parse(`${input.startDate}T12:00:00Z`);
+    const to = Date.parse(`${input.endDate}T12:00:00Z`);
+    const durationMs = to - from;
+    if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs > 60 * 86400000) {
+      return json(400, { error: "Durée maximale : 60 nuits." });
+    }
     const quote = await calculatePublicBookingQuote(supabase, input);
     return json(200, {
       accommodationGross: centsToEuros(quote.accommodationGrossCents),

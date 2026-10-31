@@ -45,17 +45,9 @@ async function findExistingCustomer({ customerId, email, phone, firstName, lastN
     if (data) return data;
   }
 
-  if (firstName && lastName) {
-    const { data, error } = await supabase
-      .from("customers")
-      .select("*")
-      .ilike("first_name", firstName)
-      .ilike("last_name", lastName)
-      .maybeSingle();
-    if (error && error.code !== "PGRST116") throw error;
-    if (data) return data;
-  }
-
+  // Un prénom et un nom ne prouvent pas l'identité : deux voyageurs peuvent
+  // être homonymes. Sans ID CRM, email ou téléphone concordant, créer une fiche
+  // distincte plutôt que modifier par erreur les données d'un tiers.
   return null;
 }
 

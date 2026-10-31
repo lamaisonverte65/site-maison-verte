@@ -87,7 +87,8 @@ test('R8 integrations use booking language; no changes to Stripe checkout, mail 
   assert.match(read('create-manual-payment-session.js'),/openManualPaymentCheckout\(\{/);
   assert.match(read('_lib/manual-payment-checkout.js'),/stripe\.checkout\.sessions\.create/);
   assert.doesNotMatch(read('create-manual-payment-session.js'),/stripe\.checkout\.sessions\.create/);
-  assert.match(read('create-cleaning-payment-session.js'),/stripe\.checkout\.sessions\.create/);
+  assert.match(read('create-cleaning-payment-session.js'),/openSpecialPaymentCheckout/);
+  assert.match(read('_lib/special-payment-checkout.js'),/stripe\.checkout\.sessions\.create/);
   assert.match(read('_lib/additional-charge-email.js'),/retry_payload:/);
 });
 test('R8 Spanish and English localized subjects recorded with retry payloads',()=>{

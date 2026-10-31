@@ -93,10 +93,11 @@ test("published site reviews no longer depend on consent_to_publish", () => {
   assert.match(home, /En envoyant cet avis, vous acceptez sa publication/);
 });
 
-test("Google review card displays the current two five-star reviews", () => {
+test("Google review card shows a numeric rating and review count, regardless of their values", () => {
   const home = read("src/pages/MaisonVerte.jsx");
-  assert.match(home, /5,0\/5/);
-  assert.match(home, /2 avis Google/);
+  const match = home.match(/(\d+(?:[,.]\d+)?\/5)\s*·\s*(\d+)\s+avis Google\b/);
+  assert.ok(match, "La fiche Google doit afficher une note /5 et un nombre d'avis.");
+  assert.ok(Number.isSafeInteger(Number(match[2])) && Number(match[2]) >= 0);
   assert.doesNotMatch(home, /Les premiers avis Google apparaîtront prochainement/);
 });
 

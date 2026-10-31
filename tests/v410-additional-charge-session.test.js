@@ -21,7 +21,9 @@ test('additional charge email contains free reason, amount, owner message and pa
 
 test('server rejects a missing client email before creating any Stripe session', () => {
   const missingEmailCheck = endpoint.indexOf('Aucune adresse email client n’est renseignée pour cette réservation.');
-  const stripeCreate = endpoint.indexOf('stripe.checkout.sessions.create');
+  const sharedCheckout = endpoint.indexOf('openSpecialPaymentCheckout({');
+  const helper = fs.readFileSync('netlify/functions/_lib/special-payment-checkout.js','utf8');
   assert.ok(missingEmailCheck >= 0, 'missing-email guard must exist');
-  assert.ok(stripeCreate > missingEmailCheck, 'missing-email guard must run before Stripe session creation');
+  assert.ok(sharedCheckout > missingEmailCheck, 'missing-email guard must run before shared Stripe Checkout creation');
+  assert.match(helper, /stripe\.checkout\.sessions\.create/);
 });

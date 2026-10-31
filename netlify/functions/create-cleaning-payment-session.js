@@ -2,10 +2,10 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { authorizeAdminRequest, authorizationResponse } from "./_lib/admin-auth.js";
 import { escapeHtml } from "./_lib/html.js";
-import { expireOpenCheckoutSession } from "./_lib/stripe-checkout-session.js";
 import { resendEmail } from "./_lib/resend-email.js";
 import { emailLanguageForAudience, appendGuestLanguage } from "../../shared/guestLocale.js";
 import { buildLocalizedCleaningEmail } from "./_lib/guest-secondary-emails.js";
+import { openSpecialPaymentCheckout, SpecialPaymentCheckoutError } from "./_lib/special-payment-checkout.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(
@@ -37,7 +37,7 @@ async function logEmail({ bookingId, toEmail, subject, status, errorMessage = nu
   if (error) console.error("Erreur log email ménage après séjour:", error.message);
 }
 
-async function sendCleaningPaymentEmail({ booking, issue, paymentLink }) {
+async function sendCleaningPaymentEmail({ booking, issue, paymentLink, idempotencyKey }) {
   const name = [booking.guest_first_name, booking.guest_last_name].filter(Boolean).join(" ").trim();
   const subject = "Ménage après séjour à régler - La Maison Verte";
   const html = `<div style="font-family:Arial,sans-serif;line-height:1.6">
@@ -61,7 +61,7 @@ async function sendCleaningPaymentEmail({ booking, issue, paymentLink }) {
     subject: emailSubject,
     html: emailHtml,
   };
-  const response = await resendEmail(retryPayload);
+  const response = await resendEmail(retryPayload, { idempotencyKey });
   if (!response.ok) {
     const errorText = await response.text();
     await logEmail({ bookingId: booking.id, toEmail: booking.guest_email, subject: emailSubject, status: "error", errorMessage: errorText, retryPayload });
@@ -103,53 +103,48 @@ export async function handler(event) {
       return json(409, { error: "Le montant ménage snapshoté est absent ou invalide." });
     }
 
-    if (issue.stripe_session_id) await expireOpenCheckoutSession(stripe, issue.stripe_session_id);
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      mode: "payment",
-      customer_email: booking.guest_email,
-      metadata: {
-        booking_id: booking.id,
-        payment_type: "manual",
-        manual_reason: "cleaning",
-        cleaning_issue_id: issue.id,
-        manual_amount: String(amount),
-      },
-      line_items: [{
-        price_data: {
-          currency: "eur",
-          product_data: {
-            name: "Ménage après séjour - La Maison Verte",
-            description: `${formatDate(booking.start_date)} → ${formatDate(booking.end_date)}`,
-          },
-          unit_amount: Math.round(amount * 100),
+    const result = await openSpecialPaymentCheckout({
+      kind: "cleaning", record: issue, booking, stripe, supabase,
+      createParameters: () => ({
+        payment_method_types: ["card"],
+        mode: "payment",
+        customer_email: booking.guest_email,
+        metadata: {
+          booking_id: booking.id,
+          payment_type: "manual",
+          manual_reason: "cleaning",
+          cleaning_issue_id: issue.id,
+          manual_amount: String(amount),
         },
-        quantity: 1,
-      }],
-      success_url: appendGuestLanguage("https://lamaisonverte65.fr/success?session_id={CHECKOUT_SESSION_ID}", booking.communication_language),
-      cancel_url: appendGuestLanguage("https://lamaisonverte65.fr/cancel", booking.communication_language),
+        line_items: [{
+          price_data: {
+            currency: "eur",
+            product_data: {
+              name: "Ménage après séjour - La Maison Verte",
+              description: `${formatDate(booking.start_date)} → ${formatDate(booking.end_date)}`,
+            },
+            unit_amount: Math.round(amount * 100),
+          },
+          quantity: 1,
+        }],
+        success_url: appendGuestLanguage("https://lamaisonverte65.fr/success?session_id={CHECKOUT_SESSION_ID}", booking.communication_language),
+        cancel_url: appendGuestLanguage("https://lamaisonverte65.fr/cancel", booking.communication_language),
+      }),
+      sendEmail: ({ record: currentIssue, booking: currentBooking, session }) =>
+        sendCleaningPaymentEmail({
+          booking: currentBooking, issue: currentIssue, paymentLink: session.url,
+          idempotencyKey: `lmv:cleaning:${currentIssue.id}:${session.id}`,
+        }),
     });
-
-    const now = new Date().toISOString();
-    const { data: updatedIssue, error: updateError } = await supabase.from("booking_cleaning_issues").update({
-      status: "payment_requested",
-      stripe_session_id: session.id,
-      payment_requested_at: now,
-      updated_at: now,
-    }).eq("id", issue.id).in("status", ["confirmed", "payment_requested"]).select("*").single();
-    if (updateError) {
-      try { await stripe.checkout.sessions.expire(session.id); } catch (_) {}
-      throw updateError;
-    }
-
-    const emailResult = await sendCleaningPaymentEmail({ booking, issue: updatedIssue, paymentLink: session.url });
+    const emailResult = result.emailResult;
+    const updatedIssue = result.record;
+    const session = result.session;
     await supabase.from("booking_events").insert([{
       booking_request_id: booking.id,
       event_type: "post_stay_cleaning_payment_requested",
       label: "Ménage après séjour demandé",
       message: `Lien de paiement ménage envoyé pour ${formatMoney(amount)}`,
-      metadata: { cleaningIssueId: issue.id, sessionId: session.id, amount },
+      metadata: { cleaningIssueId: issue.id, sessionId: session.id, amount, reused: result.reused },
     }]);
 
     return json(emailResult.sent ? 200 : 202, {
@@ -158,8 +153,10 @@ export async function handler(event) {
       sessionId: session.id,
       amount,
       notificationPending: !emailResult.sent,
+      reused: result.reused,
     });
   } catch (error) {
+    if (error instanceof SpecialPaymentCheckoutError) return json(error.statusCode, { error: error.message });
     console.error("Erreur create-cleaning-payment-session:", error);
     return json(500, { error: "Impossible de créer le paiement ménage." });
   }
