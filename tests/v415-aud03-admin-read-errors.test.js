@@ -67,10 +67,11 @@ test("AUD-03 : échec paiements visible, factures et autres rubriques encore cha
   assert.deepEqual(getUnavailableAdminSources("summary", result.loadErrors), ["payments"]);
 });
 
-test("AUD-03 : même sans erreur SQL, data=null n'est pas un tableau vide valide", async () => {
+test("AUD-03 : email_logs indisponible ne masque plus Communication, mais reste signalé dans les réservations", async () => {
   const result = await fetchAdminData(mockSupabase({ email_logs: { data: null, error: null } }));
   assert.match(result.loadErrors.email_logs, /sans liste/);
-  assert.deepEqual(getUnavailableAdminSources("communication", result.loadErrors), ["email_logs"]);
+  assert.deepEqual(getUnavailableAdminSources("communication", result.loadErrors), []);
+  assert.deepEqual(getUnavailableAdminSources("reservation_details", result.loadErrors), ["email_logs"]);
   assert.deepEqual(getUnavailableAdminSources("requests", result.loadErrors), []);
 });
 

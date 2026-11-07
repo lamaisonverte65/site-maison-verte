@@ -119,7 +119,7 @@ Stripe ne doit jamais remplacer ce pointeur Supabase.
 - `manual` : conservation permanente sauf suppression explicite ;
 - `baseline` : conservation permanente.
 
-**La rotation R31.1 est déployée en mode `--dry-run` : aucune sauvegarde n'est supprimée automatiquement.** Son rapport propose les dossiers à retirer. La suppression réelle ne devra être activée qu'après validation du rapport et vérification d'une copie locale restaurable. Le mode `--apply` nécessite `R31_ROTATION_APPLY_ACK` explicite.
+**Activation R31.2 :** le workflow planifié exécute un `--dry-run`, puis `--apply` uniquement si les vérifications réussissent. Les anciennes sauvegardes éligibles seront supprimées réellement. Le code impose `R31_ROTATION_APPLY_ACK`, un pointeur `latest.json` valide, une baseline vérifiée et un maximum de 25 suppressions par source et par exécution. Aucune rotation n’est déclenchée lors des lancements manuels du workflow de sauvegarde.
 
 La rotation ignore les dossiers non vérifiés, protège le pointeur `latest.json`, exige une baseline validée et n'efface jamais `manual`, `yearly`, `baseline`, `.incoming` ou `03_Documents`.
 

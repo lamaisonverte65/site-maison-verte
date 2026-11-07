@@ -8,6 +8,7 @@ import { calculatePublicBookingQuote, quoteToBookingMoney } from "./_lib/booking
 import { resendEmail } from "./_lib/resend-email.js";
 import { normalizeGuestLanguage, emailLanguageForAudience, appendGuestLanguage } from "../../shared/guestLocale.js";
 import { buildLocalizedAdminBookingPaymentEmail } from "./_lib/guest-secondary-emails.js";
+import { adminBookingPaymentMode, adminBookingPaymentState } from "./_lib/admin-booking-modes.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(
@@ -186,6 +187,41 @@ async function sendAdminBookingPaymentEmail({ booking, paymentLink, paymentType,
   await logEmail({ bookingId: booking.id, emailType: `admin_booking_payment:${paymentType}`, toEmail: booking.guest_email, subject: emailSubject, status: "sent", providerId: responseData?.id || null });
 }
 
+// Confirmation d'une réservation administrateur sans lien de paiement Stripe.
+// Le modèle n'implique jamais que les espèces sont déjà encaissées.
+async function sendAdminBookingInformationEmail({ booking, bookingKind, paymentMethod }) {
+  if (!booking?.guest_email) return;
+  const language = emailLanguageForAudience(booking);
+  const personal = bookingKind === "personal";
+  const cash = paymentMethod === "cash";
+  const translations = {
+    fr: { subject: "Confirmation de votre séjour — La Maison Verte", greeting: "Bonjour", intro: "Nous avons enregistré votre séjour à La Maison Verte à Arreau.", arrival: "Arrivée", departure: "Départ", nights: "Nuits", total: "Total du séjour", cash: "Montant à régler en espèces à l'arrivée", note: "Aucun règlement en ligne n'est demandé. Le paiement sera enregistré lorsque les espèces auront été remises.", practical: "Vous recevrez les informations pratiques avant votre arrivée." },
+    en: { subject: "Your stay confirmation — La Maison Verte", greeting: "Hello", intro: "We have registered your stay at La Maison Verte in Arreau.", arrival: "Check-in", departure: "Check-out", nights: "Nights", total: "Total stay price", cash: "Cash due on arrival", note: "No online payment is requested. Payment will be recorded when the cash has been received.", practical: "You will receive practical information before arrival." },
+    es: { subject: "Confirmación de su estancia — La Maison Verte", greeting: "Hola", intro: "Hemos registrado su estancia en La Maison Verte, Arreau.", arrival: "Llegada", departure: "Salida", nights: "Noches", total: "Total de la estancia", cash: "Importe en efectivo a la llegada", note: "No se solicita ningún pago en línea. Se registrará al recibir el efectivo.", practical: "Recibirá información práctica antes de su llegada." },
+  };
+  const t = translations[language] || translations.fr;
+  const name = [booking.guest_first_name, booking.guest_last_name].filter(Boolean).join(" ");
+  const confirmationHtml = `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#1f2937">
+    <h2>${escapeHtml(t.subject)}</h2>
+    <p>${escapeHtml(t.greeting)} ${escapeHtml(name)},</p>
+    <p>${escapeHtml(t.intro)}</p>
+    <p><strong>${escapeHtml(t.arrival)} :</strong> ${formatDate(booking.start_date)}<br>
+    <strong>${escapeHtml(t.departure)} :</strong> ${formatDate(booking.end_date)}<br>
+    <strong>${escapeHtml(t.nights)} :</strong> ${Number(booking.nights || 0)}</p>
+    ${personal ? "" : `<p><strong>${escapeHtml(t.total)} :</strong> ${formatMoney(booking.contract_total)}</p>`}
+    ${cash ? `<p><strong>${escapeHtml(t.cash)} :</strong> ${formatMoney(booking.contract_total)}</p><p>${escapeHtml(t.note)}</p>` : ""}
+    <p>${escapeHtml(t.practical)}</p></div>`;
+  const retryPayload = { from: "La Maison Verte <contact@lamaisonverte65.fr>", to: [booking.guest_email], reply_to: "contact@lamaisonverte65.fr", subject: t.subject, html: confirmationHtml };
+  const response = await resendEmail(retryPayload);
+  if (!response.ok) {
+    const errorText = await response.text();
+    await logEmail({ bookingId: booking.id, emailType: "admin_booking_confirmation", toEmail: booking.guest_email, subject: t.subject, status: "error", errorMessage: errorText, retryPayload });
+    throw new Error(errorText);
+  }
+  const result = await response.json().catch(() => ({}));
+  await logEmail({ bookingId: booking.id, emailType: "admin_booking_confirmation", toEmail: booking.guest_email, subject: t.subject, status: "sent", providerId: result?.id || null });
+}
+
 async function findOrCreateCustomer(body, startDate, endDate) {
   const bookingKind = normalizeBookingKind(body.bookingKind);
   if (bookingKind === "personal") return null;
@@ -329,6 +365,8 @@ export async function handler(event) {
     }
 
     const bookingKind = normalizeBookingKind(body.bookingKind);
+    const paymentMethod = adminBookingPaymentMode(bookingKind, body.paymentMethod);
+    const notificationsEnabled = body.sendInfoEmail !== false && Boolean(cleanText(body.email));
     const specialAccommodation = bookingKind === "site" && body.total !== null && body.total !== undefined && body.total !== ""
       ? Number(body.total)
       : null;
@@ -336,12 +374,12 @@ export async function handler(event) {
       return { statusCode: 400, body: JSON.stringify({ error: "Tarif spécial d’hébergement invalide." }) };
     }
     const amountPaid = 0;
-    const sendPaymentLink = bookingKind === "site" && body.sendPaymentLink !== false;
+    const sendPaymentLink = paymentMethod === "stripe" && body.sendPaymentLink !== false;
     const nights = nightsBetween(startDate, endDate);
     const clientMessage = cleanText(body.clientMessage);
     const internalNotes = cleanText(body.internalNotes);
     const housekeepingNotes = cleanText(body.housekeepingNotes);
-    const acceptanceExpiresAt = bookingKind === "site" && sendPaymentLink ? addHours(24) : null;
+    const acceptanceExpiresAt = paymentMethod === "stripe" && sendPaymentLink ? addHours(24) : null;
 
     const customer = await findOrCreateCustomer(body, startDate, endDate);
 
@@ -352,7 +390,7 @@ export async function handler(event) {
     let source = getBookingSource(bookingKind);
     let contractVersion = getBookingContractVersion(bookingKind);
 
-    if (bookingKind !== "personal" && customer) {
+    if (customer) {
       guestFirstName = customer.first_name || guestFirstName;
       guestLastName = customer.last_name || guestLastName;
       guestEmail = customer.email || guestEmail;
@@ -361,8 +399,8 @@ export async function handler(event) {
 
     if (bookingKind === "personal") {
       const display = splitDisplayName(body.displayName || `${guestFirstName || ""} ${guestLastName || ""}`.trim());
-      guestFirstName = display.firstName;
-      guestLastName = display.lastName;
+      guestFirstName = cleanText(body.firstName) || display.firstName;
+      guestLastName = cleanText(body.lastName) || display.lastName;
     }
 
     if (!guestFirstName && bookingKind !== "personal") {
@@ -385,11 +423,12 @@ export async function handler(event) {
       financialSnapshot.payment_preference = daysUntil(startDate) !== null && daysUntil(startDate) <= 30 ? "full" : (body.paymentPreference === "full" ? "full" : "deposit");
     }
     const total = Number(financialSnapshot?.contract_total || 0);
-    const shouldCreatePaymentLink = bookingKind === "site" && total > 0 && sendPaymentLink;
+    const plan = adminBookingPaymentState({ bookingKind, paymentMethod, total, sendPaymentLink });
+    const shouldCreatePaymentLink = plan.checkout;
     if (shouldCreatePaymentLink && !guestEmail) {
       throw new Error("Email obligatoire pour envoyer un lien de paiement Stripe.");
     }
-    const initialStatus = shouldCreatePaymentLink ? "accepted" : (bookingKind === "site" ? "pending" : "confirmed");
+    const initialStatus = plan.status;
     const now = new Date().toISOString();
 
     const { data: booking, error } = await supabase
@@ -411,10 +450,12 @@ export async function handler(event) {
         }),
         amount_paid: shouldCreatePaymentLink ? 0 : amountPaid,
         source,
+        admin_payment_method: paymentMethod,
+        admin_email_notifications_enabled: notificationsEnabled,
         status: initialStatus,
-        payment_status: shouldCreatePaymentLink ? "pending" : (amountPaid > 0 ? "manual_paid" : "not_required"),
-        deposit_status: shouldCreatePaymentLink && financialSnapshot.payment_preference !== "full" ? "à payer" : "non applicable",
-        balance_status: shouldCreatePaymentLink ? (financialSnapshot.payment_preference === "full" ? "à payer" : "en attente") : "non applicable",
+        payment_status: plan.paymentStatus,
+        deposit_status: shouldCreatePaymentLink && financialSnapshot.payment_preference !== "full" ? "à payer" : plan.depositStatus,
+        balance_status: shouldCreatePaymentLink ? (financialSnapshot.payment_preference === "full" ? "à payer" : "en attente") : plan.balanceStatus,
         adults_count: Number(body.adults || 0) || null,
         children_count: Number(body.children || 0) || null,
         baby_bed_needed: Boolean(body.babyBedNeeded),
@@ -427,7 +468,7 @@ export async function handler(event) {
         payment_link: null,
         acceptance_expires_at: acceptanceExpiresAt,
         accepted_at: shouldCreatePaymentLink ? now : null,
-        confirmed_at: bookingKind === "site" ? null : now,
+        confirmed_at: initialStatus === "confirmed" ? now : null,
         contract_accepted: false,
         contract_status: "not_sent",
         contract_version: contractVersion,
@@ -508,7 +549,15 @@ export async function handler(event) {
       metadata: { source: "calendar_admin", bookingKind, contractTotal: total, amountPaid },
     });
 
-    return { statusCode: 200, body: JSON.stringify({ success: true, booking }) };
+    let emailWarning = null;
+    if (notificationsEnabled && (bookingKind === "personal" || paymentMethod === "cash")) {
+      try {
+        await sendAdminBookingInformationEmail({ booking, bookingKind, paymentMethod });
+      } catch (emailError) {
+        emailWarning = "Réservation créée, mais l'email de confirmation n'a pas été envoyé : " + emailError.message;
+      }
+    }
+    return { statusCode: 200, body: JSON.stringify({ success: true, booking, emailWarning }) };
   } catch (error) {
     console.error("Erreur create-personal-booking :", error);
     if (isBookingDateConflictError(error)) {

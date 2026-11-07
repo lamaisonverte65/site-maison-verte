@@ -5,7 +5,7 @@ export default function ReservationsBulkActions({ selectedReservations, onClearS
   const selectedCount = selectedReservations.length;
 
   if (selectedCount === 0) {
-    return <p style={styles.muted}>Aucune réservation sélectionnée.</p>;
+    return null;
   }
 
   return (

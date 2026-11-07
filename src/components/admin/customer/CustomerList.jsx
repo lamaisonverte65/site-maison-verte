@@ -28,7 +28,7 @@ export default function CustomerList({
     <div style={styles.tableWrapper}>
       <table style={styles.table}>
         <thead style={styles.stickyHead}>
-          <tr>
+          <tr style={{ whiteSpace: "nowrap" }}>
             <th style={styles.th}>Fiche</th>
             <SortableTh label="Nom" sortKey="last_name" sort={customerSort} onSort={onCustomerSort} />
             <SortableTh label="Prénom" sortKey="first_name" sort={customerSort} onSort={onCustomerSort} />
@@ -43,7 +43,9 @@ export default function CustomerList({
             <th style={styles.th}>Opt-in</th>
             <SortableTh label="Remise fidélité" sortKey="loyalty_discount_percent" sort={customerSort} onSort={onCustomerSort} />
             <th style={styles.th}>Historique réservations</th>
-            <th style={styles.th}>Contact</th>
+            <th style={styles.th}>Email</th>
+            <th style={styles.th}>Appel</th>
+            <th style={styles.th}>SMS</th>
             <th style={styles.th}>Actions</th>
           </tr>
         </thead>
@@ -53,7 +55,7 @@ export default function CustomerList({
             const isSelected = selectedCustomerId === customer.id;
 
             return (
-              <tr key={customer.id} style={isSelected ? styles.selectedRow : undefined}>
+              <tr key={customer.id} style={{ ...(isSelected ? styles.selectedRow : {}), whiteSpace: "nowrap" }}>
                 <td style={styles.td}>
                   <button
                     style={isSelected ? styles.acceptButton : styles.smallButton}
@@ -74,28 +76,12 @@ export default function CustomerList({
                 <ReadOnlyTd customer={customer} onOpenCustomer={onOpenCustomer} value={formatMoney(customer.owner_net_total)} />
                 <ReadOnlyTd customer={customer} onOpenCustomer={onOpenCustomer} value={customer.marketing_consent ? "Oui" : "Non"} />
                 <ReadOnlyTd customer={customer} onOpenCustomer={onOpenCustomer} value={formatPercent(customer.loyalty_discount_percent || 0)} />
-                <td style={styles.td}>
-                  <div style={styles.chipList}>
-                    {history.length === 0
-                      ? "-"
-                      : history.map((reservation) => (
-                          <button
-                            key={reservation.id}
-                            style={styles.historyChip}
-                            onClick={() => customerActions.selectReservation(reservation)}
-                          >
-                            {formatDate(reservation.start_date)} → {formatDate(reservation.end_date)}
-                          </button>
-                        ))}
-                  </div>
+                <td style={{ ...styles.td, whiteSpace: "nowrap" }}>
+                  <button style={styles.smallButton} onClick={() => onOpenCustomer(customer)}>{history.length} séjour(s)</button>
                 </td>
-                <td style={styles.td}>
-                  <div style={styles.contactButtons}>
-                    <button style={styles.smallButton} onClick={() => contactActions.email(customer.email)}>Email</button>
-                    <button style={styles.smallButton} onClick={() => contactActions.phone(customer.phone)}>Appel</button>
-                    <button style={styles.smallButton} onClick={() => contactActions.sms(customer.phone)}>SMS</button>
-                  </div>
-                </td>
+                <td style={styles.td}><button style={styles.smallButton} disabled={!customer.email} onClick={() => contactActions.email(customer.email)}>Email</button></td>
+                <td style={styles.td}><button style={styles.smallButton} disabled={!customer.phone} onClick={() => contactActions.phone(customer.phone)}>Appel</button></td>
+                <td style={styles.td}><button style={styles.smallButton} disabled={!customer.phone} onClick={() => contactActions.sms(customer.phone)}>SMS</button></td>
                 <td style={styles.td}>
                   <button style={styles.deleteButton} onClick={() => customerActions.delete(customer)}>Supprimer</button>
                 </td>

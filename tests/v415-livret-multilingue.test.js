@@ -63,9 +63,14 @@ test("V4.15 finition : les plans FR sont communs aux trois langues et restent cl
 
 test("V4.15 finition : CSS espagnol limité au sommaire et au fonctionnement du logement", () => {
   const css = read("src", "styles", "livret.css");
-  const start = css.lastIndexOf("/* =========================================================");
-  assert.ok(start > 0, "Ajustements ciblés ES absents");
-  const rules = css.slice(start).replace(/\/\*[\s\S]*?\*\//g, "").trim();
+  const marker = "V4.15 — Ajustements limités aux pages 2 et 3 en espagnol.";
+  const markerIndex = css.indexOf(marker);
+  assert.ok(markerIndex >= 0, "Ajustements ciblés ES absents");
+  const start = css.lastIndexOf("/*", markerIndex);
+  const end = css.indexOf("@media print", markerIndex);
+  assert.ok(start >= 0 && end > start, "Séparation CSS ES / impression introuvable");
+  // Les règles d'impression FR/EN/ES ajoutées ensuite ne sont pas des règles ES.
+  const rules = css.slice(start, end).replace(/\/\*[\s\S]*?\*\//g, "").trim();
   const selectors = [...rules.matchAll(/(^|\})\s*([^{}]+)\{/g)].map((match) => match[2].trim()).filter(Boolean);
   assert.equal(selectors.length, 11);
   assert.match(rules, /grid-template-columns:\s*96px\s+minmax\(0, 1fr\)\s*!important/);
@@ -77,6 +82,18 @@ test("V4.15 finition : CSS espagnol limité au sommaire et au fonctionnement du 
   }
 });
 
+test("Livret FR/EN/ES : corrections d'impression préservées et séparées du CSS espagnol", () => {
+  const css = read("src", "styles", "livret.css");
+  const marker = "Correction strictement réservée à l'impression du livret (FR, EN, ES).";
+  const start = css.indexOf(marker);
+  assert.ok(start >= 0, "Correctif d'impression trilingue absent");
+  const printRules = css.slice(start);
+  assert.match(printRules, /@media print\s*\{/);
+  assert.match(printRules, /\.livret-cover-footer::before\s*\{\s*top:\s*-70px\s*!important/);
+  assert.match(printRules, /\.livret\s+\.livret-welcome\s+\.livret-summary\s*\{/);
+  assert.match(printRules, /\.livret\[data-livret-lang\]\s+\.livret-welcome\s+\.livret-summary-list\s*\{/);
+  assert.match(printRules, /\.livret\s+\.livret-welcome\s+\.livret-summary-list a\s*\{/);
+});
 
 test("V4.15 finition boîte à clés : avertissement EN/ES intégré, image FR inchangée", () => {
   for (const lang of ["en", "es"]) {

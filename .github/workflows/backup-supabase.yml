@@ -110,11 +110,18 @@ jobs:
             bash scripts/backup/upload-pcloud.sh "$BACKUP_DIR" "$tier" "$BACKUP_ID"
           done
 
-      # R31.1 rollout: report only. Enable --apply in a separate reviewed change
-      # after validating a local decrypted copy and the dry-run deletion list.
-      - name: Preview safe pCloud retention (no deletion)
+      # R31.2: automatic rotation after a successful scheduled backup.
+      # Safety remains enforced by rotate-pcloud.sh: verified baseline, valid
+      # latest pointer, 7/4/2 retention, and max 25 deletions per root and run.
+      - name: Apply verified pCloud retention
         if: ${{ success() && github.event_name == 'schedule' }}
-        run: bash scripts/backup/rotate-pcloud.sh --dry-run
+        env:
+          R31_ROTATION_APPLY_ACK: JE_CONFIRME_LA_ROTATION_R31
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/backup/rotate-pcloud.sh --dry-run
+          bash scripts/backup/rotate-pcloud.sh --apply
 
       - name: Write non-sensitive diagnostic
         if: ${{ always() }}

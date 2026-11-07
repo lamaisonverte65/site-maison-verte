@@ -1,0 +1,21 @@
+/* R29.2 — typographie de l'administration des tarifs uniquement. */
+.pricing-admin-compact {
+  font-size: 12px;
+  line-height: 1.35;
+}
+.pricing-admin-compact h2 {
+  font-size: 17px;
+  line-height: 1.2;
+  margin: 3px 0 7px;
+}
+.pricing-admin-compact h3 {
+  font-size: 15px;
+  line-height: 1.22;
+  margin: 2px 0 6px;
+}
+.pricing-admin-compact h4 { font-size: 13px; margin: 3px 0 5px; }
+.pricing-admin-compact button,
+.pricing-admin-compact input,
+.pricing-admin-compact select,
+.pricing-admin-compact textarea { font-size: 12px; }
+.pricing-admin-compact p { line-height: 1.35; }

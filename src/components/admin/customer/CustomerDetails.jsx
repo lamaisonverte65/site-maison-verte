@@ -67,6 +67,8 @@ export default function CustomerDetails({
   contactActions,
   onClose,
   onOpenCommunication,
+  onOpenPayments,
+  onOpenInvoices,
   permissions,
 }) {
   const profile = useCustomerProfile({ customer, reservations });
@@ -183,7 +185,7 @@ export default function CustomerDetails({
       </PermissionGate>
 
       <CustomerCommunicationBlock profile={profile} onOpenCommunication={onOpenCommunication} />
-      <CustomerReservationsBlock reservations={reservations} customerActions={customerActions} />
+      <CustomerReservationsBlock reservations={reservations} customerActions={customerActions} onOpenPayments={onOpenPayments} onOpenInvoices={onOpenInvoices} />
     </section>
   );
 }

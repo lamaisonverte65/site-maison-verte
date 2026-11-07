@@ -1,28 +1,23 @@
 import { styles } from "../adminStyles";
 import { formatMoney } from "../../../utils/adminFormatters";
 
-function SummaryCard({ label, value, hint }) {
-  return (
-    <div style={styles.card || styles.infoItem}>
-      <span style={styles.muted}>{label}</span>
-      <strong style={{ display: "block", marginTop: 6, fontSize: "1.15rem" }}>{value}</strong>
-      {hint && <p style={styles.muted}>{hint}</p>}
-    </div>
-  );
-}
-
 export default function PaymentSummary({ stats }) {
+  const items = [
+    ["CA site", formatMoney(stats.confirmedTotal)],
+    ["Payé site", formatMoney(stats.paidTotal)],
+    ["Reste site", formatMoney(stats.remainingTotal)],
+    ["Frais Stripe", formatMoney(stats.stripeFeesTotal)],
+    ["Net Stripe", formatMoney(stats.stripeNetTotal)],
+    ["Net plateformes importé", formatMoney(stats.platformNetKnown)],
+  ];
   return (
-    <section style={{ marginBottom: 18 }}>
-      <h3 style={styles.subTitle}>Synthèse financière</h3>
-      <div style={styles.summaryGrid || styles.detailGrid}>
-        <SummaryCard label="CA confirmé" value={formatMoney(stats.confirmedTotal)} />
-        <SummaryCard label="Payé par les clients" value={formatMoney(stats.paidTotal)} />
-        <SummaryCard label="Reste à encaisser" value={formatMoney(stats.remainingTotal)} />
-        <SummaryCard label="Frais Stripe" value={formatMoney(stats.stripeFeesTotal)} />
-        <SummaryCard label="Net Stripe après remboursements" value={formatMoney(stats.stripeNetTotal)} />
-        <SummaryCard label="Lignes filtrées" value={`${stats.filteredCount} / ${stats.count}`} />
-      </div>
+    <section style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "7px 0" }} aria-label="Synthèse des paiements">
+      {items.map(([label, value]) => (
+        <div key={label} style={{ ...styles.infoItem, padding: "6px 10px", minWidth: 125, flex: "1 1 125px", gap: 2 }}>
+          <span style={{ fontSize: 11, color: "#64748b" }}>{label}</span>
+          <strong style={{ fontSize: 14 }}>{value}</strong>
+        </div>
+      ))}
     </section>
   );
 }

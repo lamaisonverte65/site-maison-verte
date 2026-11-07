@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
+import { supabase } from "../../../supabaseClient";
 import { styles } from "./calendarStyles";
-import { formatDate, formatMoney } from "./calendarHelpers";
+import { formatDate, formatMoney, nightsBetween } from "./calendarHelpers";
 
 const RESERVATION_ACTIONS = ["personal", "site", "booking", "airbnb"];
 
@@ -9,7 +11,6 @@ function getActionLabel(action) {
   if (action === "site") return "Réservation client / site";
   if (action === "booking") return "Réservation Booking";
   if (action === "airbnb") return "Réservation Airbnb";
-  if (action === "price") return "Changer les tarifs de cette période";
   return action;
 }
 
@@ -45,7 +46,6 @@ export default function SelectionPanel({ selection, form, setForm, total, custom
         .slice(0, 8);
 
   const isReservationAction = RESERVATION_ACTIONS.includes(form.action);
-  const needsCustomer = ["site", "booking", "airbnb"].includes(form.action);
   const isSiteReservation = form.action === "site";
   const isPersonalReservation = form.action === "personal";
   const isV410Edit = mode === "edit" && isSiteReservation
@@ -53,16 +53,65 @@ export default function SelectionPanel({ selection, form, setForm, total, custom
     && editingReservation?.deposit_rate != null
     && editingReservation?.deposit_basis != null
     && editingReservation?.deposit_amount != null;
-  const totalNumber = Number(String(form.total || "0").replace(",", "."));
-  const needsPaymentEmail = isSiteReservation && totalNumber > 0 && form.sendPaymentLink;
+  const needsPaymentEmail = isSiteReservation && form.paymentMethod !== "cash" && form.sendPaymentLink;
+  const nights = nightsBetween(form.startDate || selection.startStr, form.endDate || selection.endStr);
+  const validDates = Boolean(nights.length && (form.endDate || selection.endStr) > (form.startDate || selection.startStr));
+  const [quote, setQuote] = useState(null);
+  const [quoteState, setQuoteState] = useState("idle");
+  const [quoteError, setQuoteError] = useState("");
+
+  useEffect(() => {
+    if (!isSiteReservation || mode === "edit") {
+      setQuote(null);
+      setQuoteState("idle");
+      return;
+    }
+    const adults = Number(form.adults || 0);
+    const children = Number(form.children || 0);
+    if (!validDates || !Number.isInteger(adults) || adults < 1 || !Number.isInteger(children) || children < 0 || adults + children > 4) {
+      setQuote(null);
+      setQuoteState("needs_guests");
+      return;
+    }
+    const controller = new AbortController();
+    setQuote(null);
+    setQuoteState("loading");
+    setQuoteError("");
+    const timer = setTimeout(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch("/.netlify/functions/admin-booking-quote", {
+          method: "POST", signal: controller.signal,
+          headers: { "Content-Type": "application/json", ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+          body: JSON.stringify({
+            startDate: form.startDate || selection.startStr,
+            endDate: form.endDate || selection.endStr,
+            adultsCount: adults, childrenCount: children,
+            cleaningOption: form.cleaningOption !== false,
+            promotionCode: form.promotionCode || "",
+            specialAccommodation: form.total === "" ? null : form.total,
+          }),
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || "Devis non disponible");
+        if (!controller.signal.aborted) { setQuote(result); setQuoteState("ready"); }
+      } catch (error) {
+        if (!controller.signal.aborted) { setQuote(null); setQuoteState("error"); setQuoteError(error.message); }
+      }
+    }, 220);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [isSiteReservation, mode, form.startDate, form.endDate, form.adults, form.children, form.cleaningOption, form.promotionCode, form.total, selection.startStr, selection.endStr]);
+
 
   function updateAction(nextAction) {
     const next = {
       ...form,
       action: nextAction,
-      total: nextAction === "site" ? String(total || 0) : "0",
+      total: "",
       amountPaid: "0",
       sendPaymentLink: nextAction === "site",
+      paymentMethod: nextAction === "site" ? "stripe" : "none",
+      sendInfoEmail: nextAction === "site",
     };
 
     if (nextAction === "personal") {
@@ -70,6 +119,7 @@ export default function SelectionPanel({ selection, form, setForm, total, custom
       next.customerSearch = "";
       next.customerSource = "";
       next.marketingConsent = false;
+      next.sendInfoEmail = false;
     }
 
     if (["booking", "airbnb"].includes(nextAction)) {
@@ -118,6 +168,11 @@ export default function SelectionPanel({ selection, form, setForm, total, custom
 
   return (
     <form onSubmit={(event) => {
+      if (mode !== "edit" && isSiteReservation && quoteState !== "ready") {
+        event.preventDefault();
+        window.alert("Attends le devis détaillé (nuits, ménage et taxe) avant de créer la réservation.");
+        return;
+      }
       if (mode === "edit") {
         const ok = window.confirm("Attention : vous allez modifier une réservation existante. Les dates, les informations client, les messages et les notes visibles par le ménage peuvent être mis à jour. Continuer ?");
         if (!ok) {
@@ -134,7 +189,7 @@ export default function SelectionPanel({ selection, form, setForm, total, custom
 
       {isReservationAction && (
         <div style={styles.formGrid}>
-          <h4 style={styles.panelSubtitle || undefined}>Dates du séjour</h4>
+          <h4 style={styles.panelSubtitle || undefined}>Dates du séjour {validDates ? `· ${nights.length} nuit${nights.length > 1 ? "s" : ""}` : "· dates à vérifier"}</h4>
           <label style={styles.label}>Arrivée
             <input
               type="date"
@@ -154,16 +209,27 @@ export default function SelectionPanel({ selection, form, setForm, total, custom
         </div>
       )}
 
-      <label style={styles.label}>Action
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <label style={{ ...styles.label, flex: 1 }}>Action
         <select style={styles.input} value={form.action} onChange={(event) => updateAction(event.target.value)}>
           {mode !== "edit" && <option value="block">{getActionLabel("block")}</option>}
           <option value="personal">{getActionLabel("personal")}</option>
           <option value="site">{getActionLabel("site")}</option>
           <option value="booking">{getActionLabel("booking")}</option>
           <option value="airbnb">{getActionLabel("airbnb")}</option>
-          {mode !== "edit" && <option value="price">{getActionLabel("price")}</option>}
         </select>
-      </label>
+        </label>
+        <details style={{ position: "relative", alignSelf: "center" }}>
+          <summary title="Explication des actions" aria-label="Explication des actions" style={{ display: "inline-flex", width: 28, height: 28, alignItems: "center", justifyContent: "center", borderRadius: "50%", border: "1px solid #94a3b8", color: "#334155", fontWeight: 700, cursor: "pointer", listStyle: "none" }}>i</summary>
+          <div style={{ position: "absolute", zIndex: 12, right: 0, width: 285, padding: 12, background: "white", border: "1px solid #cbd5e1", borderRadius: 10, boxShadow: "0 8px 18px #0002", fontSize: "0.8rem" }}>
+            <p><b>Bloquer :</b> indisponibilité, sans client ni paiement.</p>
+            <p><b>Personnelle :</b> usage privé, coordonnées et emails facultatifs, sans facturation automatique.</p>
+            <p><b>Client / site :</b> tarif, ménage, taxe et paiement Stripe ou espèces.</p>
+            <p><b>Booking / Airbnb :</b> enregistrement administratif, paiements sur la plateforme.</p>
+            <p>Les règles tarifaires se gèrent dans l'onglet Tarifs.</p>
+          </div>
+        </details>
+      </div>
 
       {form.action === "block" && (
         <>
@@ -177,24 +243,20 @@ export default function SelectionPanel({ selection, form, setForm, total, custom
           {isPersonalReservation ? (
             <>
               <h4 style={styles.panelSubtitle || undefined}>Réservation personnelle</h4>
-              <input
-                style={styles.input}
-                placeholder="Nom affiché dans le calendrier * (ex : Famille Benoit, Amis de Toulouse)"
-                value={form.displayName}
-                onChange={(event) => setForm({ ...form, displayName: event.target.value })}
-              />
-              <textarea
-                style={styles.textarea}
-                placeholder="Notes admin / informations utiles visibles par le ménage"
-                value={form.housekeepingNotes || ""}
-                onChange={(event) => setForm({ ...form, housekeepingNotes: event.target.value })}
-              />
-              <textarea
-                style={styles.textarea}
-                placeholder="Message ou réponse du propriétaire au client"
-                value={form.internalNotes}
-                onChange={(event) => setForm({ ...form, internalNotes: event.target.value })}
-              />
+              <input style={styles.input} placeholder="Nom sur le calendrier (facultatif)" value={form.displayName} onChange={(event) => setForm({ ...form, displayName: event.target.value })} />
+              <input style={styles.input} placeholder="Prénom (facultatif)" value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} />
+              <input style={styles.input} placeholder="Nom (facultatif)" value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} />
+              <input style={styles.input} placeholder="Téléphone (facultatif)" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+              <input style={styles.input} type="email" placeholder="Email (facultatif)" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+              <input style={styles.input} placeholder="Adultes" value={form.adults} onChange={(event) => setForm({ ...form, adults: event.target.value })} />
+              <input style={styles.input} placeholder="Enfants" value={form.children} onChange={(event) => setForm({ ...form, children: event.target.value })} />
+              <label style={styles.checkboxLine}><input type="checkbox" checked={Boolean(form.babyBedNeeded)} onChange={(event) => setForm({ ...form, babyBedNeeded: event.target.checked })} />Lit bébé demandé</label>
+              <input style={styles.input} placeholder="Heure d’arrivée (facultatif)" value={form.arrivalTime} onChange={(event) => setForm({ ...form, arrivalTime: event.target.value })} />
+              <textarea style={styles.textarea} placeholder="Message client (facultatif)" value={form.clientMessage} onChange={(event) => setForm({ ...form, clientMessage: event.target.value })} />
+              <textarea style={styles.textarea} placeholder="Notes ménage (facultatif)" value={form.housekeepingNotes || ""} onChange={(event) => setForm({ ...form, housekeepingNotes: event.target.value })} />
+              <textarea style={styles.textarea} placeholder="Notes propriétaire (facultatif)" value={form.internalNotes} onChange={(event) => setForm({ ...form, internalNotes: event.target.value })} />
+              <label style={styles.checkboxLine}><input type="checkbox" disabled={!form.email} checked={Boolean(form.sendInfoEmail) && Boolean(form.email)} onChange={(event) => setForm({ ...form, sendInfoEmail: event.target.checked })} />Emails de confirmation, d’arrivée J-2 et demande d’avis</label>
+              {!form.email && <p style={styles.muted}>Sans email, la réservation est créée normalement et aucun envoi n’est programmé.</p>}
             </>
           ) : (
             <>
@@ -290,29 +352,56 @@ export default function SelectionPanel({ selection, form, setForm, total, custom
                     <p style={styles.muted}>Total contractuel actuel : <strong>{formatMoney(editingReservation.contract_total)}</strong>. Il sera recalculé automatiquement si les dates ou les voyageurs changent. Aucun paiement ni remboursement n'est déclenché automatiquement.</p>
                   ) : (
                     <>
-                      <p style={styles.muted}>Prix théorique selon les tarifs actuels : <strong>{formatMoney(total)}</strong></p>
+                      <p style={styles.muted}>Hébergement automatique pour {nights.length} nuit{nights.length > 1 ? "s" : ""} : <strong>{formatMoney(total)}</strong> (avant ménage et taxe de séjour).</p>
                       <input
                         style={styles.input}
-                        placeholder="Tarif spécial hébergement (€)"
+                        type="number" min="0" step="0.01"
+                        placeholder="Tarif spécial hébergement (€) — laisser vide pour le calcul automatique"
                         value={form.total}
                         onChange={(event) => setForm({ ...form, total: event.target.value })}
                       />
-                      <p style={styles.muted}>Ce montant remplace uniquement le tarif d’hébergement. Le ménage, la taxe de séjour et l’acompte sont calculés ensuite par le moteur V4.10.</p>
+                      <p style={styles.muted}>Tarif spécial facultatif. Sans saisie, le serveur applique automatiquement les tarifs des nuits sélectionnées, même si les dates sont modifiées.</p>
                       <label style={styles.checkboxLine}>
                         <input type="checkbox" checked={form.cleaningOption !== false} onChange={(event) => setForm({ ...form, cleaningOption: event.target.checked })} />
                         Ajouter le forfait ménage
                       </label>
                       <input style={styles.input} placeholder="Code promotion (optionnel)" value={form.promotionCode || ""} onChange={(event) => setForm({ ...form, promotionCode: event.target.value.toUpperCase() })} />
-                      <select style={styles.input} value={form.paymentPreference || "deposit"} onChange={(event) => setForm({ ...form, paymentPreference: event.target.value })}>
-                        <option value="deposit">Acompte puis solde</option>
-                        <option value="full">Paiement intégral</option>
-                      </select>
-                      <label style={styles.checkboxLine}>
-                        <input type="checkbox" checked={Boolean(form.sendPaymentLink)} onChange={(event) => setForm({ ...form, sendPaymentLink: event.target.checked })} />
-                        Envoyer le lien Stripe après création
+                      <label style={styles.label}>Mode de paiement
+                        <select style={styles.input} value={form.paymentMethod || "stripe"} onChange={(event) => setForm({ ...form, paymentMethod: event.target.value, sendPaymentLink: event.target.value === "stripe", sendInfoEmail: true })}>
+                          <option value="stripe">Stripe — en ligne</option>
+                          <option value="cash">Espèces — à encaisser à l'arrivée</option>
+                        </select>
                       </label>
-                      {needsPaymentEmail && !form.email && (
-                        <p style={styles.muted}>Un email est obligatoire pour envoyer le lien Stripe.</p>
+                      {form.paymentMethod !== "cash" ? (
+                        <>
+                          <select style={styles.input} value={form.paymentPreference || "deposit"} onChange={(event) => setForm({ ...form, paymentPreference: event.target.value })}>
+                            <option value="deposit">Acompte puis solde</option>
+                            <option value="full">Paiement intégral</option>
+                          </select>
+                          <label style={styles.checkboxLine}>
+                            <input type="checkbox" checked={Boolean(form.sendPaymentLink)} onChange={(event) => setForm({ ...form, sendPaymentLink: event.target.checked })} />
+                            Envoyer le lien Stripe après création
+                          </label>
+                        </>
+                      ) : <p style={styles.muted}>Aucun lien Stripe, aucune relance d'acompte ou de solde. L'encaissement sera à enregistrer manuellement.</p>}
+                      <label style={styles.checkboxLine}>
+                        <input type="checkbox" checked={Boolean(form.sendInfoEmail)} disabled={!form.email} onChange={(event) => setForm({ ...form, sendInfoEmail: event.target.checked })} />
+                        Confirmation et emails pratiques du séjour
+                      </label>
+                      {needsPaymentEmail && !form.email && <p style={styles.muted}>Un email est obligatoire pour envoyer le lien Stripe.</p>}
+                      {form.paymentMethod === "cash" && !form.email && <p style={styles.muted}>Sans email, la réservation en espèces peut être créée, mais aucun email ne sera envoyé.</p>}
+                      {quoteState === "loading" && <p style={styles.muted}>Calcul du devis détaillé…</p>}
+                      {quoteState === "needs_guests" && <p style={styles.muted}>Indique le nombre d'adultes et d'enfants pour calculer la taxe de séjour et le total.</p>}
+                      {quoteState === "error" && <p role="alert" style={{ color: "#b91c1c" }}>Devis indisponible : {quoteError}. Ne valide pas avant vérification.</p>}
+                      {quoteState === "ready" && quote && (
+                        <div style={{ border: "1px solid #bdd3c0", borderRadius: 12, padding: 12, background: "#f0fdf4", display: "grid", gap: 5 }} aria-live="polite">
+                          <strong>Devis — {quote.nights} nuit{quote.nights > 1 ? "s" : ""}</strong>
+                          <div>Hébergement : {formatMoney(quote.accommodation)}</div>
+                          {quote.discount > 0 && <div>Réduction : −{formatMoney(quote.discount)}</div>}
+                          <div>Ménage : {formatMoney(quote.cleaning)}</div>
+                          <div>Taxe de séjour : {formatMoney(quote.touristTax)}</div>
+                          <strong>Total : {formatMoney(quote.total)}</strong>
+                        </div>
                       )}
                     </>
                   )}
@@ -326,22 +415,6 @@ export default function SelectionPanel({ selection, form, setForm, total, custom
               )}
             </>
           )}
-        </div>
-      )}
-
-      {form.action === "price" && (
-        <div style={styles.formGrid}>
-          <p style={styles.muted}>Prix théorique selon les tarifs actuels : <strong>{formatMoney(total)}</strong></p>
-          <input style={styles.input} placeholder="Nom du tarif" value={form.priceLabel} onChange={(event) => setForm({ ...form, priceLabel: event.target.value })} />
-          <input style={styles.input} placeholder="Prix par nuit (€)" value={form.nightPrice} onChange={(event) => setForm({ ...form, nightPrice: event.target.value })} />
-          <select style={styles.input} value={form.priceReason} onChange={(event) => setForm({ ...form, priceReason: event.target.value })}>
-            <option value="ajustement">Ajustement</option>
-            <option value="promo">Promo</option>
-            <option value="vacances">Vacances</option>
-            <option value="pont">Pont / week-end spécial</option>
-            <option value="evenement">Événement</option>
-          </select>
-          <textarea style={styles.textarea} placeholder="Notes" value={form.priceNotes} onChange={(event) => setForm({ ...form, priceNotes: event.target.value })} />
         </div>
       )}
 

@@ -1,77 +1,25 @@
 import { styles } from "../adminStyles";
 import ConversationTimeline from "./ConversationTimeline";
-import EmailHistoryBlock from "./EmailHistoryBlock";
-import MessageTemplatesBlock from "./MessageTemplatesBlock";
 import CommunicationFilters from "./CommunicationFilters";
-import CommunicationSummary from "./CommunicationSummary";
-import CommunicationStatistics from "./CommunicationStatistics";
-import ScheduledMessagesPanel from "./ScheduledMessagesPanel";
 import { getRequestName } from "../../../utils/adminFormatters";
 import { useCommunicationFilters } from "../../../hooks/useCommunicationFilters";
-import { useCommunicationTimeline } from "../../../hooks/useCommunicationTimeline";
 
-export default function CommunicationPanel({ data, onOpenReservation, onOpenCustomer }) {
+export default function CommunicationPanel({ data, onOpenReservation, onOpenCustomer, onOpenPayments, onOpenInvoices }) {
   const activeReservation = data.activeReservation;
   const activeCustomer = data.activeCustomer;
   const contextTitle = activeReservation
     ? `Réservation · ${getRequestName(activeReservation)}`
-    : activeCustomer
-      ? `Client · ${data.getCustomerName(activeCustomer)}`
-      : "Toutes les communications";
-
-  const {
-    filters,
-    filteredItems,
-    updateFilter,
-    resetFilters,
-  } = useCommunicationFilters(data.timeline);
-
-  const {
-    timeline,
-    emailItems,
-    statistics,
-  } = useCommunicationTimeline(filteredItems);
+    : activeCustomer ? `Client · ${data.getCustomerName(activeCustomer)}` : "Tous les clients";
+  const { filters, filteredItems, updateFilter, resetFilters } = useCommunicationFilters(data.timeline);
 
   return (
     <section style={styles.panel}>
       <div style={styles.panelHeader}>
-        <div>
-          <h2 style={styles.panelTitle}>Communication</h2>
-          <p style={styles.muted}>{contextTitle}</p>
-        </div>
-        {(activeReservation || activeCustomer) && (
-          <button style={styles.smallButton} onClick={() => data.setContext(null)}>
-            Voir toutes les communications
-          </button>
-        )}
+        <h2 style={styles.panelTitle}>Communication <small style={{ fontSize: 12, fontWeight: 400, color: "#64748b" }}>· {contextTitle}</small></h2>
+        {(activeReservation || activeCustomer) && <button style={styles.smallButton} onClick={() => data.setContext({})}>Tous les échanges</button>}
       </div>
-
-      <CommunicationFilters
-        filters={filters}
-        onChange={updateFilter}
-        onReset={resetFilters}
-      />
-
-      <CommunicationSummary
-        stats={{
-          emails: statistics.emails,
-          events: statistics.events,
-          messages: statistics.messages,
-        }}
-        filteredCount={statistics.total}
-      />
-
-      <CommunicationStatistics statistics={statistics} />
-
-      <ConversationTimeline
-        items={timeline}
-        onOpenReservation={onOpenReservation}
-        onOpenCustomer={onOpenCustomer}
-      />
-
-      <EmailHistoryBlock emails={emailItems} />
-      <ScheduledMessagesPanel />
-      <MessageTemplatesBlock templates={data.templates} />
+      <CommunicationFilters filters={filters} onChange={updateFilter} onReset={resetFilters} />
+      <ConversationTimeline items={filteredItems} onOpenReservation={onOpenReservation} onOpenCustomer={onOpenCustomer} onOpenPayments={onOpenPayments} onOpenInvoices={onOpenInvoices} />
     </section>
   );
 }

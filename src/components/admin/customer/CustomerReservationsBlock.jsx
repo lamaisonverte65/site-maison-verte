@@ -2,7 +2,7 @@ import { styles } from "../adminStyles";
 import { formatDate, formatMoney, getRequestName } from "../../../utils/adminFormatters";
 import { toReservationView } from "../../../adapters/reservationViewAdapter";
 
-export default function CustomerReservationsBlock({ reservations, customerActions }) {
+export default function CustomerReservationsBlock({ reservations, customerActions, onOpenPayments, onOpenInvoices }) {
   return (
     <section style={{ marginTop: "22px" }}>
       <h3 style={styles.subTitle}>Historique des réservations</h3>
@@ -30,9 +30,11 @@ export default function CustomerReservationsBlock({ reservations, customerAction
                     <td style={styles.td}>{reservationView.status || "-"}</td>
                     <td style={styles.td}>{formatMoney(reservationView.financial?.confirmedAmount || (reservationView.contract_total ?? reservationView.owner_price ?? reservationView.estimated_total ?? reservationView.amount_paid ?? 0))}</td>
                     <td style={styles.td}>
-                      <button style={styles.smallButton} onClick={() => customerActions.selectReservation(reservationView)}>
-                        Ouvrir la réservation
-                      </button>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                        <button style={styles.smallButton} onClick={() => customerActions.selectReservation(reservation)}>Réservation</button>
+                        <button style={styles.smallButton} onClick={() => onOpenPayments?.(reservation)}>Paiement</button>
+                        <button style={styles.smallButton} onClick={() => onOpenInvoices?.(reservation)}>Factures</button>
+                      </div>
                     </td>
                   </tr>
                 );

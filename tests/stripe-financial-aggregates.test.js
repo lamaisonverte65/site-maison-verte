@@ -217,7 +217,8 @@ test("admin reads derived completeness and labels cumulative net after refunds",
 
   assert.match(dataService, /booking_financial_ledger_aggregates/i);
   assert.match(paymentData, /stripe_financials_complete/i);
-  assert.match(paymentData, /À rapprocher Stripe/i);
+  // R29.5: precise evidence-based labels replace the blanket "À rapprocher Stripe".
+  assert.match(paymentData, /stripeReconciliationState/);
   assert.match(summary, /Net Stripe après remboursements/i);
   assert.match(paymentsPanel, /Net Stripe après remboursements/i);
   assert.doesNotMatch(summary, /Net Stripe avant remboursements/i);

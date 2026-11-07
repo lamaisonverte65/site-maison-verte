@@ -205,9 +205,24 @@ function TouristTaxDeclarationPanel({ year }) {
   const paidCents = activeRemittances.reduce((sum, entry) => sum + Number(entry.amount_cents || 0), 0);
   const dueCents = Number(totals.dueTaxCents || 0);
   const difference = Number(totals.differenceDueBilledCents || 0);
+  const stays = Array.from((registry?.directRows || []).reduce((map, row) => {
+    const entry = map.get(row.bookingId) || {
+      id: row.bookingId, guestName: row.guestName, startDate: row.startDate, endDate: row.endDate,
+      nights: 0, occupants: row.occupants, taxablePeople: row.taxablePeople,
+      adults: row.adultsCount, minors: row.childrenCount,
+      dueCents: 0, uncertain: false, upcoming: false, cancelled: true,
+    };
+    entry.nights += 1;
+    if (row.dueTaxCents !== null && row.dueStatus === "presumed_performed") entry.dueCents += Number(row.dueTaxCents);
+    if (["to_review", "not_calculated"].includes(row.dueStatus)) entry.uncertain = true;
+    if (row.dueStatus === "upcoming") entry.upcoming = true;
+    if (row.dueStatus !== "cancelled") entry.cancelled = false;
+    map.set(row.bookingId, entry);
+    return map;
+  }, new Map()).values());
   return <>
     <div style={styles.panelHeader}>
-      <div><h3>Taxe de séjour — Aure Louron</h3><p style={styles.muted}>Réservations directes uniquement pour la déclaration. Taxe réglementaire indicative selon chaque nuit, distincte de la taxe facturée et des mouvements bancaires.</p></div>
+      <div><h3 style={{ margin: "2px 0", fontSize: 19 }}>Taxe de séjour — Aure Louron</h3><p style={{ ...styles.muted, fontSize: 12 }}>Réservations effectuées sur le site uniquement.</p></div>
       <label style={styles.accountingYear}>Mois <select style={styles.select} value={month} onChange={(event) => setMonth(event.target.value)}>
         {Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{new Intl.DateTimeFormat("fr-FR", { month: "long" }).format(new Date(2026, index, 1))}</option>)}
       </select></label>
@@ -215,17 +230,40 @@ function TouristTaxDeclarationPanel({ year }) {
     {loadingRegistry && <p style={styles.info}>Calcul des nuitées…</p>}
     {registryError && <p style={styles.error}>{registryError}</p>}
     {!loadingRegistry && registry && <>
-      <div style={styles.homeFinanceGrid}>
-        <div style={styles.accountingStat}><span>Taxe indicative à déclarer</span><strong>{centsMoney(dueCents)}</strong></div>
-        <div style={styles.accountingStat}><span>Taxe facturée — nuits présumées</span><strong>{centsMoney(totals.billedForDueCents)}</strong></div>
-        <div style={styles.accountingStat}><span>Écart dû − facturé</span><strong>{centsMoney(difference)}</strong></div>
-        <div style={styles.accountingStat}><span>Prélèvements bancaires saisis</span><strong>{centsMoney(paidCents)}</strong></div>
+      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center", margin: "10px 0", fontSize: 13 }}>
+        <span><strong>{stays.length}</strong> séjour(s) du site</span>
+        <span><strong>{totals.presumedPerformedNights || 0}</strong> nuitée(s) présumée(s) effectuée(s)</span>
+        <span>Taxe indicative à déclarer : <strong>{centsMoney(dueCents)}</strong></span>
+        {(totals.needsReviewNights > 0 || totals.missingSnapshotNights > 0) && <strong style={{ color: "#b91c1c" }}>Données incomplètes : total non déclarable</strong>}
       </div>
-      <p style={styles.muted}>Taxe enregistrée au contrat : {centsMoney(totals.snapshotTaxCents)} · Encaissement client enregistré : {centsMoney(totals.collectedCents)} · Remboursé : {centsMoney(totals.refundedCents)} · Encaissé net enregistré : {centsMoney(totals.netCollectedCents)}. Ces données historiques ne sont pas modifiées.</p>
-      <p style={styles.muted}>Nuitées directes présumées réalisées : {totals.presumedPerformedNights || 0} · Annulées : {totals.cancelledNights || 0} · Futures : {totals.upcomingNights || 0} · À vérifier : {totals.needsReviewNights || 0} · Plateformes en contrôle : {totals.platformNights || 0}.</p>
-      <p style={styles.info}>Avant la déclaration, confirme les nuitées effectivement réalisées (départs anticipés et absences non détectés automatiquement). Le montant bancaire réellement prélevé reste indépendant du calcul. Un encaissement client enregistré à 0 € peut nécessiter un rapprochement avec Stripe : ne pas l'interpréter comme une preuve de non-paiement.</p>
-      {totals.cancelledTaxStillCollectedCents > 0 && <p style={styles.error}>Taxe encore enregistrée comme collectée sur des nuitées annulées : {centsMoney(totals.cancelledTaxStillCollectedCents)}. Vérifier la restitution au voyageur ; ne pas déclarer ces nuits à Aure Louron.</p>}
-      {(totals.needsReviewNights > 0 || totals.missingSnapshotNights > 0) && <p style={styles.error}>Attention : {totals.needsReviewNights || 0} nuitée(s) réglementaires non calculables et {totals.missingSnapshotNights || 0} snapshot(s) contractuels incomplets. Total indicatif partiel : ne pas déclarer sans correction.</p>}
+      <div style={styles.tableWrapper}><table style={{ ...styles.table, minWidth: 780, fontSize: 12 }}>
+        <thead><tr>
+          <th style={styles.th}>Client</th><th style={styles.th}>Arrivée</th><th style={styles.th}>Départ</th>
+          <th style={styles.th}>Nuits du mois</th><th style={styles.th}>Adultes</th><th style={styles.th}>Mineurs</th>
+          <th style={styles.th}>Taxe indicative</th><th style={styles.th}>État</th>
+        </tr></thead>
+        <tbody>
+          {stays.map((stay) => <tr key={stay.id}>
+            <td style={styles.td}>{stay.guestName}</td><td style={styles.td}>{stay.startDate}</td><td style={styles.td}>{stay.endDate}</td>
+            <td style={styles.td}>{stay.nights}</td><td style={styles.td}>{stay.adults ?? "—"}</td>
+            <td style={styles.td}>{stay.minors ?? "—"}</td>
+            <td style={styles.td}>{stay.uncertain ? "À vérifier" : centsMoney(stay.dueCents)}</td>
+            <td style={styles.td}>{stay.uncertain ? "À vérifier" : stay.upcoming ? "Séjour à venir" : stay.cancelled ? "Annulé" : "Présumé effectué"}</td>
+          </tr>)}
+          {!stays.length && <tr><td style={styles.td} colSpan="8">Aucune nuitée directe LMV à déclarer pour ce mois. Registre à 0.</td></tr>}
+        </tbody>
+      </table></div>
+      <details style={{ marginTop: 10 }}><summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Détails du calcul, écarts et contrôle des nuitées</summary>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 18, padding: "10px 0", fontSize: 12 }}>
+          <span>Taxe facturée : {centsMoney(totals.billedForDueCents)}</span>
+          <span>Écart dû − facturé : {centsMoney(difference)}</span>
+          <span>Prélèvements saisis : {centsMoney(paidCents)}</span>
+        </div>
+        <p style={styles.muted}>Taxe enregistrée au contrat : {centsMoney(totals.snapshotTaxCents)} · Encaissement client enregistré : {centsMoney(totals.collectedCents)} · Remboursé : {centsMoney(totals.refundedCents)} · Encaissé net : {centsMoney(totals.netCollectedCents)}.</p>
+        <p style={styles.muted}>Nuitées présumées effectuées : {totals.presumedPerformedNights || 0} · Annulées : {totals.cancelledNights || 0} · Futures : {totals.upcomingNights || 0} · À vérifier : {totals.needsReviewNights || 0}.</p>
+        <p style={styles.muted}>Vérifier les séjours réellement effectués et les montants encaissés avant toute déclaration. Un encaissement enregistré à 0 € n'est pas une preuve de non-paiement.</p>
+        {totals.cancelledTaxStillCollectedCents > 0 && <p style={styles.error}>Taxe éventuellement collectée sur des nuits annulées : {centsMoney(totals.cancelledTaxStillCollectedCents)}.</p>}
+        {(totals.needsReviewNights > 0 || totals.missingSnapshotNights > 0) && <p style={styles.error}>{totals.needsReviewNights || 0} nuitée(s) non calculables et {totals.missingSnapshotNights || 0} snapshot(s) incomplets : ne pas déclarer ce total sans vérification.</p>}
       <div style={styles.tableWrapper}><table style={{ ...styles.table, minWidth: 1350 }}><thead><tr>
         <th style={styles.th}>Nuit</th><th style={styles.th}>Voyageur</th><th style={styles.th}>Occupants</th><th style={styles.th}>Taxables</th>
         <th style={styles.th}>Classement contrat</th><th style={styles.th}>Taxe facturée</th><th style={styles.th}>Classement nuitée</th><th style={styles.th}>Taxe indicative</th><th style={styles.th}>Écart</th><th style={styles.th}>Statut</th>
@@ -239,9 +277,9 @@ function TouristTaxDeclarationPanel({ year }) {
         </tr>)}
         {!(registry.directRows || []).length && <tr><td style={styles.td} colSpan="10">Aucune nuitée directe LMV à déclarer pour ce mois. Registre à 0.</td></tr>}
       </tbody></table></div>
-      {(registry.platformRows || []).length > 0 && <><h4>Plateformes — contrôle uniquement</h4><p style={styles.muted}>Ces nuitées sont isolées des sommes LMV à déclarer à Aure Louron. Les reversements des plateformes ne bloquent pas ce registre.</p></>}
+      </details>
     </>}
-    {Number(year) >= 2026 && <div style={{ ...styles.accountingAssetBox, marginTop: 18 }}>
+    {Number(year) >= 2026 && <details style={{ ...styles.accountingAssetBox, marginTop: 10 }}><summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Prélèvements bancaires Aure Louron</summary><div>
       <h3 style={{ marginTop: 0 }}>Prélèvements bancaires Aure Louron — {String(month).padStart(2, "0")}/{year}</h3>
       <p style={styles.muted}>Saisis uniquement un débit effectivement constaté sur ton compte bancaire. Cette écriture est distincte des charges d'exploitation et n'est jamais créée automatiquement à partir de la taxe calculée.</p>
       {remittancesError && <p style={styles.error}>{remittancesError} — Vérifier que la migration de création du registre des prélèvements a été appliquée.</p>}
@@ -265,7 +303,7 @@ function TouristTaxDeclarationPanel({ year }) {
         </tr>)}
         {!remittances.length && <tr><td style={styles.td} colSpan="5">Aucun prélèvement saisi pour ce mois.</td></tr>}
       </tbody></table></div>
-    </div>}
+    </div></details>}
   </>;
 }
 

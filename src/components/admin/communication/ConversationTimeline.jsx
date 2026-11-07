@@ -1,49 +1,26 @@
 import { styles } from "../adminStyles";
 import { formatDateTime } from "../../../utils/adminFormatters";
 
-const TYPE_LABELS = {
-  email: "Email",
-  event: "Action",
-  message: "Message",
-};
-
-export default function ConversationTimeline({ items = [], onOpenReservation, onOpenCustomer }) {
+export default function ConversationTimeline({ items = [], onOpenReservation, onOpenCustomer, onOpenPayments, onOpenInvoices }) {
   return (
-    <section style={styles.reservationSheet}>
-      <div style={styles.panelHeader}>
-        <h3 style={styles.subTitle}>Chronologie de communication</h3>
-        <p style={styles.muted}>Emails, messages et actions historisées dans un seul fil.</p>
-      </div>
-
-      {items.length === 0 ? (
-        <p style={styles.empty}>Aucune communication trouvée pour ce contexte.</p>
-      ) : (
-        <div style={{ display: "grid", gap: "12px" }}>
-          {items.map((item) => (
-            <article key={item.id} style={styles.noteBox}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "flex-start" }}>
-                <div>
-                  <strong>{TYPE_LABELS[item.type] || item.type} · {item.title}</strong>
-                  <p style={styles.muted}>{formatDateTime(item.date)}</p>
-                </div>
-                <div style={styles.contactButtons}>
-                  {item.reservation && (
-                    <button style={styles.smallButton} onClick={() => onOpenReservation?.(item.reservation)}>
-                      Réservation
-                    </button>
-                  )}
-                  {item.customer && (
-                    <button style={styles.smallButton} onClick={() => onOpenCustomer?.(item.customer)}>
-                      Client
-                    </button>
-                  )}
-                </div>
-              </div>
-              {item.description && <p style={{ marginBottom: 0 }}>{item.description}</p>}
-            </article>
-          ))}
-        </div>
-      )}
+    <section aria-label="Messages clients et propriétaire" style={{ display: "grid", gap: 6 }}>
+      {items.length === 0 ? <p style={styles.empty}>Aucun message enregistré.</p> : items.map((item) => (
+        <article key={item.id} style={{ background: item.type === "message" ? "#f0fdf4" : "#f8fafc", padding: "9px 12px", border: "1px solid #e5e7eb", borderRadius: 9 }}>
+          <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: 10 }}>
+            <strong style={{ fontSize: 13 }}>{item.title}</strong>
+            <small style={{ color: "#64748b" }}>{formatDateTime(item.date)}</small>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+              {item.reservation && <>
+                <button style={styles.smallButton} onClick={() => onOpenReservation?.(item.reservation)}>Séjour</button>
+                <button style={styles.smallButton} onClick={() => onOpenPayments?.(item.reservation)}>Paiement</button>
+                <button style={styles.smallButton} onClick={() => onOpenInvoices?.(item.reservation)}>Factures</button>
+              </>}
+              {item.customer && <button style={styles.smallButton} onClick={() => onOpenCustomer?.(item.customer)}>Client</button>}
+            </div>
+          </div>
+          <p style={{ whiteSpace: "pre-wrap", margin: "6px 0 0", fontSize: 13 }}>{item.description}</p>
+        </article>
+      ))}
     </section>
   );
 }

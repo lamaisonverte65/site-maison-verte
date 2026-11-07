@@ -16,9 +16,9 @@ export default function PaymentTimeline({ row }) {
   return (
     <section style={{ marginTop: 18 }}>
       <h3 style={styles.subTitle}>Timeline financière</h3>
-      <TimelineItem label="Création / demande" date={row.createdAt || row.startDate} status={row.status} />
-      <TimelineItem label="Acompte" date={row.depositPaidAt || row.depositDueAt} amount={row.amounts?.deposit} status={row.depositStatus} />
-      <TimelineItem label="Solde" date={row.balancePaidAt || row.balanceDueAt} amount={row.amounts?.balance} status={row.balanceStatus} />
+      <TimelineItem label="Création / demande" date={row.createdAt} status={row.status} />
+      <TimelineItem label={row.depositPaidAt ? "Acompte payé" : "Acompte prévu"} date={row.depositPaidAt || row.depositDueAt} amount={row.amounts?.deposit} status={row.depositStatus} />
+      <TimelineItem label={row.balancePaidAt ? "Solde payé" : "Solde prévu"} date={row.balancePaidAt || row.balanceDueAt} amount={row.amounts?.balance} status={row.balanceStatus} />
       <TimelineItem label="Payout Stripe" date={row.payoutArrivalDate || row.transferDate} status={(row.payoutIds || []).join(", ") || row.stripeTransferStatus} />
     </section>
   );

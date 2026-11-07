@@ -4,10 +4,12 @@ import fs from "node:fs";
 
 const read = (path) => fs.readFileSync(path, "utf8");
 
-test("B4.3.0 admin navigation exposes home tax and declarations", () => {
+test("R29 navigation exposes home, declarations and backups without a tax tab", () => {
   const source = read("src/components/admin/AdminTopBar.jsx");
   assert.match(source, /key: "home", label: "Accueil"/);
-  assert.match(source, /key: "tourist_tax", label: "Taxe de séjour"/);
+  assert.doesNotMatch(source, /key: "tourist_tax"/);
+  assert.doesNotMatch(source, /key: "crm"/);
+  assert.match(source, /key: "backups", label: "Sauvegardes"/);
   assert.match(source, /key: "declarations", label: "Déclarations"/);
   assert.match(source, /stickyAdminNav/);
 });
@@ -19,11 +21,13 @@ test("B4.3.0 home is the default operational dashboard", () => {
   assert.match(source, /activeTab === "home"/);
 });
 
-test("B4.3.0 tourist tax is separated from pricing", () => {
+test("R29 tourist tax is accessible inside pricing, without its own tab", () => {
   const admin = read("src/pages/Admin.jsx");
   const pricing = read("src/components/PricingAdmin.jsx");
-  assert.match(admin, /<PricingAdmin mode="pricing"/);
-  assert.match(admin, /<PricingAdmin mode="tax"/);
+  assert.match(admin, /<PricingAdmin mode="all"/);
+  assert.match(pricing, /<details className="pricing-tax-details"/);
+  assert.match(pricing, /<summary style=/);
+  assert.doesNotMatch(admin, /activeTab === "tourist_tax"/);
   assert.match(pricing, /mode !== "pricing"/);
   assert.match(pricing, /mode !== "tax"/);
 });

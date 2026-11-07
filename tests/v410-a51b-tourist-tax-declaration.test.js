@@ -83,6 +83,7 @@ test("A-5.1b UI distinguishes historical snapshot and current regulatory calcula
   assert.match(panel, /Taxe de séjour — Aure Louron/);
   assert.match(panel, /Taxe enregistrée/);
   assert.match(panel, /Taxe indicative à déclarer/);
-  assert.match(panel, /Plateformes — contrôle uniquement/);
+  assert.doesNotMatch(panel, /Plateformes — contrôle uniquement/);
+  assert.match(panel, /Réservations effectuées sur le site uniquement/);
   assert.match(panel, /Aucune nuitée directe LMV à déclarer pour ce mois\. Registre à 0\./);
 });

@@ -174,6 +174,7 @@ async function runReviewRequest() {
     .from("booking_requests")
     .select("*")
     .in("status", ["deposit_paid", "paid", "fully_paid", "confirmed"])
+    .neq("admin_email_notifications_enabled", false)
     .eq("end_date", targetEndDate);
 
   if (error) throw new Error(error.message);

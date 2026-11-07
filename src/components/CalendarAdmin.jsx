@@ -323,12 +323,13 @@ export default function CalendarAdmin({
           const isAdminClient = reservationSource === "admin_client";
           const isBooking = reservationSource.includes("booking");
           const isAirbnb = reservationSource.includes("airbnb");
-          const color = isAdminPersonal ? COLORS.personal : isBooking ? COLORS.booking : isAirbnb ? COLORS.airbnb : getColor(status);
+          const cashToCollect = reservation.admin_payment_method === "cash" && reservation.payment_status === "cash_pending";
+          const color = isAdminPersonal ? COLORS.personal : isBooking ? COLORS.booking : isAirbnb ? COLORS.airbnb : cashToCollect ? COLORS.accepted : getColor(status);
           // Les demandes directes en attente de paiement utilisent un vert clair
           // opaque avec un texte foncé. Ne jamais modifier Booking/Airbnb ni
           // les statuts déjà payés.
           const isAwaitingDirectPayment = !isAdminPersonal && !isBooking && !isAirbnb
-            && ["accepted", "deposit_pending", "payment_pending", "awaiting_payment"].includes(String(status).toLowerCase());
+            && (cashToCollect || ["accepted", "deposit_pending", "payment_pending", "awaiting_payment"].includes(String(status).toLowerCase()));
           const price = reservation.contract_total ?? reservation.owner_price ?? reservation.estimated_total;
           const prefix = isAdminPersonal
             ? "Perso"
@@ -342,7 +343,7 @@ export default function CalendarAdmin({
           const name = [reservation.guest_first_name, reservation.guest_last_name].filter(Boolean).join(" ") || "Client";
           return {
             id: reservation.id,
-            title: `${prefix} - ${name}${price ? ` · ${formatMoney(price)}` : ""}`,
+            title: `${prefix} - ${name}${cashToCollect ? " · Espèces à encaisser" : ""}${price ? ` · ${formatMoney(price)}` : ""}`,
             start: reservation.start_date,
             end: reservation.end_date,
             backgroundColor: color,
@@ -360,9 +361,12 @@ export default function CalendarAdmin({
         .select("*")
         .order("start_date", { ascending: true });
 
-      setBlocks(calendarBlocks || []);
+      // Les blocages passés restent en base, mais ne polluent plus l'admin actif.
+      const today = formatLocalDate(new Date());
+      const activeBlocks = (calendarBlocks || []).filter((block) => String(block.end_date || "").slice(0, 10) > today);
+      setBlocks(activeBlocks);
 
-      const blockEvents = (calendarBlocks || []).map((block) => ({
+      const blockEvents = activeBlocks.map((block) => ({
         id: block.id,
         title: block.title || "Blocage admin",
         start: block.start_date,
@@ -515,7 +519,9 @@ export default function CalendarAdmin({
       children: reservation.children_count ?? "",
       babyBedNeeded: Boolean(reservation.baby_bed_needed),
       arrivalTime: reservation.arrival_time || "",
-      total: action === "site" ? String(total || 0) : "0",
+      total: "",
+      paymentMethod: reservation.admin_payment_method || "stripe",
+      sendInfoEmail: reservation.admin_email_notifications_enabled !== false,
       amountPaid: String(reservation.amount_paid || 0),
       sendPaymentLink: false,
       clientMessage: reservation.message || "",
@@ -556,7 +562,7 @@ export default function CalendarAdmin({
     setSelectedPeriod(selectionInfo);
     setSelectionForm({
       ...emptySelectionForm(selectionInfo),
-      total: String(computedTotal || 0),
+      total: "",
       nightPrice: String(getPriceForDate(selectionInfo.startStr)),
     });
   }
@@ -636,13 +642,10 @@ export default function CalendarAdmin({
       }
 
       if (["personal", "site", "booking", "airbnb"].includes(selectionForm.action)) {
-        const total = selectionForm.action === "site"
-          ? Number(String(selectionForm.total || "0").replace(",", "."))
-          : 0;
-
-        if (selectionForm.action === "personal" && !selectionForm.displayName.trim()) {
-          return alert("Le nom affiché est obligatoire pour garder une information claire dans le calendrier.");
-        }
+        // Sans tarif spécial explicite, le devis central recalcule à partir des dates.
+        const total = selectionForm.action === "site" && String(selectionForm.total || "").trim() !== ""
+          ? Number(String(selectionForm.total).replace(",", "."))
+          : null;
 
         if (["site", "booking", "airbnb"].includes(selectionForm.action)) {
           if (!selectionForm.firstName.trim() || !selectionForm.lastName.trim()) {
@@ -650,7 +653,7 @@ export default function CalendarAdmin({
           }
         }
 
-        if (selectionForm.action === "site" && total > 0 && selectionForm.sendPaymentLink && !selectionForm.email.trim()) {
+        if (selectionForm.action === "site" && selectionForm.paymentMethod !== "cash" && selectionForm.sendPaymentLink && !selectionForm.email.trim()) {
           return alert("Un email est obligatoire pour envoyer un lien de paiement Stripe.");
         }
 
@@ -674,8 +677,10 @@ export default function CalendarAdmin({
           cleaningOption: selectionForm.cleaningOption !== false,
           promotionCode: selectionForm.promotionCode || "",
           paymentPreference: selectionForm.paymentPreference || "deposit",
+          paymentMethod: selectionForm.action === "site" ? selectionForm.paymentMethod || "stripe" : "none",
+          sendInfoEmail: Boolean(selectionForm.email) && Boolean(selectionForm.sendInfoEmail),
           amountPaid: 0,
-          sendPaymentLink: selectionForm.action === "site" && !editingReservation ? Boolean(selectionForm.sendPaymentLink) : false,
+          sendPaymentLink: selectionForm.action === "site" && selectionForm.paymentMethod !== "cash" && !editingReservation ? Boolean(selectionForm.sendPaymentLink) : false,
           clientMessage: selectionForm.clientMessage,
           internalNotes: selectionForm.internalNotes,
           housekeepingNotes: selectionForm.housekeepingNotes,
@@ -695,29 +700,9 @@ export default function CalendarAdmin({
 
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error || "Erreur enregistrement réservation.");
-        alert(editingReservation?.id ? "Réservation modifiée." : (result.paymentLink ? "Réservation créée et lien de paiement envoyé." : "Réservation créée."));
+        alert(result.emailWarning || (editingReservation?.id ? "Réservation modifiée." : (result.paymentLink ? "Réservation créée et lien de paiement envoyé." : "Réservation créée.")));
         onSelectReservation?.(result.booking);
         onCalendarUpdated?.();
-      }
-
-      if (selectionForm.action === "price") {
-        const response = await fetch("/.netlify/functions/save-price-rule", {
-          method: "POST",
-          headers: await getAdminFetchHeaders(),
-          body: JSON.stringify({
-            action: "create",
-            ruleType: "override",
-            label: selectionForm.priceLabel || "Tarif spécifique",
-            startDate: effectiveStartDate,
-            endDate: effectiveEndDate,
-            nightPrice: Number(selectionForm.nightPrice || 0),
-            reason: selectionForm.priceReason || "ajustement",
-            notes: selectionForm.priceNotes || selectionForm.notes || null,
-          }),
-        });
-
-        if (!response.ok) throw new Error(await response.text());
-        alert("Tarif spécifique enregistré.");
       }
 
       setPendingRangeStart(null);
@@ -817,8 +802,8 @@ export default function CalendarAdmin({
 
   const selectedPeriodTotal = useMemo(() => {
     if (!selectedPeriod) return 0;
-    return computeTotal(selectedPeriod.startStr, selectedPeriod.endStr);
-  }, [selectedPeriod, seasonPrices, priceOverrides, defaultNightPrice]);
+    return computeTotal(selectionForm.startDate || selectedPeriod.startStr, selectionForm.endDate || selectedPeriod.endStr);
+  }, [selectedPeriod, selectionForm.startDate, selectionForm.endDate, seasonPrices, priceOverrides, defaultNightPrice]);
 
   const calendarEvents = useMemo(() => {
     const selectedRangeEvent = selectedPeriod
@@ -862,16 +847,22 @@ export default function CalendarAdmin({
   }, [events, selectedPeriod]);
 
   const calendarSummary = useMemo(() => {
-    const external = events.filter((event) => event.extendedProps?.type === "external").length;
-    const direct = events.filter((event) => event.extendedProps?.type === "booking_request").length;
+    const bookings = events.filter((event) => event.extendedProps?.type === "booking_request");
+    const sourceOf = (event) => String(event.extendedProps?.reservation?.source || "").toLowerCase();
+    const platformBookings = bookings.filter((event) => /booking|airbnb/.test(sourceOf(event)));
+    const direct = bookings.filter((event) => ["website", "direct", "", "admin_client"].includes(sourceOf(event))).length;
+    const externalIcs = events.filter((event) => event.extendedProps?.type === "external" && !event.extendedProps?.is_closed_block);
+    // Un séjour importé et sa ligne ICS ne doivent pas être comptés deux fois.
+    const seenPlatform = new Set(platformBookings.map((event) => [sourceOf(event).includes("airbnb") ? "airbnb" : "booking", event.start, event.end].join("|")));
+    const uniqueIcs = externalIcs.filter((event) => {
+      const key = [event.extendedProps?.source, event.start, event.end].join("|");
+      if (seenPlatform.has(key)) return false;
+      seenPlatform.add(key);
+      return true;
+    });
     const adminBlocks = events.filter((event) => event.extendedProps?.type === "admin_block").length;
-
-    return {
-      external,
-      direct,
-      adminBlocks,
-      priceRules: (seasonPrices?.length || 0) + (priceOverrides?.length || 0),
-    };
+    return { external: platformBookings.length + uniqueIcs.length, direct, adminBlocks,
+      priceRules: (seasonPrices?.length || 0) + (priceOverrides?.length || 0) };
   }, [events, seasonPrices, priceOverrides]);
 
   const legendItems = mode === "housekeeping" ? [
@@ -891,19 +882,6 @@ export default function CalendarAdmin({
   return (
     <div style={styles.wrapper}>
       <style>{calendarCss}</style>
-      {shouldShowAdminCalendarToolbar(mode) && (
-        <CalendarToolbar
-          loading={loading}
-          summary={calendarSummary}
-          selectedPeriod={selectedPeriod}
-          pendingRangeStart={pendingRangeStart}
-          onRefresh={mode === "housekeeping" ? onCalendarUpdated : loadCalendar}
-          onClearSelection={() => {
-            clearEditionAndSelection();
-          }}
-        />
-      )}
-
       {shouldLoadExternalConflicts(mode) && !externalConflictsDismissed && (
         <CalendarConflictDialog
           conflicts={externalConflicts}
@@ -926,7 +904,6 @@ export default function CalendarAdmin({
         </div>
       )}
 
-      <CalendarLegend items={legendItems} />
 
       {loading && <p>Chargement du calendrier...</p>}
 
@@ -1070,23 +1047,22 @@ export default function CalendarAdmin({
       </div>
 
 
-      {mode !== "housekeeping" && <section style={styles.blockList}>
-        <h3>Blocages admin</h3>
-        {blocks.length === 0 ? (
-          <p style={styles.muted}>Aucun blocage admin enregistré.</p>
-        ) : (
-          blocks.map((block) => (
-            <div key={block.id} style={styles.blockItem}>
-              <div>
-                <strong>{block.title || "Blocage admin"}</strong>
-                <p style={styles.muted}>{formatDate(block.start_date)} → {formatDate(block.end_date)}</p>
-                {block.notes && <p style={styles.muted}>{block.notes}</p>}
-              </div>
-              <button style={styles.deleteButton} onClick={() => deleteBlock(block.id)}>Supprimer</button>
-            </div>
-          ))
-        )}
-      </section>}
+      {shouldShowAdminCalendarToolbar(mode) && (
+        <CalendarToolbar
+          loading={loading}
+          summary={calendarSummary}
+          selectedPeriod={selectedPeriod}
+          pendingRangeStart={pendingRangeStart}
+          onRefresh={mode === "housekeeping" ? onCalendarUpdated : loadCalendar}
+          onClearSelection={() => {
+            clearEditionAndSelection();
+          }}
+        />
+      )}
+
+      <CalendarLegend items={legendItems} />
+
+
     </div>
   );
 }

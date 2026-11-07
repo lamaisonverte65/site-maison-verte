@@ -26,15 +26,26 @@ export async function handler(event) {
   const nextMonth = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, "0")}-01`;
 
   try {
+    // Lire les anciennes réservations du site même si le snapshot fiscal manque.
+    // Ne jamais inclure une source plateforme ou une réservation personnelle.
     const bookingsResult = await supabase.from("booking_requests")
-      .select("id,status,start_date,end_date,guest_first_name,guest_last_name,tourist_tax_amount,tourist_tax_collected,tourist_tax_refunded,tourist_tax_collector,tourist_tax_snapshot")
+      .select("id,source,status,start_date,end_date,guest_first_name,guest_last_name,adults_count,children_count,tourist_tax_amount,tourist_tax_collected,tourist_tax_refunded,tourist_tax_collector,tourist_tax_snapshot")
       .lt("start_date", nextMonth)
       .gt("end_date", firstNight)
-      .not("tourist_tax_snapshot", "is", null)
-      .in("tourist_tax_collector", ["la_maison_verte", "platform"])
       .order("start_date", { ascending: true });
     if (bookingsResult.error) throw bookingsResult.error;
-
+    const candidates = (bookingsResult.data || []).filter((booking) => {
+      const source = String(booking.source || "").toLowerCase().trim();
+      const collector = String(booking.tourist_tax_collector || "").toLowerCase();
+      if (source === "website" || source === "direct" || source === "admin_client") return collector !== "platform";
+      // Anciennes demandes sans source : uniquement lorsque le collecteur
+      // La Maison Verte est identifié. Elles restent à contrôler.
+      return !source && collector === "la_maison_verte";
+    }).map((booking) => ({
+      ...booking,
+      tourist_tax_collector: "la_maison_verte",
+      requiresSourceReview: !booking.source || !booking.tourist_tax_collector || booking.tourist_tax_collector !== "la_maison_verte",
+    }));
     // Regulatory lookup is for the declaration ONLY; the commercial snapshot
     // remains the authority for the contractual amount and is never altered.
     const [historyResult, rulesResult] = await Promise.all([
@@ -52,7 +63,7 @@ export async function handler(event) {
       timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
     }).format(new Date());
     const rows = buildTouristTaxDeclarationRows({
-      bookings: bookingsResult.data || [],
+      bookings: candidates,
       classificationHistory: historyResult.data || [],
       rules: rulesResult.data || [],
       todayDate,
@@ -61,7 +72,7 @@ export async function handler(event) {
     return json(200, {
       ...summary,
       generatedAt: new Date().toISOString(),
-      note: "Les montants contractuels restent issus des snapshots. La taxe indicative Aure Louron est recalculée séparément selon le classement et le barème à chaque nuit. Confirmer les nuitées réellement effectuées avant déclaration.",
+      note: "Les montants contractuels restent issus des snapshots. La taxe indicative Aure Louron est recalculée séparément selon le classement et le barème à chaque nuit. Uniquement les réservations du site identifiées ; anciennes sources ambiguës et snapshots manquants signalés « À vérifier ». Confirmer les nuitées réellement effectuées avant déclaration.",
     });
   } catch (error) {
     console.error("Erreur registre taxe de séjour :", error);

@@ -12,16 +12,7 @@ export default function ReservationsPanel({
 
   return (
     <section style={styles.panel}>
-      <div style={styles.panelHeader}>
-        <div>
-          <h2 style={styles.panelTitle}>Réservations</h2>
-          <p style={styles.muted}>Tri, filtres, sélection et export des réservations. La fiche complète s’ouvre dans le dossier unique en bas de l’admin.</p>
-        </div>
-      </div>
-
       <ReservationsToolbar
-        totalCount={sortedReservations.length}
-        visibleCount={table.visibleReservations.length}
         tableSearch={table.tableSearch}
         onTableSearchChange={table.setTableSearch}
         filters={table.filters}

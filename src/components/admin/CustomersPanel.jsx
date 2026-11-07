@@ -16,13 +16,19 @@ export default function CustomersPanel({
   contactActions,
   onCustomerSort,
   onOpenCommunication,
+  onOpenPayments,
+  onOpenInvoices,
   permissions,
+  selectedCustomer: contextSelectedCustomer = null,
+  onSelectCustomer,
+  onCloseCustomer,
 }) {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
 
-  const selectedCustomerFromList = selectedCustomer
-    ? filteredCustomers.find((customer) => customer.id === selectedCustomer.id) || selectedCustomer
+  const targetCustomer = contextSelectedCustomer || selectedCustomer;
+  const selectedCustomerFromList = targetCustomer
+    ? filteredCustomers.find((customer) => customer.id === targetCustomer.id) || targetCustomer
     : null;
 
   const selectedCustomerReservations = selectedCustomerFromList
@@ -31,10 +37,12 @@ export default function CustomersPanel({
 
   function openCustomerDetails(customer) {
     setSelectedCustomer(customer);
+    onSelectCustomer?.(customer);
   }
 
   function closeCustomerDetails() {
     setSelectedCustomer(null);
+    onCloseCustomer?.();
   }
 
   return (
@@ -42,7 +50,6 @@ export default function CustomersPanel({
       <div style={styles.panelHeader}>
         <div>
           <h2 style={styles.panelTitle}>Clients {customerFilter === "loyal" ? "fidèles" : ""}</h2>
-          <p style={styles.muted}>La liste sert à retrouver un client ; la fiche client regroupe les informations durables de la personne.</p>
         </div>
         <div style={styles.headerActions}>
           {customerFilter === "loyal" && (
@@ -76,6 +83,8 @@ export default function CustomersPanel({
           contactActions={contactActions}
           onClose={closeCustomerDetails}
           onOpenCommunication={onOpenCommunication}
+          onOpenPayments={onOpenPayments}
+          onOpenInvoices={onOpenInvoices}
           permissions={permissions}
         />
       )}

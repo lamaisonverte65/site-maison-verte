@@ -1,31 +1,5 @@
 import { useState } from "react";
-
-function normalizeText(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function normalizePhone(value) {
-  return String(value || "").replace(/\D/g, "");
-}
-
-function findCustomerForReservation(customers, reservation) {
-  if (!reservation) return null;
-
-  const reservationEmail = normalizeText(reservation.guest_email);
-  const reservationPhone = normalizePhone(reservation.guest_phone);
-  const reservationFirstName = normalizeText(reservation.guest_first_name);
-  const reservationLastName = normalizeText(reservation.guest_last_name);
-
-  return (customers || []).find((customer) => {
-    const sameEmail = reservationEmail && normalizeText(customer.email) === reservationEmail;
-    const samePhone = reservationPhone && normalizePhone(customer.phone) === reservationPhone;
-    const sameName = reservationFirstName && reservationLastName
-      && normalizeText(customer.first_name) === reservationFirstName
-      && normalizeText(customer.last_name) === reservationLastName;
-
-    return sameEmail || samePhone || sameName;
-  }) || null;
-}
+import { resolveCustomerForBooking } from "../utils/adminRecordLinks";
 
 export function useNavigationContext({ customers, setActiveTab, setSelectedRequest }) {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -49,15 +23,15 @@ export function useNavigationContext({ customers, setActiveTab, setSelectedReque
     setSelectedCustomer(null);
   }
 
-  function openCustomerFromReservation(reservation) {
-    const customer = findCustomerForReservation(customers, reservation);
+  function openCustomerFromReservation(reservation, originTab = "reservations") {
+    const customer = resolveCustomerForBooking(customers, reservation);
 
     if (!customer) {
       alert("Aucune fiche client reliée automatiquement à cette réservation. Vérifie l'email, le téléphone ou le nom du client.");
       return;
     }
 
-    openCustomer(customer, "reservations");
+    openCustomer(customer, originTab);
   }
 
   function backToPreviousTab(fallbackTab = "reservations") {

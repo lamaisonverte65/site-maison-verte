@@ -6,7 +6,8 @@ function csvEscape(value) {
 }
 
 function buildCsv(rows) {
-  const headers = ["Client", "Début", "Fin", "Statut", "CA confirmé", "Payé client", "Frais Stripe", "Net Stripe", "Payouts"];
+  // Keep the historic Net Stripe in CSV column 8 for downstream imports/tests.
+  const headers = ["Client", "Début", "Fin", "Statut", "CA confirmé", "Payé client", "Frais", "Net Stripe / plateforme", "Payouts", "Origine", "Référence plateforme"];
   const lines = rows.map((row) => [
     row.name,
     formatDate(row.startDate),
@@ -14,14 +15,18 @@ function buildCsv(rows) {
     row.status,
     formatMoney(row.confirmedAmount),
     formatMoney(row.paidClientAmount),
-    formatMoney(row.stripeFeeAmount),
-    row.stripeFinancialsComplete === true
-      && row.stripeNetAmount !== null
-      && row.stripeNetAmount !== undefined
-      && row.stripeNetAmount !== ""
-      && Number.isFinite(Number(row.stripeNetAmount))
-      ? formatMoney(row.stripeNetAmount) : "",
+    formatMoney(row.source === "booking" || row.source === "airbnb" ? row.platformFeeAmount : row.stripeFeeAmount),
+    (row.source === "booking" || row.source === "airbnb")
+      ? (row.platformNetAmount == null ? "" : formatMoney(row.platformNetAmount))
+      : row.stripeFinancialsComplete === true
+        && row.stripeNetAmount !== null
+        && row.stripeNetAmount !== undefined
+        && row.stripeNetAmount !== ""
+        && Number.isFinite(Number(row.stripeNetAmount))
+          ? formatMoney(row.stripeNetAmount) : "",
     (row.payoutIds || []).join(", "),
+    row.sourceLabel || "Site",
+    row.externalReference || "",
   ].map(csvEscape).join(";"));
 
   return [headers.map(csvEscape).join(";"), ...lines].join("\n");
@@ -42,8 +47,8 @@ export default function PaymentActions({ rows }) {
   }
 
   return (
-    <div style={{ ...styles.headerActions, marginBottom: 18 }}>
-      <button style={styles.smallButton} onClick={exportCsv}>Exporter CSV</button>
+    <div style={{ ...styles.headerActions, marginBottom: 0 }}>
+      <button type="button" style={{ ...styles.smallButton, fontSize: 12, padding: "7px 10px" }} onClick={exportCsv}>Exporter CSV</button>
     </div>
   );
 }

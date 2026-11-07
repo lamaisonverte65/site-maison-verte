@@ -14,9 +14,10 @@ test('frontend service requests the owner-only Netlify endpoint with the current
   assert.doesNotMatch(src, /[A-Z]:\\|H:\\|C:\\/);
 });
 
-test('AdminTopBar shows the backup download action only to the owner', () => {
-  const src = read('src/components/admin/AdminTopBar.jsx');
-  assert.match(src, /permissions\?\.isOwner/);
+test('R29 backup action is shown only in the owner-only backups tab', () => {
+  const src = read('src/components/admin/BackupPanel.jsx');
+  const nav = read('src/components/admin/AdminTopBar.jsx');
+  assert.match(nav, /key === "backups".*permissions.isOwner/);
   assert.match(src, /Télécharger la dernière sauvegarde/);
   assert.match(src, /requestLatestBackupDownload/);
   assert.match(src, /useState\(false\)/);
@@ -25,7 +26,7 @@ test('AdminTopBar shows the backup download action only to the owner', () => {
 });
 
 test('AdminTopBar triggers a browser download without encoding a local filesystem path', () => {
-  const src = read('src/components/admin/AdminTopBar.jsx');
+  const src = read('src/components/admin/BackupPanel.jsx');
   assert.match(src, /document\.createElement\(["']a["']\)/);
   assert.match(src, /link\.href\s*=\s*downloadUrl/);
   assert.match(src, /link\.download\s*=\s*filename/);

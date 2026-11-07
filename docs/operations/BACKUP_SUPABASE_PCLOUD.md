@@ -145,7 +145,7 @@ Le workflow quotidien produit toujours un paquet complet et autonome ; le dimanc
 - `manual` : jamais supprimée automatiquement ;
 - `baseline` : jamais supprimée automatiquement.
 
-**Déploiement progressif : le workflow exécute actuellement `rotate-pcloud.sh --dry-run` ; aucune suppression pCloud automatique n'est activée par R31.1.** La simulation journalise `WOULD_DELETE` pour les sauvegardes susceptibles d'être retirées. L'activation ultérieure de `--apply` requiert un contrôle de la liste, une copie locale déchiffrée vérifiée et une décision distincte. `--apply` exige en plus la variable d'accusé explicite `R31_ROTATION_APPLY_ACK`.
+**Activation R31.2 :** après contrôle de la simulation et téléchargement local vérifié, le workflow planifié exécute d'abord `--dry-run`, puis `--apply` si le précontrôle réussit. La suppression des sauvegardes anciennes éligibles est alors réelle et irréversible. Elle reste conditionnée à une baseline valide, un pointeur `latest.json` vérifié, un marqueur `_SUCCESS` et les fichiers d'intégrité. Le plafond est de 25 suppressions par source et par exécution ; `--apply` exige `R31_ROTATION_APPLY_ACK`. Les exécutions manuelles du workflow de sauvegarde n'activent pas la rotation.
 
 La rotation agit exclusivement sur les dossiers `daily`, `weekly` et `monthly` de `LMVCRYPT`, et seulement lorsque leur `_SUCCESS`, `manifest.json` et `SHA256SUMS` sont présents. Un dossier incomplet est protégé. Une baseline valide et le pointeur `latest.json` sont vérifiés ; la sauvegarde référencée par le pointeur reste protégée. Une vérification des marqueurs n'est pas un test complet de restauration.
 

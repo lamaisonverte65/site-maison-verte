@@ -8,6 +8,8 @@ export default function StripePayoutsPanel({
   stripePayouts,
   stripeBalanceTransactions,
   onRefresh,
+  onOpenReservation,
+  onOpenPayments,
 }) {
   const reconciliation = usePaymentReconciliation({ stripePayouts, stripeBalanceTransactions });
 
@@ -78,7 +80,7 @@ export default function StripePayoutsPanel({
                 <tr key={transaction.id}>
                   <td style={styles.td}>{formatDateTime(transaction.created_at_stripe)}</td>
                   <td style={styles.td}>{transaction.type || "-"}</td>
-                  <td style={styles.td}>{transaction.booking_request_id ? shortId(transaction.booking_request_id) : "-"}</td>
+                  <td style={styles.td}>{transaction.booking_request_id ? <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4 }}><span>{shortId(transaction.booking_request_id)}</span><button type="button" style={styles.smallButton} onClick={() => onOpenReservation?.(transaction.booking_request_id)}>Séjour</button><button type="button" style={styles.smallButton} onClick={() => onOpenPayments?.(transaction.booking_request_id)}>Paiement</button></div> : "-"}</td>
                   <td style={styles.td}>{transaction.payment_type || transaction.payment_intent_id || "-"}</td>
                   <td style={styles.td}>{formatMoney(transaction.amount)}</td>
                   <td style={styles.td}>{formatMoney(transaction.fee)}</td>

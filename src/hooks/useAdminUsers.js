@@ -28,8 +28,9 @@ export function useAdminUsers({ session } = {}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const sessionUserId = session?.user?.id || null;
   const loadUsers = useCallback(async () => {
-    if (!session) {
+    if (!sessionUserId) {
       setUsers([]);
       setCurrentAdminUser(null);
       return;
@@ -54,7 +55,7 @@ export function useAdminUsers({ session } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [session]);
+  }, [sessionUserId]);
 
   useEffect(() => {
     loadUsers();

@@ -75,6 +75,9 @@ export async function fetchAdminData(supabase) {
   const stripeBalanceTransactionsData = await readOptionalRows(readAllAdminRows(supabase, {
     table: "stripe_balance_transactions", orderBy: "created_at_stripe",
   }), "stripe_balance_transactions", loadErrors);
+  const externalFinancialsData = await readOptionalRows(readAllAdminRows(supabase, {
+    table: "external_reservation_financials", orderBy: "id", uniqueBy: "id",
+  }), "external_reservation_financials", loadErrors);
   const bookingFinancialAggregatesData = await readAllAdminRows(supabase, {
     table: "booking_financial_ledger_aggregates", orderBy: "booking_request_id", uniqueBy: "booking_request_id",
   });
@@ -95,6 +98,7 @@ export async function fetchAdminData(supabase) {
     stripePayouts: stripePayoutsData || [],
     stripeBalanceTransactions: stripeBalanceTransactionsData || [],
     bookingFinancialAggregates: bookingFinancialAggregatesData || [],
+    externalFinancials: externalFinancialsData || [],
     loadErrors,
   };
 }

@@ -234,6 +234,7 @@ async function runArrivalReminder() {
     .from("booking_requests")
     .select("*")
     .in("status", ["deposit_paid", "paid", "fully_paid", "confirmed"])
+    .neq("admin_email_notifications_enabled", false)
     .eq("start_date", targetDate);
 
   if (error) {

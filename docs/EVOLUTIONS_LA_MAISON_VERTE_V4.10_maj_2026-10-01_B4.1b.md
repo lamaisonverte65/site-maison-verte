@@ -2114,7 +2114,7 @@ Périmètre validé le 24/09/2026 : Wi-Fi 7 ; téléphone public ; serviettes
 ; congélateur ; sèche-cheveux ; poubelle de tri ; lien Airbnb ; avis
 directs ; compteur Booking ; texte ménage du livret ; bannière contacts.
 
-Fichiers modifiés : `public/livret/banniere-contacts.png`,
+Fichiers modifiés : `public/livret/banniere-contacts.webp`,
 `src/pages/AppelerRedirect.jsx`, `src/pages/LivretAccueil.jsx`,
 `src/pages/MaisonVerte.jsx`, `src/pages/MentionsLegales.jsx`. La
 bannière contacts PNG est conservée pour le code et l'impression,

@@ -317,7 +317,7 @@ export async function handler(event) {
     let guestEmail = cleanText(body.email);
     let guestPhone = cleanText(body.phone);
 
-    if (bookingKind !== "personal" && customer) {
+    if (customer) {
       guestFirstName = customer.first_name || guestFirstName;
       guestLastName = customer.last_name || guestLastName;
       guestEmail = customer.email || guestEmail;
@@ -326,9 +326,9 @@ export async function handler(event) {
 
     if (bookingKind === "personal") {
       const display = splitDisplayName(body.displayName || `${guestFirstName || ""} ${guestLastName || ""}`.trim());
-      guestFirstName = display.firstName;
-      guestLastName = display.lastName;
-      guestEmail = null;
+      guestFirstName = cleanText(body.firstName) || display.firstName;
+      guestLastName = cleanText(body.lastName) || display.lastName;
+      guestEmail = cleanText(body.email);
       guestPhone = cleanText(body.phone);
     }
 
@@ -361,6 +361,7 @@ export async function handler(event) {
       end_date: endDate,
       nights,
       source,
+      admin_email_notifications_enabled: body.sendInfoEmail !== false && Boolean(guestEmail),
       contract_version: contractVersion,
       status: requestedStatus,
       adults_count: adults,

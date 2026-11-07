@@ -1,8 +1,9 @@
 import { styles } from "../adminStyles";
 
-export default function ReservationsFilters({ filters, onFilterChange, onReset }) {
+export default function ReservationsFilters({ filters, onFilterChange, onReset, tableSearch, onTableSearchChange, onExport }) {
   return (
-    <div style={{ ...styles.toolbar, alignItems: "center", flexWrap: "wrap" }}>
+    <div style={{ display: "grid", gap: "7px" }}>
+      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "7px" }}>
       <select style={styles.select} value={filters.status} onChange={(event) => onFilterChange("status", event.target.value)}>
         <option value="all">Tous les statuts</option>
         <option value="pending">À confirmer</option>
@@ -33,13 +34,56 @@ export default function ReservationsFilters({ filters, onFilterChange, onReset }
         <option value="complete">Total réglé</option>
       </select>
 
-      <label style={styles.muted}>Début séjour depuis</label>
-      <input style={styles.searchInput} type="date" value={filters.dateFrom} onChange={(event) => onFilterChange("dateFrom", event.target.value)} />
-
-      <label style={styles.muted}>jusqu'au</label>
-      <input style={styles.searchInput} type="date" value={filters.dateTo} onChange={(event) => onFilterChange("dateTo", event.target.value)} />
-
-      <button style={styles.smallButton} onClick={onReset}>Réinitialiser</button>
+        <button
+          type="button"
+          style={{ ...styles.smallButton, marginLeft: "auto" }}
+          onClick={onExport}
+        >Exporter la liste filtrée</button>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "7px" }}>
+        <input
+          type="search"
+          aria-label="Rechercher dans les réservations"
+          style={{ ...styles.searchInput, flex: "1 1 280px", minWidth: "180px", width: "auto" }}
+          value={tableSearch}
+          onChange={(event) => onTableSearchChange(event.target.value)}
+          placeholder="Rechercher un client, une réservation..."
+        />
+        <label style={{ ...styles.muted, display: "flex", alignItems: "center", gap: "5px", margin: 0, whiteSpace: "nowrap" }}>
+          Du
+          <input
+            aria-label="Début séjour depuis"
+            style={dateInputStyle}
+            type="date"
+            value={filters.dateFrom}
+            onChange={(event) => onFilterChange("dateFrom", event.target.value)}
+          />
+        </label>
+        <label style={{ ...styles.muted, display: "flex", alignItems: "center", gap: "5px", margin: 0, whiteSpace: "nowrap" }}>
+          au
+          <input
+            aria-label="Début séjour jusqu'au"
+            style={dateInputStyle}
+            type="date"
+            value={filters.dateTo}
+            onChange={(event) => onFilterChange("dateTo", event.target.value)}
+          />
+        </label>
+        <button type="button" style={{ ...styles.smallButton, marginLeft: "auto" }} onClick={onReset}>Réinitialiser</button>
+      </div>
     </div>
   );
 }
+
+// Les champs date ne doivent plus hériter du flex: 1 1 280px de searchInput.
+const dateInputStyle = {
+  width: "139px",
+  minWidth: "0",
+  maxWidth: "139px",
+  boxSizing: "border-box",
+  padding: "7px 6px",
+  borderRadius: "9px",
+  border: "1px solid #d6d3c8",
+  background: "white",
+  fontSize: "12px",
+};

@@ -29,6 +29,7 @@ import ReservationPanel from "../components/admin/ReservationPanel";
 import CustomersPanel from "../components/admin/CustomersPanel";
 import PaymentsPanel from "../components/admin/PaymentsPanel";
 import AdminTopBar from "../components/admin/AdminTopBar";
+import BackupPanel from "../components/admin/BackupPanel";
 import AdminHomePanel from "../components/admin/AdminHomePanel";
 import VisitsPanel from "../components/admin/VisitsPanel";
 import SummaryPanel from "../components/admin/SummaryPanel";
@@ -51,6 +52,7 @@ import { useVisitsData } from "../hooks/useVisitsData";
 import { usePaymentData } from "../hooks/usePaymentData";
 import { useAdminStats } from "../hooks/useAdminStats";
 import { useNavigationContext } from "../hooks/useNavigationContext";
+import { resolveCustomerForBooking } from "../utils/adminRecordLinks";
 import { useCommunicationData } from "../hooks/useCommunicationData";
 import { useCrmData } from "../hooks/useCrmData";
 import { useAdminPermissions } from "../hooks/useAdminPermissions";
@@ -92,9 +94,12 @@ export default function Admin() {
   const [confirmedReservations, setConfirmedReservations] = useState([]);
   const [stripePayouts, setStripePayouts] = useState([]);
   const [stripeBalanceTransactions, setStripeBalanceTransactions] = useState([]);
+  const [externalFinancials, setExternalFinancials] = useState([]);
   const [housekeepingReservations, setHousekeepingReservations] = useState([]);
   const [ownerHousekeepingNotes, setOwnerHousekeepingNotes] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [paymentFocusId, setPaymentFocusId] = useState(null);
+  const [invoiceFocusId, setInvoiceFocusId] = useState(null);
   const [calendarEditRequest, setCalendarEditRequest] = useState(null);
   const [activeTab, setActiveTab] = useState("home");
   const [search, setSearch] = useState("");
@@ -137,7 +142,7 @@ export default function Admin() {
 
   useEffect(() => {
     if (session && adminUsersData.currentAdminUser) loadAdminData();
-  }, [session, adminUsersData.currentAdminUser]);
+  }, [session?.user?.id, adminUsersData.currentAdminUser?.id, adminUsersData.currentAdminUser?.role]);
 
   useEffect(() => {
     if (!bookingRequests.length || selectedRequest) return;
@@ -198,6 +203,7 @@ export default function Admin() {
       setConfirmedReservations(adminData.confirmedReservations);
       setStripePayouts(adminData.stripePayouts);
       setStripeBalanceTransactions(adminData.stripeBalanceTransactions);
+      setExternalFinancials(adminData.externalFinancials || []);
       setSelectedRequest((current) => current ? nextRequests.find((request) => request.id === current.id) || current : current);
     } catch (error) {
       setDataLoadErrors({});
@@ -457,7 +463,7 @@ export default function Admin() {
   async function updateCustomer(customerId, updates) {
     if (!customerId || !updates || Object.keys(updates).length === 0) return;
 
-    const payload = { ...updates, updated_at: new Date().toISOString() };
+    const payload = { ...updates }; // customers n'a pas de colonne updated_at
     const { error } = await supabase.from("customers").update(payload).eq("id", customerId);
     if (error) throw error;
 
@@ -578,8 +584,8 @@ export default function Admin() {
     selectedReservationData,
   } = useReservationData({
     bookingRequests,
-    search,
-    statusFilter,
+    search: activeTab === "reservations" ? "" : search,
+    statusFilter: activeTab === "reservations" ? "all" : statusFilter,
     selectedRequest,
     payments,
     bookingEvents,
@@ -621,6 +627,8 @@ export default function Admin() {
   const { paymentRows } = usePaymentData({
     bookingRequests,
     stripeBalanceTransactions,
+    payments,
+    externalFinancials,
   });
 
   const communicationData = useCommunicationData({
@@ -640,7 +648,55 @@ export default function Admin() {
 
   function openCommunicationContext(context = {}) {
     communicationData.setContext(context);
+    setSelectedRequest(null);
     setActiveTab("communication");
+  }
+
+  function findBookingById(id) {
+    return bookingRequests.find((item) => String(item.id) === String(id)) || null;
+  }
+
+  function openPaymentForBooking(bookingOrId) {
+    const id = typeof bookingOrId === "object" ? bookingOrId?.id : bookingOrId;
+    if (!id) return;
+    setPaymentFocusId(String(id));
+    setSelectedRequest(null);
+    setActiveTab("payments");
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }
+
+  function openInvoiceForBooking(bookingOrId) {
+    const id = typeof bookingOrId === "object" ? bookingOrId?.id : bookingOrId;
+    if (!id) return;
+    setInvoiceFocusId(String(id));
+    setSelectedRequest(null);
+    setActiveTab("invoices");
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }
+
+  function openBookingById(id, originTab) {
+    const booking = findBookingById(id);
+    if (booking) {
+      navigation.openReservation(booking, originTab);
+      window.requestAnimationFrame(() => document.getElementById("lmv-reservation-sheet")?.scrollIntoView({ behavior: "auto", block: "start" }));
+    }
+    else alert("Aucune fiche réservation directement reliée à cette entrée.");
+  }
+
+  function openCustomerByBookingId(id, originTab) {
+    const booking = findBookingById(id);
+    if (!booking) {
+      alert("Cette entrée ne comporte pas de lien avec une réservation du site.");
+      return;
+    }
+    const customer = resolveCustomerForBooking(customers, booking);
+    if (!customer) {
+      alert("Fiche client non reliée de manière certaine. Vérifie l'identifiant client, l'email ou le téléphone de la demande. Le payeur peut être différent du demandeur.");
+      return;
+    }
+    navigation.openCustomer(customer, originTab);
+    setSelectedRequest(null);
+    window.scrollTo({ top: 0, behavior: "auto" });
   }
 
   const reservationActions = {
@@ -663,7 +719,7 @@ export default function Admin() {
     bulkEmail,
     add: addCustomer,
     delete: deleteCustomer,
-    selectReservation,
+    selectReservation: (request) => navigation.openReservation(request, "customers"),
   };
 
   const visitsData = {
@@ -714,17 +770,7 @@ export default function Admin() {
   if (isHousekeepingUser) {
     return (
       <main style={styles.page}>
-        <section style={styles.header}>
-          <div>
-            <p style={styles.kicker}>Planning ménage</p>
-            <h1 style={styles.title}>La Maison Verte — Arreau</h1>
-            <p style={styles.subtitle}>Calendrier des séjours et informations utiles pour les arrivées, départs et contacts clients.</p>
-          </div>
-          <div style={styles.headerActions}>
-            <button style={styles.refreshButton} onClick={loadAdminData}>Actualiser</button>
-            <button style={styles.logoutButton} onClick={handleLogout}>Déconnexion</button>
-          </div>
-        </section>
+        <AdminTopBar permissions={permissions} onLogout={handleLogout} />
 
         {loading && <p style={styles.info}>Chargement des données...</p>}
         {error && <p style={styles.error}>Erreur Supabase : {error}</p>}
@@ -758,7 +804,7 @@ export default function Admin() {
         onCustomerFilterChange={setCustomerFilter}
         onApplyDashboardFilter={applyDashboardFilter}
         onOpenLoyalCustomers={openLoyalCustomers}
-        onNavigate={setActiveTab}
+        onNavigate={(tab) => { if (tab !== activeTab) { setSelectedRequest(null); navigation.closeCustomer(); setPaymentFocusId(null); setInvoiceFocusId(null); window.scrollTo({ top: 0, behavior: "auto" }); } setActiveTab(tab); }}
         onRefresh={loadAdminData}
         onToggleAdminTracking={toggleAdminTracking}
         onPrintWelcomeBooklet={printWelcomeBooklet}
@@ -827,7 +873,6 @@ export default function Admin() {
 
       {shouldRenderAdminCalendar({ activeTab, loading, error }) && (
         <section style={styles.panel}>
-          <h2 style={styles.panelTitle}>Calendrier central</h2>
           <LazyAdminSection>
             <CalendarAdmin
               mode="admin"
@@ -840,14 +885,11 @@ export default function Admin() {
         </section>
       )}
 
-      {!loading && !error && activeTab === "pricing" && <section style={styles.panel}><h2 style={styles.panelTitle}>Gestion des tarifs</h2><LazyAdminSection><PricingAdmin mode="pricing" /></LazyAdminSection></section>}
-
-      {!loading && !error && activeTab === "tourist_tax" && (
-        <section style={styles.panel}>
-          <h2 style={styles.panelTitle}>Taxe de séjour</h2>
-          <LazyAdminSection><PricingAdmin mode="tax" /></LazyAdminSection>
-        </section>
-      )}
+      {!loading && !error && activeTab === "pricing" && <section style={styles.panel}>
+        <h2 style={styles.panelTitle}>Tarifs</h2>
+        <LazyAdminSection><PricingAdmin mode="all" /></LazyAdminSection>
+      </section>}
+      {!loading && !error && activeTab === "backups" && permissions.isOwner && <BackupPanel />}
 
       {!loading && !error && activeTab === "declarations" && (
         <section style={styles.panel}>
@@ -871,34 +913,42 @@ export default function Admin() {
           onSelectCustomer={(customer) => navigation.openCustomer(customer, activeTab)}
           onCloseCustomer={navigation.closeCustomer}
           onOpenCommunication={openCommunicationContext}
+          onOpenPayments={openPaymentForBooking}
+          onOpenInvoices={openInvoiceForBooking}
           permissions={permissions}
         />
       )}
 
 
-      {!loading && !error && !tabUnavailable("communication") && activeTab === "communication" && (
-        <CommunicationPanel
-          data={communicationData}
-          onOpenReservation={selectReservation}
-          onOpenCustomer={navigation.openCustomer}
-        />
-      )}
-
-      {!loading && !error && activeTab === "crm" && (
-        <CrmPanel
+      {!loading && !error && activeTab === "customers" && (
+        <details style={{ marginTop: 10 }}>
+          <summary style={{ cursor: "pointer", padding: "9px 12px", background: "#fff", borderRadius: 9, fontWeight: 600 }}>Suivi client avancé : fidélité, relances et segments</summary>
+          <CrmPanel
           data={crmData}
           contactActions={contactActions}
           onOpenCustomer={(customer) => navigation.openCustomer(customer, activeTab)}
-          onOpenReservation={selectReservation}
+          onOpenReservation={(request) => { selectReservation(request); setActiveTab("reservations"); }}
           onOpenCommunication={openCommunicationContext}
           onShowAllCustomers={() => {
             setCustomerFilter("all");
             setActiveTab("customers");
           }}
           onShowLoyalCustomers={openLoyalCustomers}
-        />
+          />
+        </details>
       )}
 
+
+
+      {!loading && !error && !tabUnavailable("communication") && activeTab === "communication" && (
+        <CommunicationPanel
+          data={communicationData}
+          onOpenReservation={(request) => { selectReservation(request); setActiveTab("reservations"); }}
+          onOpenCustomer={(customer) => navigation.openCustomer(customer, "communication")}
+          onOpenPayments={openPaymentForBooking}
+          onOpenInvoices={openInvoiceForBooking}
+        />
+      )}
 
       {!loading && !error && activeTab === "users" && (
         <UsersPanel
@@ -923,7 +973,20 @@ export default function Admin() {
       )}
 
       {!loading && !error && !tabUnavailable("payments") && activeTab === "payments" && (
-        <PaymentsPanel paymentRows={paymentRows} />
+        <PaymentsPanel
+          paymentRows={paymentRows}
+          platformReadError={dataLoadErrors.external_reservation_financials}
+          onRefresh={loadAdminData}
+          focusedBookingId={paymentFocusId}
+          onOpenCustomer={(row) => openCustomerByBookingId(row.bookingRequestId, "payments")}
+          onOpenReservation={(row) => openBookingById(row.bookingRequestId, "payments")}
+          onOpenInvoices={(row) => openInvoiceForBooking(row.bookingRequestId)}
+          onOpenCommunication={(row) => {
+            const booking = findBookingById(row.bookingRequestId);
+            if (booking) openCommunicationContext({ reservation: booking });
+          }}
+          onOpenStripePayouts={() => { setSelectedRequest(null); setActiveTab("stripe_payouts"); }}
+        />
       )}
 
       {!loading && !error && !tabUnavailable("invoices") && activeTab === "invoices" && (
@@ -932,10 +995,10 @@ export default function Admin() {
             invoices={customerInvoices}
             creditNotes={customerCreditNotes}
             onRefresh={loadAdminData}
-            onOpenReservation={(bookingId) => {
-              const booking = bookingRequests.find((item) => item.id === bookingId);
-              if (booking) { setSelectedRequest(booking); setActiveTab("reservations"); }
-            }}
+            focusedBookingId={invoiceFocusId}
+            onOpenReservation={(bookingId) => openBookingById(bookingId, "invoices")}
+            onOpenCustomer={(bookingId) => openCustomerByBookingId(bookingId, "invoices")}
+            onOpenPayments={(bookingId) => openPaymentForBooking(bookingId)}
           />
         </LazyAdminSection>
       )}
@@ -945,6 +1008,8 @@ export default function Admin() {
           stripePayouts={stripePayouts}
           stripeBalanceTransactions={stripeBalanceTransactions}
           onRefresh={loadAdminData}
+          onOpenReservation={(bookingId) => openBookingById(bookingId, "stripe_payouts")}
+          onOpenPayments={(bookingId) => openPaymentForBooking(bookingId)}
         />
       )}
 
@@ -953,13 +1018,18 @@ export default function Admin() {
       )}
 
       {!loading && !error && !tabUnavailable("reservation_details") && openedReservation && (
-        <section style={{ ...styles.panel, marginTop: "28px" }}>
+        <section id="lmv-reservation-sheet" style={{ ...styles.panel, marginTop: "18px" }}>
           <div style={styles.panelHeader}>
             <div>
               <h2 style={styles.panelTitle}>Fiche réservation</h2>
-              <p style={styles.muted}>Fiche unique ouverte depuis le calendrier, la page réservations, une fiche client, le CRM ou la communication.</p>
+
             </div>
-            <button style={styles.smallButton} onClick={closeReservation}>Fermer la fiche</button>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button style={styles.smallButton} onClick={() => openPaymentForBooking(openedReservation)}>Paiements</button>
+              <button style={styles.smallButton} onClick={() => openInvoiceForBooking(openedReservation)}>Factures</button>
+              <button style={styles.smallButton} onClick={() => openCommunicationContext({ reservation: openedReservation })}>Messages</button>
+              <button style={styles.smallButton} onClick={closeReservation}>Fermer la fiche</button>
+            </div>
           </div>
 
           <ReservationPanel

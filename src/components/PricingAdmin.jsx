@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
+import "../styles/adminPricingCompact.css";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -511,7 +512,7 @@ export default function PricingAdmin({ mode = "all" }) {
     .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0] || null, [taxRules, taxClassification, taxToday]);
 
   return (
-    <div style={styles.wrapper}>
+    <div className="pricing-admin-compact" style={styles.wrapper}>
       {loading && <p>Chargement des tarifs...</p>}
       {saving && <p style={styles.info}>Enregistrement en cours...</p>}
       {error && <p style={styles.error}>Erreur : {error}</p>}
@@ -564,31 +565,20 @@ export default function PricingAdmin({ mode = "all" }) {
         </strong>
       </section>
 
-      <section style={styles.editorCard}>
-        <div style={styles.switchRow}>
-          <button style={activeEditor === "season" ? styles.activeSwitch : styles.switchButton} onClick={() => setActiveEditor("season")}>Saisons</button>
-          <button style={activeEditor === "override" ? styles.activeSwitch : styles.switchButton} onClick={() => setActiveEditor("override")}>Tarifs spécifiques</button>
-        </div>
-
-        {activeEditor === "season" ? (
-          <SeasonEditor form={seasonForm} setForm={setSeasonForm} onSubmit={saveSeason} onCancel={() => setSeasonForm(emptySeason())} saving={saving} />
-        ) : (
-          <OverrideEditor form={overrideForm} setForm={setOverrideForm} onSubmit={saveOverride} onCancel={() => setOverrideForm(emptyOverride())} saving={saving} />
-        )}
-      </section>
-
-      </>)}
-
       {mode !== "pricing" && (<>
-      <section style={styles.cardPremium}>
-        <div style={styles.header}>
+      <details className="pricing-tax-details" style={styles.cardPremium}>
+        <summary style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, cursor: "pointer", listStyle: "none" }}>
           <div>
             <p style={styles.kicker}>Taxe de séjour</p>
-            <h3 style={styles.cardTitle}>Classement et barème réglementaire</h3>
-            <p style={styles.muted}>Le classement du logement et les règles tarifaires sont indépendants. Les réservations déjà créées conservent toujours leur snapshot.</p>
+            <h3 style={{ ...styles.cardTitle, marginBottom: 0 }}>Classement et barème réglementaire</h3>
           </div>
-          <button style={styles.primaryButton} onClick={() => setTaxClassificationModal({ classification: taxClassification })}>Changer le classement</button>
-        </div>
+          <span className="pricing-tax-expand-label" style={{ ...styles.muted, fontWeight: 600, textAlign: "right", whiteSpace: "nowrap" }}>{taxClassificationLabel(taxClassification)} <span aria-hidden="true">⌄</span></span>
+        </summary>
+        <div style={{ paddingTop: 10, marginTop: 10, borderTop: "1px solid #d1e4d6" }}>
+          <div style={styles.header}>
+            <p style={styles.muted}>Le classement et les barèmes sont indépendants. Les réservations déjà créées conservent leurs données fiscales.</p>
+            <button style={styles.primaryButton} onClick={() => setTaxClassificationModal({ classification: taxClassification })}>Changer le classement</button>
+          </div>
         <div style={styles.taxSummary}>
           <div><span style={styles.muted}>Classement utilisé</span><strong style={styles.rulePrice}>{taxClassificationLabel(taxClassification)}</strong></div>
           <div><span style={styles.muted}>Règle en vigueur aujourd’hui</span><strong>{formatTaxRule(currentTaxRule)}</strong>{currentTaxRule && <small style={styles.muted}>Depuis le {formatDate(currentTaxRule.created_at)} · saisie le {formatDate(currentTaxRule.created_at)}</small>}</div>
@@ -611,9 +601,26 @@ export default function PricingAdmin({ mode = "all" }) {
           })}
         </div>
         <p style={styles.muted}>Une nouvelle règle possède uniquement une date de début. La fin de l’ancienne est déduite automatiquement. Une règle saisie en retard ne modifie jamais les réservations déjà enregistrées ; sa date de saisie est conservée pour le futur rapprochement avec la déclaration Aure-Louron.</p>
+        </div>
+      </details>
+
+      </>)}
+
+      <section style={styles.editorCard}>
+        <div style={styles.switchRow}>
+          <button style={activeEditor === "season" ? styles.activeSwitch : styles.switchButton} onClick={() => setActiveEditor("season")}>Saisons</button>
+          <button style={activeEditor === "override" ? styles.activeSwitch : styles.switchButton} onClick={() => setActiveEditor("override")}>Tarifs spécifiques</button>
+        </div>
+
+        {activeEditor === "season" ? (
+          <SeasonEditor form={seasonForm} setForm={setSeasonForm} onSubmit={saveSeason} onCancel={() => setSeasonForm(emptySeason())} saving={saving} />
+        ) : (
+          <OverrideEditor form={overrideForm} setForm={setOverrideForm} onSubmit={saveOverride} onCancel={() => setOverrideForm(emptyOverride())} saving={saving} />
+        )}
       </section>
 
       </>)}
+
 
       {mode !== "tax" && (<>
       <section style={styles.card}>
@@ -860,31 +867,31 @@ function Modal({ title, children, onClose }) {
 }
 
 const styles = {
-  wrapper: { display: "grid", gap: "18px" },
-  card: { background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: "22px", padding: "18px" },
-  cardPremium: { background: "linear-gradient(135deg,#ecfdf5,#f8fafc)", border: "1px solid #bbf7d0", borderRadius: "24px", padding: "20px" },
-  editorCard: { background: "white", border: "1px solid #e5e7eb", borderRadius: "24px", padding: "18px", boxShadow: "0 12px 30px rgba(15,23,42,0.06)" },
+  wrapper: { display: "grid", gap: "8px", fontSize: "12px" },
+  card: { background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "11px" },
+  cardPremium: { background: "linear-gradient(135deg,#ecfdf5,#f8fafc)", border: "1px solid #bbf7d0", borderRadius: "16px", padding: "12px" },
+  editorCard: { background: "white", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "12px", boxShadow: "0 12px 30px rgba(15,23,42,0.06)" },
   header: { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", flexWrap: "wrap" },
-  kicker: { textTransform: "uppercase", letterSpacing: "0.12em", color: "#0f766e", fontWeight: 800, fontSize: "12px", margin: 0 },
-  cardTitle: { marginTop: "4px" },
-  muted: { color: "#64748b", fontSize: "14px", margin: "6px 0" },
+  kicker: { textTransform: "uppercase", letterSpacing: "0.12em", color: "#0f766e", fontWeight: 800, fontSize: "10px", margin: 0 },
+  cardTitle: { margin: "2px 0 4px" },
+  muted: { color: "#64748b", fontSize: "12px", margin: "3px 0" },
   info: { color: "#0f766e", fontWeight: 700 },
   error: { color: "#dc2626", fontWeight: 700 },
   notes: { color: "#475569", background: "white", borderRadius: "12px", padding: "8px", fontSize: "13px" },
-  bigPrice: { fontSize: "32px", color: "#14532d" },
-  rulePrice: { fontSize: "18px", color: "#14532d" },
-  switchRow: { display: "flex", gap: "10px", marginBottom: "16px", flexWrap: "wrap" },
-  switchButton: { border: "1px solid #d1d5db", background: "#f8fafc", borderRadius: "999px", padding: "10px 14px", cursor: "pointer", fontWeight: 800 },
-  activeSwitch: { border: "1px solid #14532d", background: "#14532d", color: "white", borderRadius: "999px", padding: "10px 14px", cursor: "pointer", fontWeight: 800 },
-  formPanel: { display: "grid", gap: "14px" },
+  bigPrice: { fontSize: "19px", color: "#14532d" },
+  rulePrice: { fontSize: "13px", color: "#14532d" },
+  switchRow: { display: "flex", gap: "7px", marginBottom: "8px", flexWrap: "wrap" },
+  switchButton: { border: "1px solid #d1d5db", background: "#f8fafc", borderRadius: "999px", padding: "6px 10px", cursor: "pointer", fontWeight: 700 },
+  activeSwitch: { border: "1px solid #14532d", background: "#14532d", color: "white", borderRadius: "999px", padding: "6px 10px", cursor: "pointer", fontWeight: 700 },
+  formPanel: { display: "grid", gap: "8px" },
   taxSimulator: { display: "grid", gap: "12px", padding: "14px", border: "1px solid #d1fae5", borderRadius: "16px", background: "#f0fdf4" },
   taxComparison: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "12px" },
   simulationCard: { background: "white", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "12px", display: "grid", gap: "8px" },
   formula: { margin: 0, color: "#334155", fontSize: "13px", lineHeight: 1.5, whiteSpace: "pre-line", overflowWrap: "anywhere" },
   formulaPreview: { background: "white", border: "1px solid #bbf7d0", borderRadius: "14px", padding: "12px", display: "grid", gap: "8px" },
-  formGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" },
-  label: { display: "grid", gap: "7px", fontWeight: 800, color: "#334155", fontSize: "14px" },
-  input: { padding: "12px", borderRadius: "12px", border: "1px solid #d1d5db", width: "100%", boxSizing: "border-box" },
+  formGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "8px" },
+  label: { display: "grid", gap: "4px", fontWeight: 700, color: "#334155", fontSize: "12px" },
+  input: { padding: "6px", borderRadius: "9px", border: "1px solid #d1d5db", width: "100%", boxSizing: "border-box" },
   textarea: { padding: "12px", borderRadius: "12px", border: "1px solid #d1d5db", width: "100%", minHeight: "100px", boxSizing: "border-box" },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "12px", marginTop: "14px" },
   ruleCard: { border: "1px solid #e2e8f0", background: "white", borderRadius: "18px", padding: "14px", display: "grid", gap: "6px" },

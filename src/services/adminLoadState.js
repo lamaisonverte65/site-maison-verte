@@ -5,7 +5,7 @@ const TAB_DEPENDENCIES = {
   summary: ["payments", "reservations", "guest_reviews", "booking_cleaning_issues", "booking_additional_charges", "stripe_payouts", "stripe_balance_transactions"],
   payments: ["payments", "stripe_balance_transactions"],
   invoices: ["customer_invoices", "customer_credit_notes"],
-  communication: ["booking_events", "email_logs"],
+  communication: ["booking_events"],
   reviews: ["guest_reviews"],
   visits: ["site_visits_summary"],
   stripe_payouts: ["stripe_payouts", "stripe_balance_transactions"],

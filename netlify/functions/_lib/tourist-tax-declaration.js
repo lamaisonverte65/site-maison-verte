@@ -45,8 +45,8 @@ function regulatoryNight({ night, snapshot, classificationHistory, rules }) {
   if (!classification) return { dueCents: null, dueClassification: null, dueRuleId: null, reason: "Classement applicable introuvable ou ambigu." };
   const rule = findUniquePeriod((rules || []).filter((item) => item.is_active !== false && item.classification === classification.classification), String(night.date || ""));
   if (!rule) return { dueCents: null, dueClassification: classification.classification, dueRuleId: null, reason: "Barème applicable introuvable ou ambigu." };
-  const occupants = Number(snapshot.occupants ?? night.occupants);
-  const taxablePeople = Number(snapshot.taxablePeople ?? night.taxablePeople);
+  const occupants = Number(snapshot?.occupants ?? night.occupants);
+  const taxablePeople = Number(snapshot?.taxablePeople ?? night.taxablePeople);
   if (!Number.isInteger(occupants) || occupants < 1 || !Number.isInteger(taxablePeople) || taxablePeople < 0 || taxablePeople > occupants) {
     return { dueCents: null, dueClassification: classification.classification, dueRuleId: rule.id, reason: "Occupants ou personnes taxables non renseignés." };
   }
@@ -67,7 +67,20 @@ export function buildTouristTaxDeclarationRows({ bookings, classificationHistory
   const regulatoryAvailable = Array.isArray(classificationHistory) && Array.isArray(rules);
   for (const booking of bookings || []) {
     const snapshot = booking.tourist_tax_snapshot;
-    const snapshotNights = Array.isArray(snapshot?.nights) ? snapshot.nights : [];
+    const storedNights = Array.isArray(snapshot?.nights) ? snapshot.nights : [];
+    const snapshotNights = [...storedNights];
+    // Ne jamais perdre une réservation historique faute de snapshot fiscal.
+    // Nuitées inconnues = lignes à compléter, JAMAIS taxe calculée par supposition.
+    const knownDates = new Set(storedNights.map((night) => night?.date));
+    const start = new Date(`${booking.start_date}T00:00:00Z`);
+    const end = new Date(`${booking.end_date}T00:00:00Z`);
+    if (Number.isFinite(start.getTime()) && Number.isFinite(end.getTime())) {
+      for (let time = start.getTime(), i = 0; time < end.getTime() && i < 366; time += 86400000, i++) {
+        const date = new Date(time).toISOString().slice(0, 10);
+        if (!knownDates.has(date)) snapshotNights.push({ date, totalTaxCents: null, accommodationCents: null, missingHistoricNight: true });
+      }
+    }
+    snapshotNights.sort((a, b) => String(a.date).localeCompare(String(b.date)));
     if (!snapshotNights.length) continue;
 
     const snapshotWeights = snapshotNights.map((night) => snapshotCents(night.totalTaxCents) ?? 0);
@@ -80,7 +93,7 @@ export function buildTouristTaxDeclarationRows({ bookings, classificationHistory
       const snapshotTaxCents = snapshotCents(night.totalTaxCents);
       const collectedCents = collectedByNight[index] || 0;
       const refundedCents = Math.min(collectedCents, refundedByNight[index] || 0);
-      const missingSnapshot = snapshotTaxCents === null || !/^\d{4}-\d{2}-\d{2}$/.test(date)
+      const missingSnapshot = night.missingHistoricNight || snapshotTaxCents === null || !/^\d{4}-\d{2}-\d{2}$/.test(date)
         || date < String(booking.start_date) || date >= String(booking.end_date);
       const upcoming = !!todayDate && date >= todayDate;
       let legal = { dueCents: null, dueClassification: null, dueRuleId: null, reason: null };
@@ -90,7 +103,7 @@ export function buildTouristTaxDeclarationRows({ bookings, classificationHistory
         dueStatus = "cancelled";
       } else if (upcoming) {
         dueStatus = "upcoming";
-      } else if (regulatoryAvailable && !missingSnapshot) {
+      } else if (regulatoryAvailable && !missingSnapshot && !booking.requiresSourceReview) {
         legal = regulatoryNight({ night, snapshot, classificationHistory, rules });
         dueStatus = legal.dueCents === null ? "to_review" : "presumed_performed";
       } else if (regulatoryAvailable) {
@@ -104,14 +117,16 @@ export function buildTouristTaxDeclarationRows({ bookings, classificationHistory
         nightDate: date,
         bookingStatus: booking.status || null,
         collector: booking.tourist_tax_collector,
-        occupants: Number(snapshot.occupants ?? night.occupants ?? 0),
-        taxablePeople: Number(snapshot.taxablePeople ?? night.taxablePeople ?? 0),
-        exemptPeople: Number(snapshot.exemptPeople ?? 0),
-        accommodationCents: Math.max(0, Math.round(Number(night.accommodationCents) || 0)),
-        snapshotClassification: snapshot.classification || night.rule?.classification || null,
+        occupants: snapshot?.occupants ?? night.occupants ?? (booking.adults_count != null ? Number(booking.adults_count) + Number(booking.children_count || 0) : null),
+        taxablePeople: snapshot?.taxablePeople ?? night.taxablePeople ?? null,
+        adultsCount: booking.adults_count ?? null,
+        childrenCount: booking.children_count ?? null,
+        exemptPeople: Number(snapshot?.exemptPeople ?? 0),
+        accommodationCents: night.accommodationCents == null ? null : Math.max(0, Math.round(Number(night.accommodationCents) || 0)),
+        snapshotClassification: snapshot?.classification || night.rule?.classification || null,
         snapshotRuleId: night.rule?.id || null,
         snapshotTaxCents,
-        commercialClassification: snapshot.classification || night.rule?.classification || null,
+        commercialClassification: snapshot?.classification || night.rule?.classification || null,
         commercialRuleId: night.rule?.id || null,
         commercialTaxCents: snapshotTaxCents,
         collectedCents,
@@ -123,7 +138,7 @@ export function buildTouristTaxDeclarationRows({ bookings, classificationHistory
         dueStatus,
         dueDifferenceCents: legal.dueCents !== null && snapshotTaxCents !== null ? legal.dueCents - snapshotTaxCents : null,
         status: missingSnapshot ? "missing_snapshot_data" : "ok",
-        issue: missingSnapshot ? "Snapshot historique de taxe de séjour incomplet pour cette nuit." : legal.reason,
+        issue: booking.requiresSourceReview ? "Origine ou collecteur de taxe historique à confirmer." : missingSnapshot ? "Données historiques de taxe de séjour incomplètes : montant à contrôler." : legal.reason,
       });
     });
   }
