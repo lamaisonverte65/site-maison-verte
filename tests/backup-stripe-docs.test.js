@@ -21,9 +21,9 @@ test('Stripe backup documentation fixes credentials, live-only scope, content an
 
 test('Stripe docs describe retention, encrypted sensitivity and non-atomic snapshot limits', () => {
   const src = docs();
-  assert.match(src, /daily[^\n]*30/i);
-  assert.match(src, /weekly[^\n]*(365|12 mois)/i);
-  assert.match(src, /monthly[^\n]*(illimit|permanent)/i);
+  assert.match(src, /daily[^\n]*7/i);
+  assert.match(src, /weekly[^\n]*4/i);
+  assert.match(src, /monthly[^\n]*2/i);
   assert.match(src, /yearly[^\n]*(illimit|permanent)/i);
   assert.match(src, /manual[^\n]*(illimit|permanent|suppression explicite)/i);
   assert.match(src, /données client|données personnelles/i);

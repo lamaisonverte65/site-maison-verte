@@ -19,11 +19,13 @@ test('existing latest publisher supports a Stripe pointer root while keeping the
   assert.equal(publish.includes('backup-download/stripe'), false);
 });
 
-test('rotation remains parameterized by PCLOUD_BASE_PATH and purges only daily/weekly', () => {
+test('rotation is parameterized by PCLOUD_BASE_PATH and previews daily/weekly/monthly', () => {
   assert.match(rotate, /REMOTE_ROOT="\$\{PCLOUD_BASE_PATH:-01_Supabase\}"/);
-  assert.match(rotate, /purge_old_tier daily 30/);
-  assert.match(rotate, /purge_old_tier weekly 365/);
-  assert.doesNotMatch(rotate, /purge_old_tier (monthly|yearly|manual|baseline)/);
+  assert.match(rotate, /'daily:7'/);
+  assert.match(rotate, /'weekly:4'/);
+  assert.match(rotate, /'monthly:2'/);
+  assert.match(rotate, /--dry-run/);
+  assert.doesNotMatch(rotate, /purge_old_tier/);
 });
 
 test('_SUCCESS precedes latest publication and failed latest publication cannot delete the completed backup', () => {

@@ -110,16 +110,18 @@ La Maison Verte/backup-download/latest.json
 
 Stripe ne doit jamais remplacer ce pointeur Supabase.
 
-## Rétention
+## Rétention — R31.1
 
-- `daily` : 30 jours ;
-- `weekly` : 365 jours / 12 mois ;
-- `monthly` : conservation illimitée ;
+- `daily` : **7 dernières sauvegardes validées** ;
+- `weekly` : **4 dernières sauvegardes validées** ;
+- `monthly` : **2 dernières sauvegardes validées** ;
 - `yearly` : conservation permanente ;
 - `manual` : conservation permanente sauf suppression explicite ;
 - `baseline` : conservation permanente.
 
-Seuls `daily` et `weekly` sont purgés automatiquement.
+**La rotation R31.1 est déployée en mode `--dry-run` : aucune sauvegarde n'est supprimée automatiquement.** Son rapport propose les dossiers à retirer. La suppression réelle ne devra être activée qu'après validation du rapport et vérification d'une copie locale restaurable. Le mode `--apply` nécessite `R31_ROTATION_APPLY_ACK` explicite.
+
+La rotation ignore les dossiers non vérifiés, protège le pointeur `latest.json`, exige une baseline validée et n'efface jamais `manual`, `yearly`, `baseline`, `.incoming` ou `03_Documents`.
 
 ## Logs et diagnostic
 

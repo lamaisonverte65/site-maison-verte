@@ -110,9 +110,11 @@ jobs:
             bash scripts/backup/upload-pcloud.sh "$BACKUP_DIR" "$tier" "$BACKUP_ID"
           done
 
-      - name: Apply short-term retention
+      # R31.1 rollout: report only. Enable --apply in a separate reviewed change
+      # after validating a local decrypted copy and the dry-run deletion list.
+      - name: Preview safe pCloud retention (no deletion)
         if: ${{ success() && github.event_name == 'schedule' }}
-        run: bash scripts/backup/rotate-pcloud.sh
+        run: bash scripts/backup/rotate-pcloud.sh --dry-run
 
       - name: Write non-sensitive diagnostic
         if: ${{ always() }}

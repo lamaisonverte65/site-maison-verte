@@ -134,18 +134,20 @@ Après le premier run :
 5. suivre `RESTORE_SUPABASE_BACKUP.md` ;
 6. n’accorder une confiance opérationnelle au planning qu’après un test de restauration réussi.
 
-## Planning et rétention
+## Planning et rétention — R31.1
 
-Le workflow planifié s’exécute quotidiennement. Une même sauvegarde peut être copiée dans plusieurs niveaux :
+Le workflow quotidien produit toujours un paquet complet et autonome ; le dimanche et le premier du mois, des copies peuvent être réparties dans plusieurs catégories.
 
-- `daily` : 30 jours ;
-- `weekly` : 365 jours ;
-- `monthly` : jamais purgé automatiquement ;
-- `yearly` : jamais purgé automatiquement ;
-- `manual` : jamais purgé automatiquement ;
-- `baseline` : jamais purgé automatiquement.
+- `daily` : conserver les **7 dernières sauvegardes validées** ;
+- `weekly` : conserver les **4 dernières sauvegardes validées** ;
+- `monthly` : conserver les **2 dernières sauvegardes validées** ;
+- `yearly` : jamais supprimée automatiquement ;
+- `manual` : jamais supprimée automatiquement ;
+- `baseline` : jamais supprimée automatiquement.
 
-Seuls `daily` et `weekly` sont visés par `rotate-pcloud.sh`. La rotation passe elle aussi par `LMVCRYPT` ; elle n’opère jamais directement sur le contenu chiffré brut.
+**Déploiement progressif : le workflow exécute actuellement `rotate-pcloud.sh --dry-run` ; aucune suppression pCloud automatique n'est activée par R31.1.** La simulation journalise `WOULD_DELETE` pour les sauvegardes susceptibles d'être retirées. L'activation ultérieure de `--apply` requiert un contrôle de la liste, une copie locale déchiffrée vérifiée et une décision distincte. `--apply` exige en plus la variable d'accusé explicite `R31_ROTATION_APPLY_ACK`.
+
+La rotation agit exclusivement sur les dossiers `daily`, `weekly` et `monthly` de `LMVCRYPT`, et seulement lorsque leur `_SUCCESS`, `manifest.json` et `SHA256SUMS` sont présents. Un dossier incomplet est protégé. Une baseline valide et le pointeur `latest.json` sont vérifiés ; la sauvegarde référencée par le pointeur reste protégée. Une vérification des marqueurs n'est pas un test complet de restauration.
 
 ## Manifest et intégrité
 

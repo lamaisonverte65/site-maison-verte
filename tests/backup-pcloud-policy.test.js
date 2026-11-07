@@ -18,12 +18,16 @@ test('upload pCloud utilise OAuth/env et force la région Europe', () => {
   assert.doesNotMatch(src, /PCLOUD_(USERNAME|PASSWORD)/);
 });
 
-test('rotation ne purge automatiquement que daily et weekly', () => {
+test('R31 retention preserves baseline/manual/yearly and runs in preview by default', () => {
   const src = readRequired('scripts/backup/rotate-pcloud.sh');
-  assert.match(src, /daily/);
-  assert.match(src, /weekly/);
-  assert.match(src, /30/);
-  assert.match(src, /365/);
-  assert.doesNotMatch(src, /purge[^\n]*(monthly|yearly|manual|baseline)/i);
-  assert.doesNotMatch(src, /(monthly|yearly|manual|baseline)[^\n]*purge/i);
+  assert.match(src, /'daily:7'/);
+  assert.match(src, /'weekly:4'/);
+  assert.match(src, /'monthly:2'/);
+  assert.match(src, /MODE="\$\{1:---dry-run\}"/);
+  assert.match(src, /R31_ROTATION_APPLY_ACK/);
+  assert.match(src, /_SUCCESS/);
+  assert.match(src, /SHA256SUMS/);
+  assert.match(src, /POINTER_TIER/);
+  assert.match(src, /rclone purge "\$folder"/);
+  assert.doesNotMatch(src, /purge_old_tier/);
 });
