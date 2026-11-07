@@ -1682,3 +1682,29 @@
 .livret[data-livret-lang="es"] #fonctionnement-logement .livret-eco-card {
   margin-top: 9px !important;
 }
+
+/* Correction strictement réservée à l'impression du livret (FR, EN, ES).
+   Les textes, les images, le JSX et le rendu écran ne sont pas modifiés. */
+@media print {
+  /* A4 déclenche aussi le breakpoint mobile <= 900px : neutraliser son -54px.
+     Le liseret retrouve son raccord original avec la photographie. */
+  .livret-cover-footer::before {
+    top: -70px !important;
+  }
+
+  /* Page 2 : compactage du sommaire uniquement, sans réduction de police. */
+  .livret .livret-welcome .livret-summary {
+    margin-top: 7px !important;
+    padding: 12px 18px 14px !important;
+  }
+  .livret .livret-welcome .livret-summary h2 {
+    margin-bottom: 10px !important;
+  }
+  .livret[data-livret-lang] .livret-welcome .livret-summary-list {
+    gap: 2px !important;
+  }
+  .livret .livret-welcome .livret-summary-list a {
+    padding: 2px 0 !important;
+    line-height: 1.35 !important;
+  }
+}
