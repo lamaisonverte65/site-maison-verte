@@ -1,0 +1,122 @@
+name: R31.5 - Sauvegarde chiffree vers PC
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lmv-r315-backup-pc
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Generer Supabase + Stripe chiffres
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      STRIPE_BACKUP_KEY: ${{ secrets.STRIPE_BACKUP_KEY }}
+      STRIPE_EXPECTED_ACCOUNT_ID: ${{ vars.STRIPE_EXPECTED_ACCOUNT_ID }}
+      AGE_RECIPIENT: age1smqrgntj5tk90a8vrks8sx6w3k2catgl698psjmmqu7nrgudts2smcspen
+
+    steps:
+      - name: Recuperer les sources
+        uses: actions/checkout@v5
+
+      - name: Installer Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Installer les dependances du projet
+        run: npm ci --ignore-scripts
+
+      - name: Installer Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Installer PostgreSQL et age
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client age
+          age --version
+
+      - name: Verifier les parametres sans afficher les secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$SUPABASE_DB_URL" ]] || { echo 'SUPABASE_DB_URL manquant'; exit 1; }
+          [[ -n "$SUPABASE_URL" ]] || { echo 'SUPABASE_URL manquant'; exit 1; }
+          [[ -n "$SUPABASE_SECRET_KEY" || -n "$SUPABASE_SERVICE_ROLE_KEY" ]] || { echo 'Cle Supabase serveur manquante'; exit 1; }
+          [[ "$STRIPE_BACKUP_KEY" == rk_live_* ]] || { echo 'Cle Stripe restreinte de production absente'; exit 1; }
+          [[ -n "$STRIPE_EXPECTED_ACCOUNT_ID" ]] || { echo 'STRIPE_EXPECTED_ACCOUNT_ID manquant'; exit 1; }
+          [[ "$AGE_RECIPIENT" =~ ^age1[023456789acdefghjklmnpqrstuvwxyz]{58}$ ]] || { echo 'Cle publique age invalide'; exit 1; }
+
+      - name: Creer identifiant et emplacements temporaires
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "BACKUP_ID=$(date -u +'%Y-%m-%d_%H%M%SZ')" >> "$GITHUB_ENV"
+          umask 077
+          mkdir -p "$RUNNER_TEMP/lmv-r315/supabase" "$RUNNER_TEMP/lmv-r315/stripe" "$RUNNER_TEMP/lmv-r315/encrypted"
+
+      - name: Exporter les donnees Supabase de production
+        shell: bash
+        env:
+          BACKUP_KIND: manual
+          BACKUP_DIR: ${{ runner.temp }}/lmv-r315/supabase
+        run: |
+          set -euo pipefail
+          umask 077
+          bash scripts/backup/assemble-backup.sh
+          test -s "$BACKUP_DIR/SHA256SUMS"
+          test -s "$BACKUP_DIR/manifest.json"
+
+      - name: Exporter les donnees Stripe de production
+        shell: bash
+        env:
+          BACKUP_KIND: manual
+          BACKUP_DIR: ${{ runner.temp }}/lmv-r315/stripe
+        run: |
+          set -euo pipefail
+          umask 077
+          bash scripts/backup/assemble-stripe-backup.sh
+          test -s "$BACKUP_DIR/SHA256SUMS"
+          test -s "$BACKUP_DIR/manifest.json"
+
+      - name: Compresser et chiffrer les deux exportations
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          OUT="$RUNNER_TEMP/lmv-r315/encrypted"
+          tar -C "$RUNNER_TEMP/lmv-r315/supabase" -czf - . \
+            | age -r "$AGE_RECIPIENT" -o "$OUT/01_Supabase.tar.gz.age"
+          tar -C "$RUNNER_TEMP/lmv-r315/stripe" -czf - . \
+            | age -r "$AGE_RECIPIENT" -o "$OUT/02_Stripe.tar.gz.age"
+          test -s "$OUT/01_Supabase.tar.gz.age"
+          test -s "$OUT/02_Stripe.tar.gz.age"
+          ( cd "$OUT" && sha256sum 01_Supabase.tar.gz.age 02_Stripe.tar.gz.age > SHA256_ENCRYPTED.txt )
+          printf 'backup_id=%s\nsource_commit=%s\nrecipient=%s\nsource=production\n' \
+            "$BACKUP_ID" "$GITHUB_SHA" "$AGE_RECIPIENT" > "$OUT/INFO.txt"
+          echo 'Archives chiffrees generees; aucun transfert pCloud.'
+          du -h "$OUT/01_Supabase.tar.gz.age" "$OUT/02_Stripe.tar.gz.age"
+
+      - name: Publier uniquement les archives chiffrees
+        uses: actions/upload-artifact@v6
+        with:
+          name: LMV_R315_CHIFFRE_${{ env.BACKUP_ID }}
+          path: ${{ runner.temp }}/lmv-r315/encrypted/
+          if-no-files-found: error
+          retention-days: 14
+          include-hidden-files: false
+          compression-level: 0
