@@ -1,0 +1,136 @@
+name: R31.5 - pCloud rolling (Supabase + Stripe)
+
+on:
+  schedule:
+    - cron: '42 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Un seul producteur de sauvegardes R31.5 a la fois.
+concurrency:
+  group: lmv-r315-cloud-rolling
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    # Un test manuel est possible immediatement. Le quotidien reste inactif
+    # tant que cette variable GitHub n'est pas exactement 'true'.
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.LMV_R315_AUTOMATIC_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      STRIPE_BACKUP_KEY: ${{ secrets.STRIPE_BACKUP_KEY }}
+      STRIPE_EXPECTED_ACCOUNT_ID: ${{ vars.STRIPE_EXPECTED_ACCOUNT_ID }}
+      PCLOUD_TOKEN: ${{ secrets.PCLOUD_TOKEN }}
+      RCLONE_CRYPT_PASSWORD: ${{ secrets.RCLONE_CRYPT_PASSWORD }}
+      RCLONE_CRYPT_PASSWORD2: ${{ secrets.RCLONE_CRYPT_PASSWORD2 }}
+      AGE_RECIPIENT: age1smqrgntj5tk90a8vrks8sx6w3k2catgl698psjmmqu7nrgudts2smcspen
+
+    steps:
+      - name: Recuperer les sources
+        uses: actions/checkout@v5
+
+      - name: Installer Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Installer les dependances
+        run: npm ci --ignore-scripts
+
+      - name: Installer Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Installer PostgreSQL, age et rclone
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client age rclone unzip
+          age --version
+          rclone version | head -n 1
+
+      - name: Verifier les prerequis sans divulguer les secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$SUPABASE_DB_URL" ]] || { echo 'SUPABASE_DB_URL manquant'; exit 1; }
+          [[ -n "$SUPABASE_URL" ]] || { echo 'SUPABASE_URL manquant'; exit 1; }
+          [[ -n "$SUPABASE_SECRET_KEY" || -n "$SUPABASE_SERVICE_ROLE_KEY" ]] || { echo 'Cle Supabase serveur manquante'; exit 1; }
+          [[ "$STRIPE_BACKUP_KEY" == rk_live_* ]] || { echo 'Cle Stripe de production manquante'; exit 1; }
+          [[ -n "$STRIPE_EXPECTED_ACCOUNT_ID" ]] || { echo 'Compte Stripe attendu manquant'; exit 1; }
+          [[ -n "$PCLOUD_TOKEN" && -n "$RCLONE_CRYPT_PASSWORD" && -n "$RCLONE_CRYPT_PASSWORD2" ]] || { echo 'Secrets pCloud/rclone manquants'; exit 1; }
+          [[ "$AGE_RECIPIENT" =~ ^age1[023456789acdefghjklmnpqrstuvwxyz]{58}$ ]] || { echo 'Cle publique age invalide'; exit 1; }
+
+      - name: Preparer les repertoires et l'identifiant UTC
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          echo "BACKUP_ID=$(date -u +'%Y-%m-%d_%H%M%SZ')" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/lmv-r315-cloud/supabase" "$RUNNER_TEMP/lmv-r315-cloud/stripe" "$RUNNER_TEMP/lmv-r315-cloud/encrypted"
+
+      - name: Exporter Supabase
+        shell: bash
+        env:
+          BACKUP_KIND: daily
+          BACKUP_DIR: ${{ runner.temp }}/lmv-r315-cloud/supabase
+        run: |
+          set -euo pipefail
+          umask 077
+          bash scripts/backup/assemble-backup.sh
+          (cd "$BACKUP_DIR" && sha256sum --check SHA256SUMS --status)
+          test -s "$BACKUP_DIR/manifest.json"
+
+      - name: Exporter Stripe
+        shell: bash
+        env:
+          BACKUP_KIND: daily
+          BACKUP_DIR: ${{ runner.temp }}/lmv-r315-cloud/stripe
+        run: |
+          set -euo pipefail
+          umask 077
+          bash scripts/backup/assemble-stripe-backup.sh
+          (cd "$BACKUP_DIR" && sha256sum --check SHA256SUMS --status)
+          test -s "$BACKUP_DIR/manifest.json"
+
+      - name: Compresser et chiffrer avec age
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          OUT="$RUNNER_TEMP/lmv-r315-cloud/encrypted"
+          tar -C "$RUNNER_TEMP/lmv-r315-cloud/supabase" -czf - . \
+            | age -r "$AGE_RECIPIENT" -o "$OUT/01_Supabase.tar.gz.age"
+          tar -C "$RUNNER_TEMP/lmv-r315-cloud/stripe" -czf - . \
+            | age -r "$AGE_RECIPIENT" -o "$OUT/02_Stripe.tar.gz.age"
+          (cd "$OUT" && sha256sum 01_Supabase.tar.gz.age 02_Stripe.tar.gz.age > SHA256_ENCRYPTED.txt)
+          printf 'backup_id=%s\nsource_commit=%s\nrecipient=%s\nsource=production\n' \
+            "$BACKUP_ID" "$GITHUB_SHA" "$AGE_RECIPIENT" > "$OUT/INFO.txt"
+          (cd "$OUT" && sha256sum --check SHA256_ENCRYPTED.txt --status)
+          du -h "$OUT"/*.age
+
+      - name: Transferer, relire, valider puis effectuer la rotation
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/backup/r315-cloud-rolling.sh \
+            "$RUNNER_TEMP/lmv-r315-cloud/encrypted" "$BACKUP_ID"
+
+      - name: Bilan non sensible
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          echo "run_id=${{ github.run_id }}"
+          echo "backup_id=${BACKUP_ID:-inconnu}"
+          echo "event=${{ github.event_name }}"
+          echo "sha=${GITHUB_SHA}"
