@@ -48,7 +48,7 @@ jobs:
       - name: Installer Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 3.4.0
 
       - name: Installer PostgreSQL, age et rclone
         shell: bash
